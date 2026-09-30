@@ -2,53 +2,336 @@
 id: prod-memory
 track: prod
 title: Case study: the tab that ate 2 GB
-summary: Traders leave the app open all day. By mid-afternoon it's slow, then it crashes. Find the leaks — unbounded history, forgotten listeners, immortal timers — and bound everything.
+summary: Traders leave the app open all day. By mid-afternoon it's slow, then it crashes. Learn to find the leaks — unbounded history, forgotten listeners, immortal timers — and bound everything.
 ---
 
 > **INCIDENT — "The app gets slower all day."** Traders keep the odds board open from 08:00. By 15:00 scrolling stutters, by 17:00 Chrome shows "Aw, Snap!". Refreshing "fixes" it.
 >
 > **What the memory timeline shows:** JS heap climbs in a staircase (one step per update burst) and **never comes back down after GC**. DOM node count and *event listener count* both grow steadily. Heap snapshot: 480 000 retained `Message` objects, 3 800 detached `<tr>` elements, 900 live `WebSocket` objects.
 
-## A leak in a GC language
+## The idea in one sentence
 
-JavaScript frees memory that is **unreachable**. A leak is memory that's *still reachable* but *no longer useful* — something forgot to let go. The usual suspects, roughly by frequency:
+JavaScript cleans up memory **nobody can reach** — a **leak** is memory that is **still reachable but no longer needed**, because something forgot to let go.
+
+> **Analogy** A hotel that frees rooms only when a guest **hands in the key**. If guests walk out but keep their keys (listeners, timers, sockets), the hotel looks full forever — and eventually has no rooms left. Every "check in" needs a matching "check out".
+
+![A root holds a listener, which holds a closure, which holds a huge object — so the garbage collector cannot free it](fig:leak-retention "Reachable from a GC root means the collector may not free it. The fix is a matching release for every acquire.")
+
+## The usual suspects (roughly by frequency)
 
 1. **Unbounded collections** — `history.push(msg)` forever; a `Map` cache keyed by ids that only grows; a log/undo stack with no cap.
-2. **Listeners never removed** — `window.addEventListener`, `socket.addEventListener`, store subscriptions, `MutationObserver`/`IntersectionObserver` never `disconnect()`-ed. Each holds its callback (and everything the callback closes over) alive.
-3. **Timers that outlive their owner** — `setInterval` without `clearInterval` keeps running *and* keeps its closure alive.
-4. **Closures over big data** — a small long-lived callback that captured a huge array/DOM tree in its scope.
-5. **Detached DOM** — nodes removed from the document but still referenced from JS (a cache, a ref, a closure).
-6. **Per-mount resources not torn down** — a new socket/worker per component mount with no `close()`/`terminate()`. (900 live WebSockets!)
+2. **Listeners never removed** — `window.addEventListener`, `socket.addEventListener`, store subscriptions, `MutationObserver`/`IntersectionObserver` never `disconnect()`-ed. Each holds its callback, and everything the callback closes over.
+3. **Timers that outlive their owner** — a `setInterval` without `clearInterval` keeps running *and* keeps its closure alive.
+4. **Closures over big data** — a small long-lived callback that captured a huge array or DOM tree in its scope.
+5. **Detached DOM** — nodes removed from the page but still referenced from JS (a cache, a ref, a closure).
+6. **Per-mount resources not torn down** — a new socket/worker per component mount with no `close()`/`terminate()` (900 live WebSockets!).
 7. **Module-level state** — globals and singletons that accumulate across route changes.
 
-In React, almost all of these are **effects without cleanup** or **caches without eviction**.
+In React, almost all of these are **effects without cleanup** or **caches without eviction**. Watch one happen:
+
+```stepper An effect without cleanup, mounted three times
+code:
+  useEffect(() => {
+    const id = setInterval(tick, 1000);   // started…
+    // …but never cleared: no return () => clearInterval(id)
+  }, []);
+---
+line: 1-2
+say: The component **mounts**. The effect starts an interval. The browser's timer table now holds our `tick` callback — and everything it closes over.
+Mounted components: 1
+Live timers: 1
+Kept alive by timers: component #1's data
+---
+line: 4
+say: The user navigates away; the component **unmounts**. We forgot the cleanup, so **nothing stops the timer**. It keeps running and keeps the old component's data alive.
+Mounted components: 0
+Live timers: 1
+Kept alive by timers: component #1's data
+---
+line: 1-2
+say: The user comes back. A **new** component mounts and starts a **second** timer. Now two ticks per second run, and two components' worth of data are retained.
+Mounted components: 1
+Live timers: 2
+Kept alive by timers: component #1's data | component #2's data
+---
+say: Repeat this a hundred times over a trading day and you get 100 timers and 100 retained component trees: the "staircase" on the memory graph. The fix is one line — `return () => clearInterval(id)`.
+Mounted components: 1
+Live timers: 100 (leaked)
+Kept alive by timers: 100 old component trees
+```
 
 ## The rule that prevents most of them
 
 > **Every acquisition needs a matching release tied to an owner's lifetime, and every collection needs a bound.**
 
-- Acquire in an effect → return the cleanup. `addEventListener`/`removeEventListener`, `setInterval`/`clearInterval`, `subscribe`/`unsubscribe`, `new Socket`/`close`, `observe`/`disconnect`, `fetch`+`AbortController`.
-- Give long-lived objects a `dispose()` that is **idempotent** and releases *everything*.
-- **Bound** caches and histories: ring buffer (cap N), **LRU** (evict least recently used), **TTL** (evict old), or both. Decide the bound from a memory budget, not from "it'll be fine".
-- Prefer **`AbortSignal`** as a single lifetime token: pass one signal to `fetch`, `addEventListener(..., { signal })`, and your own APIs; abort once to release all.
-- `WeakMap`/`WeakSet`/`WeakRef` let the GC reclaim keys/values — useful for *metadata attached to objects you don't own*, but they don't fix "I forgot to unsubscribe".
+![Each acquire is paired with a release](fig:release-pairs "Pair every one of these in the cleanup.")
+
+- Acquire in an effect → **return the cleanup**: `addEventListener`/`removeEventListener`, `setInterval`/`clearInterval`, `subscribe`/`unsubscribe`, `new Socket`/`close`, `observe`/`disconnect`, `fetch` + `AbortController`.
+- Give long-lived objects an **idempotent `dispose()`** that releases *everything*.
+- **Bound** caches and histories: a **ring buffer** (cap N), an **LRU** (evict least recently used), a **TTL** (evict old entries), or both. Decide the bound from a memory budget, not from "it'll be fine".
+- Use an **`AbortSignal`** as one lifetime token: pass the same signal to `fetch`, to `addEventListener(…, { signal })` and to your own APIs; abort once to release them all.
+- `WeakMap` / `WeakSet` / `WeakRef` let the GC reclaim keys/values — useful for metadata attached to objects you don't own, but they don't fix "I forgot to unsubscribe".
+
+```js try
+// A bounded history: keep only the latest N messages.
+function createHistory(max) {
+  const items = [];
+  return {
+    push(item) {
+      items.push(item);
+      if (items.length > max) items.shift();       // drop the OLDEST when over the cap
+    },
+    toArray: () => [...items],
+  };
+}
+
+const history = createHistory(3);
+for (let i = 1; i <= 10; i++) history.push('msg ' + i);
+console.log(history.toArray());
+```
+
+```js try
+// One AbortSignal releases every listener at once.
+const target = new EventTarget();
+let calls = 0;
+const controller = new AbortController();
+
+target.addEventListener('ping', () => calls++, { signal: controller.signal });
+target.addEventListener('ping', () => calls++, { signal: controller.signal });
+
+target.dispatchEvent(new Event('ping'));
+console.log('before abort:', calls);
+
+controller.abort();                                  // releases BOTH listeners
+target.dispatchEvent(new Event('ping'));
+console.log('after abort:', calls);
+```
+
+## Bounded caches: LRU + TTL
+
+An **LRU** cache keeps the `N` most recently used entries and evicts the **least recently used** when full. A **TTL** marks entries expired after some time. Together they keep memory bounded *and* data fresh.
+
+![Entries ordered from least to most recently used; a get moves an entry to the recent end; a full set evicts the oldest](fig:lru-ttl "A JavaScript Map remembers insertion order, so delete-then-set on every hit is a one-line LRU.")
+
+```js try
+const cache = new Map();
+const MAX = 3;
+
+function get(key) {
+  if (!cache.has(key)) return undefined;
+  const value = cache.get(key);
+  cache.delete(key);                 // re-insert → becomes the MOST recently used
+  cache.set(key, value);
+  return value;
+}
+function set(key, value) {
+  cache.delete(key);
+  cache.set(key, value);
+  if (cache.size > MAX) cache.delete(cache.keys().next().value);   // the first key = least recently used
+}
+
+set('A', 1); set('B', 2); set('C', 3);
+get('A');                            // A is now recent
+set('D', 4);                         // evicts B, the least recently used
+console.log([...cache.keys()]);
+```
 
 ## Finding leaks
 
 - **Chrome DevTools → Memory:**
-  - *Heap snapshot* ×3 with a "do the action, force GC" between them; compare (**3-snapshot technique**): what was allocated in between and is still alive?
-  - *Allocation instrumentation on timeline* — blue bars that never turn grey are leaked.
-  - Filter "Detached" for orphaned DOM.
-- **Performance monitor:** live JS heap, DOM nodes, **JS event listeners**, documents. A rising listener count is a leak with a name.
-- **In production:** sample `performance.memory` (Chromium) / `measureUserAgentSpecificMemory()`, alert on growth-per-hour; run **soak tests** (mount/unmount 1 000 times; replay a busy hour) in CI.
-- **In unit tests:** you can't see the heap, but you *can* assert the **evidence**: after `dispose()`/unmount, `socket.listenerCount() === 0`, `jest.getTimerCount() === 0`, history length ≤ cap. That's what the exercises here do.
+  - Take a **heap snapshot** three times, doing the suspect action and forcing GC between them (**the 3-snapshot technique**): what was allocated in between and is still alive?
+  - *Allocation instrumentation on timeline*: blue bars that never turn grey were leaked.
+  - Filter for **"Detached"** to find orphaned DOM.
+- **Performance monitor:** live JS heap, DOM nodes, **JS event listeners**. A rising listener count is a leak with a name.
+- **In production:** sample `performance.memory` (Chromium) / `measureUserAgentSpecificMemory()`, alert on growth per hour; run **soak tests** in CI (mount/unmount 1 000 times; replay a busy hour).
+- **In unit tests** you can't see the heap, but you can assert the **evidence**: after `dispose()`/unmount, `socket.listenerCount() === 0`, `jest.getTimerCount() === 0`, history length ≤ its cap. That's what the exercises here do.
 
 ## Interview angles
 
-- "How would you find a memory leak in production?" → measure, snapshot diff, find the retainer path.
-- "What's the difference between a memory leak and high memory use?" → reachable-but-useless vs. legitimately large.
-- "Why does an un-cleared `setInterval` leak even if the component unmounted?" → the timer table holds the callback strongly; closure keeps state/props alive.
-- "When would you use `WeakRef`?" → caches keyed by objects you don't control; almost never as the primary fix.
+- *How would you find a leak in production?* → measure, snapshot diff, follow the retainer path.
+- *Leak vs high memory use?* → reachable-but-useless vs legitimately large.
+- *Why does an un-cleared `setInterval` leak even after unmount?* → the timer table holds the callback strongly; its closure keeps state alive.
+- *When would you use `WeakRef`?* → caches keyed by objects you don't control; almost never as the primary fix.
+
+## Quick check
+
+```check
+Q: What is a memory leak in JavaScript?
+A) Memory that is unreachable
+B) Memory that is reachable but no longer useful *
+C) Using a lot of memory
+D) A crash caused by recursion
+Why: The garbage collector frees unreachable memory. A leak is something still referenced that you no longer need.
+---
+Q: Why does an un-cleared `setInterval` keep a component's data alive after it unmounts?
+A) Intervals copy the data
+B) React keeps it
+C) The timer table holds the callback, whose closure holds the data *
+D) It doesn't
+Why: A running timer strongly references its callback, and the callback's scope references whatever it uses.
+---
+Q: Which is the best fix for an ever-growing message history?
+A) Bound it: keep only the latest N (a ring buffer) *
+B) Bigger servers
+C) Store it in a global
+D) Use `WeakRef` for every item
+Why: Every collection needs a bound decided by a memory budget.
+---
+Q: What does an `AbortSignal` passed to several `addEventListener` calls allow?
+A) Faster events
+B) Removing all those listeners at once with one `abort()` *
+C) Sending events to workers
+D) Canceling timers automatically
+Why: `{ signal }` ties listener lifetime to the signal; aborting removes them all.
+---
+Q: How do you test for leaks in a unit test where you can't see the heap?
+A) You can't
+B) Use `console.log`
+C) Wait an hour
+D) Assert the evidence: listener counts, timer counts and history sizes after dispose/unmount *
+Why: The observable symptoms (registered listeners, live timers, collection length) can be checked directly.
+```
+
+## Recap
+
+- A **leak** = reachable but useless. Usual causes: unbounded collections, listeners, timers, big closures, detached DOM, per-mount resources, module state.
+- **Every acquire gets a release** (effect cleanup, `dispose()`), and **every collection gets a bound** (ring buffer, LRU, TTL).
+- **`AbortSignal`** is a handy single lifetime token.
+- Find leaks with heap snapshots (3-snapshot), the performance monitor, production sampling and soak tests; in unit tests assert listener/timer/size counts.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: a bounded history | The `createHistory` snippet |
+| Fix the leaky feed client | The suspects list: bound history and map, `dispose()`, remove listener, clear timer, unsubscribe |
+| Fix the leaky live-score component | The stepper: effect cleanups for socket, interval and `resize` listener |
+| LRU + TTL cache with stats | The LRU snippet, plus expiry and counters |
+
+%% exercise prod-guided-history | Guided: a bounded history | 1 | js | js | createHistory | 5 | guided
+Write `createHistory(max)` returning `{ push(item), toArray(), get size }`.
+
+- `push` adds an item; when there are more than `max`, the **oldest** items are dropped.
+- `toArray()` returns the items **oldest first** as a **new array** (changing it must not affect the history).
+- `size` is the current number of stored items.
+
+```js
+const h = createHistory(3);
+[1, 2, 3, 4, 5].forEach((n) => h.push(n));
+h.toArray(); // [3, 4, 5]
+```
+
+%% worked
+**A similar problem, solved: `createRecent(max)`** — remembers the last `max` *distinct* searches.
+
+```js
+function createRecent(max) {
+  const items = [];
+  return {
+    add(term) {
+      const i = items.indexOf(term);
+      if (i !== -1) items.splice(i, 1);          // ① remove an older copy so it moves to the newest position
+      items.push(term);
+      while (items.length > max) items.shift();  // ② enforce the BOUND: drop the oldest until we're within it
+    },
+    list: () => [...items],                      // ③ return a COPY so callers can't mutate our internal array
+  };
+}
+```
+
+Two habits this shows: **every collection needs a bound** (②), and **don't hand out your internal array** (③) — a caller mutating it would change your state behind your back.
+
+%% explain
+- **Never more than `max` items** are kept; the oldest are dropped first.
+- **`toArray()`** is oldest-first and a copy.
+- **`size`** reflects the current count.
+- A `max` of `0` stores nothing.
+
+%% nudge
+- Which array method removes the *first* item?
+- Is it better to check the bound on every push or occasionally? Why?
+
+%% starter
+```js
+export function createHistory(max) {
+  const items = [];
+  return {
+    push(item) {
+      // Step 1 — add the item to the end:   items.push(item)
+      // Step 2 — while there are more than `max`, drop the OLDEST:   items.shift()
+    },
+    toArray() {
+      // Step 3 — return a COPY:   [...items]
+      return [];
+    },
+    get size() {
+      return 0;
+    },
+  };
+}
+```
+
+%% tests
+```js
+describe('createHistory', () => {
+  it('keeps everything while under the cap', () => {
+    const h = createHistory(3);
+    h.push('a'); h.push('b');
+    expect(h.toArray()).toEqual(['a', 'b']);
+    expect(h.size).toBe(2);
+  });
+
+  it('drops the oldest beyond the cap', () => {
+    const h = createHistory(3);
+    [1, 2, 3, 4, 5].forEach((n) => h.push(n));
+    expect(h.toArray()).toEqual([3, 4, 5]);
+    expect(h.size).toBe(3);
+  });
+
+  it('returns a copy', () => {
+    const h = createHistory(2);
+    h.push('x');
+    h.toArray().push('hack');
+    expect(h.toArray()).toEqual(['x']);
+  });
+
+  it('never grows without bound', () => {
+    const h = createHistory(100);
+    for (let i = 0; i < 100000; i++) h.push(i);
+    expect(h.size).toBe(100);
+    expect(h.toArray()[0]).toBe(99900);
+  });
+
+  it('a cap of 0 stores nothing', () => {
+    const h = createHistory(0);
+    h.push(1);
+    expect(h.size).toBe(0);
+  });
+});
+```
+
+%% hints
+- `items.push(item); while (items.length > max) items.shift();`
+- `toArray() { return [...items]; }` and `get size() { return items.length; }`
+
+%% solution
+```js
+export function createHistory(max) {
+  const items = [];
+  return {
+    push(item) {
+      items.push(item);
+      while (items.length > max) items.shift();
+    },
+    toArray() {
+      return [...items];
+    },
+    get size() {
+      return items.length;
+    },
+  };
+}
+```
 
 %% exercise prod-leaky-client | Fix the leaky feed client | 3 | js | js | createFeedClient | 30
 `createFeedClient(socket, options)` wraps a feed socket. It works — and leaks. The starter has **four** leaks; fix them all without changing the public behaviour.
@@ -221,6 +504,52 @@ describe('createFeedClient — leaks', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a leaky ticker, and its four fixes.**
+
+```js
+// LEAKY version
+function createTicker(socket) {
+  const all = [];                                   // leak 1: grows forever
+  socket.addEventListener('message', (e) => all.push(e.data));   // leak 2: listener never removed
+  setInterval(() => socket.send('ping'), 1000);      // leak 3: timer never cleared
+  return { all };
+}
+
+// FIXED version
+function createTicker(socket, { max = 100 } = {}) {
+  const items = [];
+  const onMessage = (e) => { items.push(e.data); while (items.length > max) items.shift(); };   // fix 1: BOUND
+  socket.addEventListener('message', onMessage);       // a NAMED function, so it can be removed later
+  const timer = setInterval(() => socket.send('ping'), 1000);   // keep the id
+
+  let disposed = false;
+  return {
+    items: () => [...items],
+    dispose() {
+      if (disposed) return;                            // idempotent: calling twice is harmless
+      disposed = true;
+      socket.removeEventListener('message', onMessage);   // fix 2
+      clearInterval(timer);                            // fix 3
+      items.length = 0;                                // fix 4: drop what we hold
+    },
+  };
+}
+```
+
+Use that as a checklist for the exercise's four leaks — look for: something that only **grows**, something **registered** but never removed, a **timer** without `clearInterval`, and subscriber data that is never dropped. The other requirements are behaviour: `maxMarkets` eviction of the least recently **updated** market (delete-then-set on a `Map`), unsubscribe functions that work, **a throwing listener must not stop the others** (`try/catch` around each call), and ignoring messages after `dispose()`.
+
+%% explain
+- **Bounded history**: `getHistory()` returns the most recent `maxHistory` messages (default 100), oldest first.
+- **Bounded latest map**: at most `maxMarkets` (default 1000); the least recently *updated* market is evicted when full.
+- **`subscribe`** returns an unsubscribe; the same function twice registers once; a throwing listener doesn't block the others.
+- **Ping** every `pingIntervalMs` via `socket.send('ping')`.
+- **`dispose()`** (idempotent) removes the socket listener, stops the timer, drops subscribers, clears history/latest; later messages are ignored.
+
+%% nudge
+- Which of the four leaks is "something only grows", and which are "registered but never released"?
+- How can `dispose()` call the *same* function `removeEventListener` needs?
 
 %% hints
 - History: after `push`, `if (history.length > maxHistory) history.shift()`. Return `[...history]` from `getHistory`.
@@ -444,6 +773,48 @@ describe('LiveScore', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: a leaky clock component and its cleanups.**
+
+```tsx
+// LEAKY
+function Clock() {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    setInterval(() => setNow(Date.now()), 1000);     // never cleared
+    window.addEventListener('resize', onResize);     // never removed
+  });                                                // and there's no dependency array → re-acquired on EVERY render!
+  return <p>{now}</p>;
+}
+
+// FIXED
+function Clock() {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    const onResize = () => { /* … */ };
+    window.addEventListener('resize', onResize);
+    return () => {                                   // one cleanup releases EVERYTHING acquired above
+      clearInterval(id);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);                                            // acquire once per mount
+  return <p>{now}</p>;
+}
+```
+
+Three bugs in one: no cleanup, no dependency array (so it re-runs and re-acquires every render), and an **anonymous** function that can't be removed. In the exercise each resource has its own lifetime: the **socket** depends on `matchId` (effect with `[matchId]` — the cleanup of the old effect closes the old socket and removes its listener *before* the new effect opens the next one, and resets the score), the **interval** and the **resize listener** live for the whole mount (`[]`). Don't forget to check the score message shape and keep the en dash in `Score: 2–1`.
+
+%% explain
+- **Score** `Score: 0–0` initially (en dash), updated from socket JSON `{ home, away }`.
+- **Clock**: `role="timer"` `Clock: 12s`, ticking each second since mount. **Width**: `Width: 1024` via `resize`.
+- **`matchId` change**: the old socket is closed and its listener removed **before** the new one opens; score resets.
+- **Unmount** releases *everything*: socket closed and unsubscribed, interval cleared, resize listener removed. 100 mount/unmount cycles leave nothing behind.
+
+%% nudge
+- Which resources live as long as the component, and which live as long as one `matchId`?
+- What does the cleanup need a reference to in order to remove a listener?
+
 %% hints
 - Each `useEffect` that acquires something must `return` its release function.
 - Socket effect: keep the handler in a variable so the cleanup removes *that* function, then `socket.close()`. Reset the score at the start of the effect (`setScore({ home: 0, away: 0 })`).
@@ -656,6 +1027,49 @@ describe('createCache', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: an LRU with a hit counter** (no TTL yet).
+
+```js
+function createLru(max) {
+  const map = new Map();                         // insertion order = recency order (oldest first)
+  let hits = 0, misses = 0, evictions = 0;
+
+  return {
+    get(key) {
+      if (!map.has(key)) { misses++; return undefined; }
+      hits++;
+      const value = map.get(key);
+      map.delete(key); map.set(key, value);      // ① "touch": move to the most-recent end
+      return value;
+    },
+    set(key, value) {
+      map.delete(key);                           // ② overwrite = also "touch"
+      map.set(key, value);
+      if (map.size > max) {                      // ③ over the cap → evict the LEAST recent (first key)
+        map.delete(map.keys().next().value);
+        evictions++;
+      }
+    },
+    stats: () => ({ hits, misses, evictions }),
+  };
+}
+```
+
+What TTL adds: store `{ value, expiresAt }` per entry (`expiresAt = now() + ttl`, or `Infinity`). On `get`/`has`, if `now() >= expiresAt` treat it as a **miss**, **delete it** and count an **expiration** (call `onEvict(key, value, 'expired')`). `has` must **not** change recency. `prune()` walks the map and removes expired entries, returning how many. Count `evictions` only for **size**-based removals, and call `onEvict` for `'size'` and `'expired'` but not for `delete`/`clear`. Make `now` injectable so tests can move the clock.
+
+%% explain
+- **`set(key, value, { ttlMs })`**: per-call TTL overrides the default (`Infinity` = never); when full, evicts the **least recently used** (reason `'size'`).
+- **`get`**: hit marks most-recent; an **expired** entry is a miss and is removed (reason `'expired'`).
+- **`has`** reports a live entry without changing recency (and removes it if expired).
+- **`delete`, `clear`, `size`, `prune()`** (returns how many expired were removed).
+- **`stats()`** → `{ hits, misses, evictions, expirations }`; `evictions` counts size-based removals only.
+- **`onEvict(key, value, reason)`** for `'size'` and `'expired'` only. Expired means `now() >= expiresAt`.
+
+%% nudge
+- How can a `Map` give you "least recently used" for free?
+- Which operations should count as "use" (change recency), and which shouldn't?
 
 %% hints
 - A `Map<key, { value, expiresAt }>` whose iteration order *is* the recency order: delete + re-set on touch, and the first key is the LRU one.

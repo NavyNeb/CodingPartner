@@ -2,7 +2,7 @@
 id: prod-resilience
 track: prod
 title: Case study: the feed that lied
-summary: Sockets die silently, reconnects stampede the server, and messages arrive out of order. Build a reconnecting client, gap detection, and an honest staleness indicator.
+summary: Sockets die silently, reconnects stampede the server, and messages arrive out of order. Build a reconnecting client, gap detection, and an honest "how fresh is this data?" indicator.
 ---
 
 > **INCIDENT — 21:40, Champions League night.** Two things go wrong within ten minutes.
@@ -11,49 +11,276 @@ summary: Sockets die silently, reconnects stampede the server, and messages arri
 >
 > **(2)** Meanwhile, users on trains report prices that "don't move" — the app looks fine, but the odds are 40 seconds old and bets are being rejected. The socket is **half-open**: the OS never told the browser the link died, so there was no `close` event to react to.
 
-## Failure modes you must design for
+## The idea in one sentence
 
-1. **Clean disconnects** — server restarts, deploys, idle timeouts. You get a `close` event.
-2. **Silent failure (half-open TCP)** — Wi-Fi/cell handover, sleeping laptops, NAT timeouts. **No event at all.** The only defence is *your own liveness check*: expect a message or heartbeat within N seconds, otherwise tear it down and reconnect.
+A network connection **will** fail in ways you can't see, so a real-time client must **notice failure itself, retry politely, repair what it missed, and be honest with the user** about how fresh its data is.
+
+> **Analogy** You're on a phone call in a tunnel. If you both redial **the instant** the line drops, you keep blocking each other (thundering herd). If the line goes quiet you can't tell "they're thinking" from "we're disconnected" — so you agree that **if nobody speaks for 10 seconds, you hang up and call back** (heartbeat). When you reconnect, you say "**I last heard number 41 — what did I miss?**" (sequence numbers). And you tell your boss "my info might be out of date" instead of pretending it's current (honest UI).
+
+## Failure modes to design for
+
+1. **Clean disconnects** — server restart, deploy, idle timeout. You get a `close` event.
+2. **Silent failure (half-open TCP)** — Wi-Fi/cell handover, sleeping laptop, NAT timeout. **No event at all.** Your only defence is your **own liveness check**: expect a message or heartbeat within N seconds, otherwise tear the socket down and reconnect.
 3. **Thundering herd** — synchronised retries. Fixed delays make it worse.
 4. **Lost state on reconnect** — a new socket has no subscriptions; the server has forgotten you.
-5. **Gaps and reordering** — messages lost across the reconnect window, or delivered out of order by a relay.
-6. **Lying UI** — showing stale data as if it were live.
+5. **Gaps and reordering** — messages lost in the reconnect window, or delivered out of order by a relay.
+6. **A lying UI** — showing stale data as if it were live.
+
+![A silent link failure: no close event, so a heartbeat timer must notice](fig:half-open "No message for too long? Assume the link is dead: close it yourself and reconnect.")
 
 ## Backoff with jitter
 
-Retry delay grows exponentially so a struggling server gets breathing room, and is **randomised** so clients spread out. "Full jitter":
+Wait longer after each failed attempt (**exponential backoff**) so a struggling server gets breathing room, and **randomise** the wait (**jitter**) so clients spread out instead of retrying together. "Full jitter":
 
 ```
 delay = random() × min(maxDelay, baseDelay × 2^attempt)
 ```
 
-Reset `attempt` to 0 once a connection has actually been established. Give up (or slow to a long fixed interval) after a maximum, and surface that to the user. Make `random` injectable so tests are deterministic.
+![Without jitter everyone retries together; with full jitter retries spread out inside a growing window](fig:backoff-jitter "Reset the attempt counter once a connection is actually established.")
+
+```js try
+const baseDelay = 500;
+const maxDelay = 30000;
+
+function delay(attempt, random = Math.random) {
+  return random() * Math.min(maxDelay, baseDelay * 2 ** attempt);
+}
+
+// The UPPER bound of the window doubles each attempt, until it hits the cap:
+for (let attempt = 0; attempt <= 8; attempt++) {
+  const upper = Math.min(maxDelay, baseDelay * 2 ** attempt);
+  console.log('attempt', attempt, '→ wait somewhere between 0 and', upper, 'ms');
+}
+
+console.log('example picks:', [0, 1, 2, 3].map((a) => Math.round(delay(a))));
+```
+
+Give up (or slow to a long fixed interval) after a maximum number of attempts, and **tell the user**. Make `random` **injectable** so tests are deterministic.
 
 ## Reconnecting properly
 
-On every (re)connect: **resubscribe** to all active topics, **flush** the outgoing queue (with a cap — an unbounded queue is a memory leak while offline), and ignore events from **stale sockets** (an old socket's late `close` must not kill the new one). Distinguish **manual close** from failure so `close()` doesn't trigger a reconnect.
+On every (re)connect:
+
+- **Resubscribe** to every active topic (the server forgot them).
+- **Flush** the outgoing queue — with a **cap**; an unbounded queue is a memory leak while offline.
+- **Ignore events from stale sockets**: an old socket's late `close` must not kill the new one.
+- Distinguish a **manual `close()`** from a failure, so closing doesn't trigger a reconnect.
 
 ## Snapshots + deltas + sequence numbers
 
-The standard recipe for live data: fetch a **snapshot** (state at sequence *N*), then apply **deltas** with `seq = N+1, N+2, …`.
+The standard recipe for live data: fetch a **snapshot** (the state at sequence *N*), then apply **deltas** numbered *N+1, N+2, …*. For each message with `seq`:
 
-- `seq <= last` → duplicate or old: **drop**.
-- `seq === last + 1` → apply.
-- `seq > last + 1` → **gap**: buffer it, ask for a fresh snapshot (or the missing range), then apply buffered messages that follow the snapshot.
+- `seq <= last` → a duplicate or old message: **drop** it.
+- `seq === last + 1` → **apply** it (then apply any buffered messages that now follow).
+- `seq > last + 1` → a **gap**: buffer it, ask for a fresh snapshot (or the missing range), then continue.
 
-This gives you at-least-once delivery *and* correctness, and it's how order books, collaborative editors, and chat sync work.
+![Messages 11 and 12 apply; 14 and 15 are buffered until 13 arrives](fig:seq-gap "This gives at-least-once delivery and correct order — it's how order books, collaborative editors and chat sync work.")
+
+```stepper Sequence numbers in action
+code:
+  function push(msg) {
+    if (msg.seq <= lastSeq) return;                    // duplicate or old
+    if (msg.seq === lastSeq + 1) { apply(msg); drain(); return; }
+    buffer.set(msg.seq, msg);                          // a gap: keep it for later
+  }
+---
+line: 2-3
+say: We've applied everything up to `seq 10`. Message **11** arrives: it's exactly `lastSeq + 1`, so we apply it.
+lastSeq: 11
+Buffer (waiting):
+Applied: 11
+---
+line: 4
+say: Message **14** arrives. We expected **12**. `14 > lastSeq + 1`, so there is a **gap** (12 and 13 are missing). Buffer it and report the gap — once.
+lastSeq: 11
+Buffer (waiting): 14
+Applied: 11
+---
+line: 3
+say: Message **12** arrives. It's the next one, so apply it. `drain()` looks in the buffer for 13 — not there yet.
+lastSeq: 12
+Buffer (waiting): 14
+Applied: 11 | 12
+---
+line: 3
+say: Message **13** arrives and is applied. Now `drain()` finds **14** waiting in the buffer and applies it too.
+lastSeq: 14
+Buffer (waiting):
+Applied: 11 | 12 | 13 | 14
+---
+line: 2
+say: A late duplicate of **12** shows up. `12 <= lastSeq`, so it is dropped.
+lastSeq: 14
+Applied: 11 | 12 | 13 | 14
+```
 
 ## Tell the truth in the UI
 
-Show connection state (`live`, `delayed`, `offline`) and *disable or annotate* actions that depend on fresh data ("Prices delayed — bets paused"). Compute it from **time since the last message**, using timers scheduled for the exact next threshold — not a 1-second polling loop that keeps waking a background tab.
+Show the connection state (`live`, `delayed`, `offline`) and **disable or annotate** anything that depends on fresh data ("Prices delayed — bets paused"). Compute it from the **time since the last message**, using timers scheduled for the *exact next threshold* — not a 1-second polling loop that keeps waking a background tab.
+
+```js try
+function statusOf(ageMs, staleAfterMs = 5000, offlineAfterMs = 15000) {
+  if (ageMs < staleAfterMs) return 'live';
+  if (ageMs < offlineAfterMs) return 'delayed';
+  return 'offline';
+}
+
+console.log([0, 4999, 5000, 14999, 15000].map((age) => age + 'ms → ' + statusOf(age)));
+
+// "Exact next threshold": how long until the status CHANGES from a given age?
+const nextChangeIn = (age, stale = 5000, offline = 15000) => (age < stale ? stale - age : age < offline ? offline - age : null);
+console.log('next change in', nextChangeIn(1200), 'ms (then', nextChangeIn(5000), 'ms more, then nothing:', nextChangeIn(15000) + ')');
+```
 
 ## Other things to mention in an interview
 
-- `navigator.onLine` only tells you about the *network interface*, not the internet — don't trust it alone. Use it as a hint to retry sooner.
+- `navigator.onLine` only reports the *network interface*, not the internet — use it as a hint to retry sooner, never as proof.
 - Pause reconnect attempts while the tab is hidden; resume on `visibilitychange`.
-- Have a **fallback transport** (SSE or long-polling) for networks that block WebSockets.
-- Server-side: rate-limit reconnects, use **connection draining** during deploys, spread restarts.
+- Offer a **fallback transport** (SSE or long-polling) for networks that block WebSockets.
+- Server side: rate-limit reconnects, **drain connections** gradually during deploys, stagger restarts.
+
+## Quick check
+
+```check
+Q: Why can a WebSocket fail without ever firing a `close` event?
+A) Browsers never fire close
+B) The OS may not have noticed the link died (half-open connection) *
+C) The server always closes cleanly
+D) Only when using HTTP/2
+Why: Silent failures (Wi-Fi/cell handover, NAT timeout) leave the socket looking open. Only your own timeout can detect it.
+---
+Q: What does "full jitter" add to exponential backoff?
+A) A longer maximum delay
+B) Encryption
+C) A random delay inside the window, so clients don't retry in lock-step *
+D) More retries
+Why: Randomising spreads the retries over time instead of creating synchronised spikes.
+---
+Q: After reconnecting, what must a client do about subscriptions?
+A) Nothing; the server remembers
+B) Resubscribe to every active topic *
+C) Reload the page
+D) Wait for the server to ask
+Why: A new socket is a new session. The server has forgotten your topics.
+---
+Q: A feed delivers `seq 11`, then `seq 14`. What should the client do with 14?
+A) Apply it immediately
+B) Drop it
+C) Crash
+D) Buffer it, report a gap, and resync *
+Why: 12 and 13 are missing; applying 14 would leave the state wrong. Buffer it until the gap is filled or a snapshot covers it.
+---
+Q: Why schedule a timer for the exact next status threshold instead of polling every second?
+A) It keeps an idle background tab from waking constantly, and is precise *
+B) Polling is illegal
+C) Timers are faster than polling
+D) It removes the need for state
+Why: One timer for the next change wakes the app only when something happens.
+```
+
+## Recap
+
+- Assume **silent failure**: heartbeat/liveness timeout, then tear down and reconnect.
+- **Exponential backoff + full jitter**; reset the counter after a successful open; cap attempts; tell the user.
+- On reconnect: **resubscribe**, **flush a bounded queue**, ignore stale sockets, respect manual `close()`.
+- **Snapshot + sequenced deltas**: drop old, apply next, buffer and report gaps.
+- **Show freshness honestly** (`live / delayed / offline`) using timers for exact thresholds.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: backoff delay | The `delay` snippet |
+| Reconnecting socket | Everything above: backoff, resubscribe, queue cap, heartbeat, stale-socket guard |
+| Gap detection with sequence numbers | The stepper: drop / apply / buffer, and draining |
+| Honest staleness indicator | The status snippet and "exact next threshold" timers |
+
+%% exercise prod-guided-backoff | Guided: backoff with jitter | 1 | js | js | backoffDelay | 5 | guided
+Write `backoffDelay(attempt, { baseMs = 500, maxMs = 30000, random = Math.random } = {})`. It returns how long to wait before reconnect attempt number `attempt` (0, 1, 2, …).
+
+The formula is **full jitter**:
+
+```
+random() × min(maxMs, baseMs × 2^attempt)
+```
+
+```js
+backoffDelay(0, { random: () => 1 });  // 500       (window: 0 … 500)
+backoffDelay(3, { random: () => 1 });  // 4000      (window: 0 … 4000)
+backoffDelay(10, { random: () => 1 }); // 30000     (capped by maxMs)
+```
+
+%% worked
+**A similar problem, solved: `retryAfter(attempt, stepMs, capMs)`** — linear growth with a cap (no jitter).
+
+```js
+function retryAfter(attempt, stepMs, capMs) {
+  return Math.min(capMs, stepMs * (attempt + 1));   // ① grow, then ② cap with Math.min
+}
+```
+
+Backoff uses the same two ideas — **grow** (here exponentially: `baseMs * 2 ** attempt`) and **cap** (`Math.min(maxMs, …)`) — and then multiplies by `random()` so each client picks a different point inside the window. The `random` parameter is injectable so tests can make it predictable (`() => 1` = the top of the window, `() => 0.5` = the middle).
+
+%% explain
+- **Window** for attempt *n* is `min(maxMs, baseMs × 2ⁿ)`.
+- **The result** is `random()` × window (so `random: () => 0` gives `0`).
+- **Defaults**: `baseMs = 500`, `maxMs = 30000`, `random = Math.random`.
+- **Cap**: large attempts never exceed `maxMs`.
+
+%% nudge
+- Which operator is `2 ** attempt`, and which function caps the window?
+- Where does `random()` come in — before or after the cap?
+
+%% starter
+```js
+export function backoffDelay(attempt, { baseMs = 500, maxMs = 30000, random = Math.random } = {}) {
+  // Step 1 — the window grows exponentially:  baseMs * 2 ** attempt
+  // Step 2 — cap it:                          Math.min(maxMs, ...)
+  // Step 3 — pick a random point inside it:   random() * window
+  return 0;
+}
+```
+
+%% tests
+```js
+describe('backoffDelay', () => {
+  const top = () => 1;
+
+  it('doubles the window each attempt', () => {
+    expect(backoffDelay(0, { random: top })).toBe(500);
+    expect(backoffDelay(1, { random: top })).toBe(1000);
+    expect(backoffDelay(3, { random: top })).toBe(4000);
+  });
+
+  it('caps the window at maxMs', () => {
+    expect(backoffDelay(10, { random: top })).toBe(30000);
+    expect(backoffDelay(6, { random: top, baseMs: 100, maxMs: 5000 })).toBe(5000);
+  });
+
+  it('applies jitter', () => {
+    expect(backoffDelay(2, { random: () => 0.5 })).toBe(1000);
+    expect(backoffDelay(2, { random: () => 0 })).toBe(0);
+  });
+
+  it('uses Math.random by default', () => {
+    const d = backoffDelay(1);
+    expect(d).toBeGreaterThanOrEqual(0);
+    expect(d).toBeLessThanOrEqual(1000);
+  });
+});
+```
+
+%% hints
+- `const window = Math.min(maxMs, baseMs * 2 ** attempt);`
+- `return random() * window;`
+
+%% solution
+```js
+export function backoffDelay(attempt, { baseMs = 500, maxMs = 30000, random = Math.random } = {}) {
+  const window = Math.min(maxMs, baseMs * 2 ** attempt);
+  return random() * window;
+}
+```
 
 %% exercise prod-reconnecting-socket | Reconnecting socket | 4 | js | js | createReconnectingSocket | 45
 Build `createReconnectingSocket(options)` around a WebSocket-like object.
@@ -334,6 +561,50 @@ describe('createReconnectingSocket — heartbeat & close', () => {
 });
 ```
 
+%% worked
+**How to approach a big one: write down the states and the events, then handle each pair.**
+
+| Event \ State | connecting | open | reconnecting | closed / failed |
+| --- | --- | --- | --- | --- |
+| socket `open` | → **open** (reset attempt, resubscribe, flush queue) | — | → **open** (same) | ignore |
+| socket `close` (unexpected) | → **reconnecting** | → **reconnecting** | schedule next | ignore |
+| heartbeat timeout | — | drop the socket → **reconnecting** | — | — |
+| `close()` called | → **closed** | → **closed** | → **closed** | no-op |
+
+A sketch of the reconnect scheduling, which is the trickiest part:
+
+```js
+function scheduleReconnect() {
+  if (attempt >= maxAttempts) return setStatus('failed');            // ① give up
+  setStatus('reconnecting');
+  const wait = random() * Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);   // ② full jitter
+  attempt += 1;
+  timer = setTimeout(connect, wait);                                 // ③ keep the timer id so close() can cancel it
+}
+
+function connect() {
+  const socket = createSocket();
+  current = socket;                                                  // ④ remember which socket is CURRENT
+  socket.addEventListener('close', () => { if (socket !== current) return; scheduleReconnect(); });   // ⑤ stale sockets are ignored
+  // …open / message handlers check `socket !== current` the same way…
+}
+```
+
+Everything else is bookkeeping: a `Set` of active topics (resubscribed on `open`), a bounded queue (drop the **oldest** beyond `maxQueue`), a heartbeat timer that restarts on every message, and a `closed` flag checked everywhere so `close()` can never be followed by a reconnect.
+
+%% explain
+- **Statuses**: `connecting`, `open`, `reconnecting`, `closed`, `failed`; `onStatus` fires only on **changes**.
+- **On open**: reset attempts, **resubscribe** every topic (`{action:'subscribe', topic}`), then flush queued sends in order.
+- **`send`** queues while not open (keeping at most `maxQueue`, dropping the oldest); ignored after `close()`.
+- **`subscribe(topic)`** returns an unsubscribe that sends `{action:'unsubscribe', topic}` if open.
+- **Unexpected close**: schedule with full-jitter backoff; at `maxAttempts` → `failed`.
+- **Heartbeat**: no message in `heartbeatTimeoutMs` → drop the socket **without waiting for `close`**, call `close()` on it, reconnect.
+- **Stale-socket events are ignored**; **`close()`** cancels every timer and never reconnects.
+
+%% nudge
+- How do you make sure a late event from an *old* socket can't affect the new one?
+- Which timers exist (reconnect, heartbeat) and does `close()` clear them all?
+
 %% hints
 - State: `socket`, `status`, `attempt`, `reconnectTimer`, `heartbeatTimer`, `manuallyClosed`, `topics` (a `Set`) and `queue`.
 - One function `connect()` creates the socket and attaches listeners that all start with `if (socket !== s) return;` — that's the stale-socket guard.
@@ -596,6 +867,39 @@ describe('createSequencedFeed', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: a "next ticket" counter** — serve numbered tickets strictly in order, holding early arrivals.
+
+```js
+function createTicketDesk(serve) {
+  let next = 1;                        // ① the number we expect next
+  const waiting = new Map();           // ② early arrivals, keyed by number
+
+  return function arrive(ticket) {
+    if (ticket < next) return;                       // ③ already served (duplicate/old): drop
+    waiting.set(ticket, true);                       // ④ remember it…
+    while (waiting.has(next)) {                      // ⑤ …and serve everything that is now consecutive
+      waiting.delete(next);
+      serve(next);
+      next += 1;
+    }
+  };
+}
+```
+
+The `while (waiting.has(next))` **drain loop** is exactly what the feed needs after each applied message. The feed adds: the **first message ever** sets the baseline; `onGap({ from: lastSeq + 1, to: seq - 1 })` is called **once** when a gap opens (remember that one is already open, and clear that memory when the gap closes); and `resync(seq)` jumps `lastSeq` forward, discards buffered messages at or below it, then drains — reporting a *new* gap if one still remains.
+
+%% explain
+- **First message** establishes the baseline: delivered, sets `lastSeq`.
+- **`seq <= lastSeq`** → dropped. **`seq === lastSeq + 1`** → delivered, then any consecutive buffered messages.
+- **`seq > lastSeq + 1`** → buffered; `onGap({ from, to })` **once** when the gap is first detected.
+- **`resync(seq)`**: sets `lastSeq`, discards buffered `seq <=` it, delivers consecutive ones, and calls `onGap` again if a gap remains.
+- **`pending`** = number of buffered messages.
+
+%% nudge
+- After applying a message, what must you check the buffer for?
+- How do you avoid calling `onGap` again for the *same* open gap?
+
 %% hints
 - State: `last` (number or `null` before the first message), `buffer` (a `Map<seq, msg>`), and `gapOpen` (boolean).
 - A `drain()` helper: `while (buffer.has(last + 1)) { deliver(buffer.get(last + 1)); buffer.delete(last + 1); last++; }`.
@@ -765,6 +1069,45 @@ describe('useFeedStatus', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `useCountdownLabel(deadline)`** — a label that changes itself at exact moments, with no polling.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export function useDeadlineLabel(deadline: number): 'soon' | 'now' | 'passed' {
+  const compute = () => {
+    const left = deadline - Date.now();
+    return left > 10_000 ? 'soon' : left > 0 ? 'now' : 'passed';
+  };
+  const [label, setLabel] = useState(compute);
+
+  useEffect(() => {
+    setLabel(compute());                                     // ① recompute when the input changes
+    const left = deadline - Date.now();
+    // ② how long until the label CHANGES next? (null = never)
+    const wait = left > 10_000 ? left - 10_000 : left > 0 ? left : null;
+    if (wait === null) return;                               // ③ nothing left to wait for → NO timer
+    const id = setTimeout(() => setLabel(compute()), wait);  // ④ one timer, scheduled for the exact moment
+    return () => clearTimeout(id);                           // ⑤ cleanup (a new deadline re-runs the effect)
+  }, [deadline]);
+
+  return label;
+}
+```
+
+For `useFeedStatus`, the thresholds are `staleAfterMs` and `offlineAfterMs`, measured from `lastMessageAt`: age `< stale` → `live` (next change in `stale - age`), age `< offline` → `delayed` (next change in `offline - age`), otherwise `offline` (no timer). `null` → `connecting` (no timer). Each timer callback re-computes the status; the effect depends on `lastMessageAt`, so a new message cancels the old timer and starts over.
+
+%% explain
+- **`null`** → `'connecting'`; age `< staleAfterMs` → `'live'`; `< offlineAfterMs` → `'delayed'`; else `'offline'`.
+- **The status changes by itself** as time passes, using **one timer scheduled for the exact next threshold** (no polling).
+- **No timer** when nothing is left to wait for (`offline` or `null`).
+- **A new `lastMessageAt`** resets everything; timers are cleaned up on unmount.
+
+%% nudge
+- Given the current age, how many milliseconds until the status next changes?
+- What should happen to the old timer when `lastMessageAt` changes?
 
 %% hints
 - A pure helper `statusFor(age)` plus a `msUntilNextChange(age)` (`staleAfterMs - age`, or `offlineAfterMs - age`, or `null` when already offline).

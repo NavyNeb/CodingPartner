@@ -2,7 +2,7 @@
 id: prod-bet-placement
 track: prod
 title: Case study: the bet that moved
-summary: The price changes between the tap and the submit, the network flakes, and a nervous user double-clicks. Model the slip as a state machine, make submits idempotent, and build the UI that tells the truth.
+summary: The price changes between the tap and the submit, the network flakes, and a nervous user double-clicks. Model the slip as a state machine, make submits idempotent, and build a UI that tells the truth.
 ---
 
 > **INCIDENT — a Tuesday, three complaints in one hour.**
@@ -13,34 +13,312 @@ summary: The price changes between the tap and the submit, the network flakes, a
 >
 > **Complaint C:** "The button did nothing." The UI waited for the response before showing any feedback, so users tapped again — and again.
 
-When money is involved, every one of those is a correctness bug, not a UX nit.
+When money is involved, each of those is a **correctness bug**, not a UX nit.
 
-## Principles
+## The idea in one sentence
 
-**1 · Send what the user agreed to.** The request must carry the **price the user saw** (and their stake). The server validates: if the current price is *worse* than the agreed one it rejects with a structured error (`409 PRICE_CHANGED { newPrice }`) instead of silently filling in a new price. Some products auto-accept *better* prices; that's a product rule the server enforces, not something the client guesses.
+For anything involving money: **send exactly what the user agreed to, make every action safe to repeat, and never pretend to know something you don't.**
 
-**2 · Make price changes an explicit state.** The slip is a small **state machine**: `idle → placing → placed | failed`, plus per-selection flags (`priceChanged`, `suspended`). Placing is only allowed from states where it's valid; the "Place bet" button is derived from that state, never from ad-hoc booleans. Put the rules in a **pure reducer** so they're unit-testable and reusable.
+> **Analogy** Ordering at a counter. You say "one coffee **at this price**" (agreed price). The cashier gives you a **numbered ticket** for your order (idempotency key) — if you come back and show the same ticket, they hand over the *same* coffee rather than making a second. And while the barista works, they say "**making it now**" (progress) so you don't keep re-ordering.
 
-**3 · Money is integers.** Store cents (`stakeCents`), never floats: `0.1 + 0.2 !== 0.3`. Round once, at a defined boundary (`Math.round(stake × odds)`), and display with `toFixed(2)`.
+## Principle 1 — Send what the user agreed to
 
-**4 · Idempotency keys.** Generate a unique key **per logical action** (this bet, not this HTTP request) and send it as a header. The server stores the outcome by key; a repeat with the same key returns the **original result** instead of doing it again. So it's safe to retry on timeouts and network errors — *as long as every retry reuses the same key*. A **new** user action gets a **new** key.
+The request must carry the **price the user saw** and their stake. The server **validates**: if the current price is *worse* than the agreed one, it rejects with a structured error (`409 PRICE_CHANGED { newPrice }`) instead of silently using a new price. (Whether *better* prices are auto-accepted is a product rule the **server** enforces — the client doesn't guess.)
 
-**5 · Double-click protection is layered.** Disable the button and show progress **immediately** (optimistic UI: `Placing…` before the server answers) — *and* dedupe in code (in-flight guard, ref not state, because state updates are async) — *and* have the server enforce idempotency. Any one layer alone leaks.
+## Principle 2 — Make the slip a state machine
 
-**6 · Respect the unknown.** A timeout means *you don't know* whether the bet was placed. Never treat it as failure. Retry with the same key, or query the bet's status by key, before letting the user try again.
+The slip isn't "a few booleans" — it's a small **state machine** with explicit states and allowed moves:
 
-## Optimistic vs. pessimistic UI
+![idle to placing to placed or failed, with flags that block placing](fig:bet-state-machine "The Place bet button is DERIVED from the state (canPlace), never from ad-hoc booleans.")
 
-- **Optimistic** (assume success, roll back on failure): great for likes, drafts, reordering. For money, use it only for the *feedback* (spinner, disabled button) — not for showing "Bet placed!".
-- **Pessimistic** (wait for confirmation): correct for irreversible actions. Keep the wait short and honest.
+`idle → placing → placed | failed`, plus per-selection flags (`priceChanged`, `suspended`). Put the rules in a **pure reducer** so they're unit-testable (you met reducers in the React track):
+
+```js try
+function slipReducer(state, action) {
+  switch (action.type) {
+    case 'priceUpdate': {
+      const changed = action.price !== state.acceptedPrice;
+      return { ...state, price: action.price, priceChange: changed ? { from: state.acceptedPrice, to: action.price } : null };
+    }
+    case 'acceptChanges':
+      return { ...state, acceptedPrice: state.price, priceChange: null };
+    case 'placeStart':
+      return canPlace(state) ? { ...state, status: 'placing' } : state;   // ← illegal moves are ignored
+    default:
+      return state;
+  }
+}
+const canPlace = (s) => s.status === 'idle' && s.stake > 0 && !s.priceChange;
+
+let s = { status: 'idle', stake: 1000, price: 2.1, acceptedPrice: 2.1, priceChange: null };
+s = slipReducer(s, { type: 'priceUpdate', price: 1.95 });
+console.log('can place after price move?', canPlace(s), s.priceChange);
+s = slipReducer(s, { type: 'placeStart' });
+console.log('status after trying to place:', s.status);        // still idle!
+s = slipReducer(s, { type: 'acceptChanges' });
+s = slipReducer(s, { type: 'placeStart' });
+console.log('status after accepting:', s.status);
+```
+
+## Principle 3 — Money is integers
+
+`0.1 + 0.2 !== 0.3` in floating point. Store **cents** (`stakeCents`), round **once** at a defined place, and format at the edge.
+
+```js try
+console.log(0.1 + 0.2);                            // 0.30000000000000004 — never do money maths like this
+console.log(Math.round(0.1 * 100) + Math.round(0.2 * 100));   // 30  (cents)
+
+const stakeCents = Math.round(10.5 * 100);         // $10.50 → 1050
+const returnCents = Math.round(stakeCents * 2.35);  // ONE rounding step, at the boundary
+console.log('return: $' + (returnCents / 100).toFixed(2));
+```
+
+## Principle 4 — Idempotency keys
+
+Generate **one unique key per logical action** (*this bet*, not *this HTTP request*) and send it as a header. The server stores the outcome by key. A repeat with the same key returns the **original result** instead of acting again. So it's safe to retry after timeouts — **as long as every retry reuses the same key**. A *new* user action gets a *new* key.
+
+![Client times out, retries with the same key, and the server returns the original bet](fig:idempotency-flow "One bet, even after a retry.")
+
+```stepper A retry that reuses the key
+code:
+  async function submit(payload) {
+    const key = generateKey();                          // ONE key per logical submission
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try { return await send(payload, { idempotencyKey: key }); }
+      catch (err) { if (!retryable(err) || attempt === retries) throw err; await wait(200); }
+    }
+  }
+---
+line: 2
+say: The user taps Place bet. We create **one** key for this action: `K1`.
+Attempt: —
+Key sent: K1 (created)
+Server did:
+---
+line: 4
+say: Attempt 0 sends the bet with `K1`. The server **places bet #42**, but the response is lost and our request times out.
+Attempt: 0
+Key sent: K1
+Server did: placed bet #42 (response lost)
+---
+line: 5
+say: A timeout is **not** a failure — we don't know. The error is retryable, so wait a moment and try again.
+Attempt: 0 → waiting
+---
+line: 4
+say: Attempt 1 sends the same bet with the **same key** `K1`. The server recognises it and returns bet **#42** again — it does **not** place a second one.
+Attempt: 1
+Key sent: K1 (same!)
+Server did: seen K1 → returned bet #42
+---
+line: 4
+say: The promise resolves with the original result. One bet placed. If each attempt had generated a *new* key, the customer would have been charged twice.
+Attempt: done
+Server did: bet #42 (exactly once)
+```
+
+## Principle 5 — Layer the double-click protection
+
+![UI, code and server layers of duplicate-submit protection](fig:double-click-layers "Any one layer alone leaks.")
+
+1. **UI:** disable the button and show `Placing…` **immediately** (optimistic *feedback* — not optimistic "Bet placed!").
+2. **Code:** an **in-flight guard**. Use a **ref**, not state — a state update is asynchronous, so a fast second click can still see the old value.
+3. **Server:** idempotency keys, so even a retry or a second tab can't double-place.
+
+```js try
+let sends = 0;
+const send = () => new Promise((resolve) => { sends++; setTimeout(() => resolve({ betId: 42 }), 50); });
+
+const inFlight = new Map();                      // payload → promise
+function submit(payload) {
+  const id = JSON.stringify(payload);
+  if (inFlight.has(id)) return inFlight.get(id);          // a second click returns the SAME promise
+  const p = send(payload).finally(() => inFlight.delete(id));
+  inFlight.set(id, p);
+  return p;
+}
+
+Promise.all([submit({ stake: 1000 }), submit({ stake: 1000 }), submit({ stake: 1000 })])
+  .then(() => console.log('three clicks → send called', sends, 'time(s)'));
+```
+
+## Principle 6 — Respect the unknown
+
+A timeout means *you don't know* whether the bet was placed. Never treat it as a failure and let the user start over. Retry with the **same key**, or query the bet's status by key, before offering another attempt.
+
+## Optimistic vs pessimistic UI
+
+- **Optimistic** (assume success, roll back on failure): great for likes, drafts, reordering. For money, use it only for the *feedback* (spinner, disabled button) — not for claiming "Bet placed!".
+- **Pessimistic** (wait for confirmation): right for irreversible actions. Keep the wait short and honest.
 
 ## What to be able to say in an interview
 
-- How would you prevent double submission? *(disable + in-flight guard + idempotency key)*
-- What if the response is lost? *(idempotent retry / status lookup)*
-- What if the price changes mid-flow? *(send agreed price; structured rejection; explicit re-accept)*
-- Why not floats for money? *(binary FP error; integer minor units)*
-- Where does validation live? *(server is authoritative; the client mirrors rules for UX)*
+- *How do you prevent double submission?* → disable + in-flight guard + idempotency key.
+- *What if the response is lost?* → idempotent retry / status lookup.
+- *What if the price changes mid-flow?* → send the agreed price; structured rejection; explicit re-accept.
+- *Why not floats for money?* → binary floating-point error; use integer minor units.
+- *Where does validation live?* → the server is authoritative; the client mirrors rules for UX.
+
+## Quick check
+
+```check
+Q: Why should the bet request include the price the user saw?
+A) To make the request larger
+B) To cache the response
+C) So the server can reject it if the price got worse, instead of silently using a new one *
+D) Because HTTP requires it
+Why: The user agreed to a price. The server compares it with the current one and rejects a worse price with a structured error.
+---
+Q: Why is the in-flight guard a ref rather than state?
+A) Refs render faster
+B) A ref updates instantly, while a state update may not be visible to the very next click yet *
+C) State can't hold booleans
+D) React forbids state in handlers
+Why: State updates are batched and applied later; a fast second click could still read the old value. A ref changes immediately.
+---
+Q: A request times out. What should the client assume?
+A) It failed
+B) It succeeded
+C) It can't know, so retry with the same idempotency key or check the status *
+D) The user is offline
+Why: The server may have processed it. Unknown ≠ failed.
+---
+Q: What should the client do when it retries after a timeout?
+A) Generate a fresh idempotency key
+B) Reuse the same key so the server can recognise the repeat *
+C) Drop the key
+D) Change the payload
+Why: The key identifies the logical action. A new key would look like a brand-new bet.
+---
+Q: Why store stakes as integer cents?
+A) Floating-point numbers can't represent values like 0.1 exactly, so errors creep in *
+B) Integers are faster
+C) JSON doesn't support decimals
+D) Banks require it
+Why: `0.1 + 0.2 !== 0.3`. Integer minor units avoid accumulating error; round once at a defined boundary.
+```
+
+## Recap
+
+- **Send what the user agreed to**; let the **server** validate and reject worse prices.
+- Model the slip as a **state machine** with a **pure reducer**; derive buttons from state (`canPlace`).
+- **Money = integer cents**, rounded once.
+- **Idempotency keys**: one per logical action, reused across retries.
+- **Layered duplicate protection**: UI, in-flight guard (ref), server key.
+- A **timeout means unknown** — retry safely or look up the status.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: money in cents | Principle 3 |
+| Bet slip state machine | Principle 2: the reducer and `canPlace` snippet |
+| Idempotent, double-click-proof submit | Principles 4 and 5: the stepper and the in-flight `Map` snippet |
+| Bet slip UI that tells the truth | All of it: cents, agreed price, `Placing…`, price-changed alert, in-flight guard |
+
+%% exercise prod-guided-cents | Guided: money in cents | 1 | js | js | toCents, returnCents, formatCents | 6 | guided
+Three tiny helpers that keep money **out of floating point**.
+
+- `toCents(dollars)` — convert dollars (a number like `10.5`, or a string like `'10.50'`) to **integer cents**, rounded: `10.5 → 1050`. Bad input (`NaN`, negative) → `0`.
+- `returnCents(stakeCents, odds)` — the return on a bet, in cents, rounded **once**: `Math.round(stakeCents × odds)`.
+- `formatCents(cents)` — `2505 → '$25.05'`.
+
+%% worked
+**A similar problem, solved: tax in cents.**
+
+```js
+function addTaxCents(amountCents, ratePercent) {
+  const tax = Math.round((amountCents * ratePercent) / 100);   // ① multiply first, then ROUND ONCE at the end
+  return amountCents + tax;                                     // ② integer + integer = integer (no float drift)
+}
+
+addTaxCents(1999, 7.5); // 1999 + 150 = 2149
+
+function formatDollars(cents) {
+  return '$' + (cents / 100).toFixed(2);                        // ③ only convert to dollars at the very edge, for display
+}
+```
+
+Rules of thumb: keep money as **integer minor units** everywhere inside your code, **round once** at a clearly defined boundary, and convert to a display string only when you show it. `Math.round(10.5 * 100)` gives `1050`; a plain `10.1 * 100` gives `1009.9999999999999`, which is why you round.
+
+%% explain
+- **`toCents`** handles numbers and numeric strings, rounds to whole cents, and returns `0` for invalid or negative input.
+- **`returnCents`** rounds exactly once.
+- **`formatCents`** always shows two decimals with a `$`.
+
+%% nudge
+- Why does `10.1 * 100` need `Math.round`?
+- At which point should you convert back to dollars?
+
+%% starter
+```js
+export function toCents(dollars) {
+  // Step 1 — turn the input into a number:   const n = Number(dollars);
+  // Step 2 — invalid or negative → 0:         if (!Number.isFinite(n) || n < 0) return 0;
+  // Step 3 — Math.round(n * 100)
+  return 0;
+}
+
+export function returnCents(stakeCents, odds) {
+  // Math.round(stakeCents * odds)
+  return 0;
+}
+
+export function formatCents(cents) {
+  // '$' + (cents / 100).toFixed(2)
+  return '';
+}
+```
+
+%% tests
+```js
+describe('money helpers', () => {
+  it('converts dollars to cents', () => {
+    expect(toCents(10.5)).toBe(1050);
+    expect(toCents('10.50')).toBe(1050);
+    expect(toCents(0.1 + 0.2)).toBe(30);
+    expect(toCents(10.1)).toBe(1010);
+  });
+
+  it('rejects bad input', () => {
+    expect(toCents('abc')).toBe(0);
+    expect(toCents(-5)).toBe(0);
+    expect(toCents(NaN)).toBe(0);
+  });
+
+  it('computes the return, rounded once', () => {
+    expect(returnCents(1000, 2.5)).toBe(2500);
+    expect(returnCents(1050, 2.35)).toBe(2468);
+  });
+
+  it('formats cents as dollars', () => {
+    expect(formatCents(2505)).toBe('$25.05');
+    expect(formatCents(5)).toBe('$0.05');
+    expect(formatCents(0)).toBe('$0.00');
+  });
+});
+```
+
+%% hints
+- `Math.round(n * 100)` for `toCents`.
+- `'$' + (cents / 100).toFixed(2)` for `formatCents`.
+
+%% solution
+```js
+export function toCents(dollars) {
+  const n = Number(dollars);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n * 100);
+}
+
+export function returnCents(stakeCents, odds) {
+  return Math.round(stakeCents * odds);
+}
+
+export function formatCents(cents) {
+  return '$' + (cents / 100).toFixed(2);
+}
+```
 
 %% exercise prod-betslip-reducer | Bet slip state machine | 3 | js | js | createInitialState, betSlipReducer, canPlace, potentialReturn, totals | 35
 Model the bet slip as a **pure reducer**.
@@ -265,6 +543,42 @@ describe('placing', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a reducer for a single input with validation and a state machine.**
+
+```js
+function uploadReducer(state, action) {
+  switch (action.type) {
+    case 'pick':
+      return { ...state, file: action.file, error: null, status: 'idle' };
+    case 'start':
+      if (!state.file || state.status === 'uploading') return state;     // ① illegal move → return the SAME state
+      return { ...state, status: 'uploading' };
+    case 'done':
+      if (state.status !== 'uploading') return state;                    // ② only valid from the right state
+      return { ...state, status: 'done', file: null };
+    default:
+      return state;
+  }
+}
+const canStart = (s) => !!s.file && s.status === 'idle';                 // ③ the BUTTON is derived from the state
+```
+
+The pattern for every action: **(1)** check the action is legal *in the current state*, otherwise return the same state; **(2)** return a **new** object with only what changed; **(3)** put derived decisions (`canPlace`) in a separate pure function.
+
+For the slip: `priceUpdate` compares the new price to `acceptedPrice` (set `priceChange` when different, clear it when it moves **back**); `acceptChanges` maps over selections; `setStake` cleans the number (floor fractions, clamp negatives and non-finite values to 0); `placeStart` is guarded by `canPlace(state)`; `placeSuccess` only applies while `placing`. `totals` and `potentialReturn` use integer cents and round once.
+
+%% explain
+- **Actions**: `add` (ignore duplicates; returns to `idle` after `placed`), `remove`, `setStake` (integer cents ≥ 0), `priceUpdate`, `suspend`, `acceptChanges`, `placeStart` (only if `canPlace`), `placeSuccess`/failure transitions.
+- **`priceUpdate`** sets `priceChange` when the price differs from `acceptedPrice` and clears it when it moves back; non-positive prices are ignored.
+- **`canPlace`** is false while stakes are zero, a price change is pending, a selection is suspended, or already placing.
+- **Money** stays in integer cents; `potentialReturn` rounds once.
+- **Pure**: no mutation; illegal actions return the same state.
+
+%% nudge
+- For each action, in which states is it legal? What do you return when it isn't?
+- How do you clean up `setStake` input (fractions, negatives, `NaN`)?
 
 %% hints
 - A small helper `updateSelection(state, id, fn)` that returns `state` unchanged if the id is missing **or** `fn` returns the same object keeps the "same reference" rule easy to satisfy.
@@ -492,6 +806,35 @@ describe('createSubmitter', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `once(fn)` per argument** — the in-flight dedupe idea in its smallest form.
+
+```js
+function dedupeInFlight(fn) {
+  const running = new Map();                            // argument-string → promise
+  return function (arg) {
+    const id = JSON.stringify(arg);
+    if (running.has(id)) return running.get(id);        // ① a second call returns the SAME promise — fn is NOT called again
+    const p = Promise.resolve(fn(arg)).finally(() => running.delete(id));   // ② forget it when it settles (success OR failure)
+    running.set(id, p);
+    return p;
+  };
+}
+```
+
+`createSubmitter` layers **retries** on top: inside the tracked promise, loop `attempt = 0 … retries`: `await send(payload, { idempotencyKey: key })` where `key` was generated **once, before the loop**; on an error, if `isRetryable(err)` and attempts remain, `await` a `retryDelayMs` delay and go again with the **same key**; otherwise rethrow. Because the forgetting happens in `finally`, the next submit of the same payload is a **new submission with a new key**.
+
+%% explain
+- **One key per logical submission** (`generateKey()` called once).
+- **Equal payload while in flight** (`JSON.stringify`) → the **same promise**, `send` not called again.
+- **Retryable errors** wait `retryDelayMs` and retry with the **same key**, up to `retries` extra attempts; non-retryable errors reject immediately; exhausted retries reject with the last error.
+- **Settled submissions are forgotten**: the next identical payload is new, with a new key.
+- **Different payloads** are independent.
+
+%% nudge
+- Where must `generateKey()` be called so all retries share it?
+- When exactly is the in-flight entry removed?
 
 %% hints
 - Keep a `Map<fingerprint, promise>` of in-flight submissions; the fingerprint is `JSON.stringify(payload)`.
@@ -721,6 +1064,49 @@ describe('BetSlip', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a "Send" button with an in-flight guard and honest states.**
+
+```tsx
+import { useRef, useState } from 'react';
+
+export function SendButton({ send }: { send: () => Promise<{ id: string }> }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const busy = useRef(false);                                  // ① in-flight guard: a REF, updated instantly
+  const mounted = useRef(true);                                //   (and remember to clear it on unmount)
+
+  async function click() {
+    if (busy.current) return;                                  // ② a fast second click does nothing
+    busy.current = true;
+    setState('sending');                                       // ③ immediate feedback: "Sending…" + disabled
+    try {
+      await send();
+      if (mounted.current) setState('sent');
+    } catch {
+      if (mounted.current) setState('failed');                 // ④ allow a retry after a generic error
+    } finally {
+      busy.current = false;
+    }
+  }
+
+  return <button disabled={state === 'sending' || state === 'sent'} onClick={click}>{state === 'sending' ? 'Sending…' : 'Send'}</button>;
+}
+```
+
+For the slip add: **accepted price** in state (initially `selection.price`); a **price-changed** condition when `selection.price !== acceptedPrice` *or* `placeBet` rejects with `{ code: 'PRICE_CHANGED', newPrice }` — show the alert `Price changed from 2.00 to 1.80` plus **Accept new price** (which sets `acceptedPrice` to the new price); return in cents via `Math.round(stakeCents * acceptedPrice)` and format with `/ 100` and `toFixed(2)`; parse the stake input with `Math.round(Number(text) * 100)`. Send the **accepted** price and **cents** to `placeBet`.
+
+%% explain
+- **Display**: name, the **accepted** price (`2.00`), an input labelled `Stake` (dollars), and `Return: $25.00` (integer cents, `Math.round`). **Place bet** is disabled unless the stake is > 0.
+- **Clicking** calls `placeBet({ selectionId, price: acceptedPrice, stakeCents })`; the button becomes `Placing…` and disabled **immediately**; double clicks don't call it twice.
+- **Success**: `role="status"` `Bet placed (#<betId>)`; input and button disabled.
+- **Price moved** (live price differs, or `PRICE_CHANGED`): `role="alert"` `Price changed from 2.00 to 1.80`, **Accept new price**; while showing, price/return stay old and **Place bet is disabled**.
+- **Other errors**: `role="alert"` `Could not place bet: <message>`; button re-enabled.
+- **No state updates after unmount.**
+
+%% nudge
+- Which value do you send to `placeBet` — the live price or the accepted one?
+- What must be reset/kept when the user accepts the new price?
 
 %% hints
 - Hold `acceptedPrice` in state (initially `selection.price`). A *pending* price can come from two places: a `PRICE_CHANGED` rejection (`serverPrice` state) or the **live prop changing**. React to the prop *changing*, not to a permanent mismatch: remember the last seen prop in state and, when it differs during render, `setLivePending(...)` (set-state-during-render is allowed for the same component). Otherwise accepting a server price while the parent hasn't caught up would re-trigger the alert forever.

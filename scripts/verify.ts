@@ -31,7 +31,7 @@ async function runJs(ex: Exercise, code: string): Promise<Result> {
   const g = globalThis as any;
   const sandbox: any = {
     console, setTimeout, clearTimeout, setInterval, clearInterval, queueMicrotask, performance,
-    structuredClone, AbortController, AbortSignal, TextEncoder, TextDecoder, URL, URLSearchParams,
+    structuredClone, AbortController, AbortSignal, EventTarget, Event, TextEncoder, TextDecoder, URL, URLSearchParams,
   };
   void g;
   const ctx = vm.createContext(sandbox);

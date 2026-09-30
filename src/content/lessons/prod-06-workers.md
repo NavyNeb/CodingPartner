@@ -2,23 +2,42 @@
 id: prod-workers
 track: prod
 title: Case study: cash-out on the main thread
-summary: A 400 ms calculation runs on every price tick and scrolling turns to sludge. Move it to a Web Worker — with request IDs, cancellation, timeouts and a pool.
+summary: A 400 ms calculation runs on every price tick and scrolling turns to sludge. Move it to a Web Worker — with request ids, cancellation, timeouts and a pool.
 ---
 
 > **INCIDENT — "The cash-out screen janks."** The cash-out panel re-prices ~300 open positions on every odds tick (correlated markets, a few thousand simulated paths each). Profile: a single **400 ms long task** per update, 3–5 times a second. Scrolling and typing stutter; INP p75 = **780 ms**. The maths can't be made 10× faster — but it doesn't need to run on the UI thread.
 
+## The idea in one sentence
+
+If a job is **heavy and independent of the screen**, run it on **another thread** (a Web Worker) and **talk to it with messages**, so the page stays responsive.
+
+> **Analogy** The main thread is a **waiter** who must always be free to take your order. A worker is a **kitchen** in the back. The waiter hands over an **order slip with a number** (`id`), keeps serving other tables, and when the kitchen finishes, it sends the dish back with the **same number**. The waiter can also shout "**cancel order 7**" — but only a kitchen that glances at the order rail between tasks will hear it.
+
 ## Workers in one minute
 
-A **Web Worker** runs JavaScript on a **separate thread** with its own global scope (no DOM). You talk to it with `postMessage`; data is **copied** using the *structured clone* algorithm (or **transferred** for `ArrayBuffer`s — zero-copy, but the sender loses access; or shared with `SharedArrayBuffer`).
+A **Web Worker** runs JavaScript on a **separate thread** with its own global scope (no DOM). You talk to it with `postMessage`; data is **copied** using the *structured clone* algorithm (or **transferred** for `ArrayBuffer`s — zero-copy, but the sender loses access — or shared with `SharedArrayBuffer`).
 
-**Worth it when** the task is CPU-bound and > ~50 ms: parsing/normalising huge payloads, big sorts/diffs, crypto/hashing, image/audio processing, simulations. **Not worth it** for small tasks — serialising the arguments and result can cost more than the work.
+**Worth it when** a task is CPU-bound and over ~50 ms: parsing/normalising huge payloads, big sorts/diffs, crypto/hashing, image/audio processing, simulations. **Not worth it** for small tasks — serialising the arguments and result can cost more than the work.
 
-**Costs & gotchas**
-- Structured clone of a big object graph blocks the *sender* while it copies. Send **compact** data (typed arrays, ids) and transfer buffers.
-- Startup takes a few ms and memory — reuse workers (a **pool**), don't spawn one per call.
-- **A worker only reads its inbox between tasks.** If it's in a synchronous 400 ms loop it cannot see a "cancel" message. Long jobs must be **chunked/yielding**, or check a shared flag.
-- Errors don't bubble by themselves. `worker.onerror` and rejected handler promises must be **turned into messages**.
+```js try
+// postMessage copies data (structured clone): the receiver gets its OWN object.
+const original = { odds: [2.1, 3.4], nested: { ok: true } };
+const copy = structuredClone(original);
+
+copy.odds.push(9.9);
+console.log('original:', original.odds, '| copy:', copy.odds);
+// Functions, DOM nodes and class instances with methods can't be cloned — send plain data.
+```
+
+**Costs and gotchas**
+
+- Cloning a huge object graph **blocks the sender** while it copies. Send compact data (typed arrays, ids) and transfer buffers.
+- Startup takes a few ms and memory — **reuse** workers (a *pool*), don't spawn one per call.
+- **A worker only reads its inbox between tasks.** In a synchronous 400 ms loop it can't see a "cancel" message. Long jobs must be **chunked with yields**, or check a flag.
+- Errors don't bubble by themselves; they must be **turned into messages**.
 - **Leaks:** a worker lives until you `terminate()` it.
+
+![A worker in one long synchronous loop cannot see cancel; a chunked job sees it between chunks](fig:cooperative-cancel "Cancellation in workers is cooperative: the job has to look.")
 
 ## `postMessage` is not an API — build one
 
@@ -31,27 +50,283 @@ worker → client   { id: 7, type: 'result', result: ... }
 client → worker   { id: 7, type: 'cancel' }
 ```
 
-Key design points (each is a bug if you skip it):
+![The main thread and worker exchange call, result, error and cancel messages matched by id](fig:worker-rpc "Correlation ids let many calls be in flight and answered out of order.")
 
-1. **Correlation ids** so concurrent calls match their answers, out of order.
+Watch the client side keep track of calls:
+
+```stepper Matching answers to questions by id
+code:
+  const id = ++nextId;
+  pending.set(id, { resolve, reject });
+  port.postMessage({ id, type: 'call', method, args });
+  // … later …
+  port.onmessage = (e) => pending.get(e.data.id)?.resolve(e.data.result);
+---
+line: 1-3
+say: **Call A** (`price`): give it id `1`, remember its `resolve`/`reject` functions in a `Map`, and send the message. The call returns a promise right away.
+Pending calls: 1 (price)
+Messages sent: { id: 1, call price }
+Settled:
+---
+line: 1-3
+say: **Call B** (`risk`) is started before A finishes: id `2`. Both are in flight at once.
+Pending calls: 1 (price) | 2 (risk)
+Messages sent: { id: 1, call price } | { id: 2, call risk }
+---
+line: 5
+say: The worker answers **B first** (it was quicker). We look up id `2` in the map and resolve *that* promise. Order doesn't matter — ids match answers to questions.
+Pending calls: 1 (price)
+Settled: 2 (risk) ✓
+---
+line: 5
+say: Now A's answer arrives and resolves promise `1`. Anything with an **unknown id** (already cancelled, timed out) is simply ignored.
+Pending calls:
+Settled: 2 (risk) ✓ | 1 (price) ✓
+```
+
+Design points — each is a bug if you skip it:
+
+1. **Correlation ids** so concurrent calls match answers, even out of order.
 2. **Cancellation** — the client stops waiting *and* tells the worker; the worker aborts cooperatively and **suppresses** the reply. Late replies for cancelled ids are ignored.
 3. **Timeouts** — a hung worker must not hang your UI.
-4. **Termination** rejects everything pending (don't leave promises dangling) and refuses new calls.
-5. **Backpressure / latest-wins** — if calls arrive faster than they finish (ticks every 100 ms, jobs take 400 ms) don't queue them all: cancel the stale one and keep only the latest. (You built `latest()` earlier.)
-6. A **pool** of N workers bounds concurrency to the core count instead of spawning unbounded work.
+4. **Termination** rejects everything pending (never leave promises dangling) and refuses new calls.
+5. **Latest-wins** — if calls arrive faster than they finish (ticks every 100 ms, jobs taking 400 ms), don't queue them all: cancel the stale one and keep the latest. (You built `latest()` earlier.)
+6. A **pool** of N workers bounds concurrency to the number of cores instead of spawning unbounded work.
 
-[Comlink](https://github.com/GoogleChromeLabs/comlink) is this pattern packaged with Proxy sugar.
+Here's the heart of it in a few lines, using two tiny fake "ports" so it runs right here:
+
+```js try
+// Two connected fake ports: a message posted on one arrives on the other, asynchronously.
+function createPorts() {
+  const a = { postMessage: (m) => queueMicrotask(() => b.onmessage?.({ data: m })) };
+  const b = { postMessage: (m) => queueMicrotask(() => a.onmessage?.({ data: m })) };
+  return [a, b];
+}
+const [clientPort, workerPort] = createPorts();
+
+// "Worker" side: answer calls
+workerPort.onmessage = ({ data }) => {
+  if (data.type === 'call') workerPort.postMessage({ id: data.id, type: 'result', result: data.args[0] * 2 });
+};
+
+// Client side: ids + pending map
+let nextId = 0;
+const pending = new Map();
+clientPort.onmessage = ({ data }) => { pending.get(data.id)?.(data.result); pending.delete(data.id); };
+const call = (method, args) => new Promise((resolve) => {
+  const id = ++nextId;
+  pending.set(id, resolve);
+  clientPort.postMessage({ id, type: 'call', method, args });
+});
+
+Promise.all([call('double', [21]), call('double', [5])]).then((r) => console.log('results:', r));
+```
+
+[Comlink](https://github.com/GoogleChromeLabs/comlink) is this same pattern wrapped in Proxy sugar.
+
+## A pool: bounded concurrency
+
+![A queue of jobs feeding two workers; when one finishes, it takes the next job](fig:pool-queue "Create workers lazily, never more than `size`; each runs one job at a time; queue the rest in FIFO order.")
 
 ## Related tools
 
 - `scheduler.yield()` / time slicing — for work that must touch the DOM or share state.
 - `OffscreenCanvas` — render in a worker.
 - **SharedWorker** — one worker shared by all tabs of an origin (a natural home for a single WebSocket).
-- **Service Worker** — network proxy/cache/push; a different job.
+- **Service Worker** — a network proxy, cache and push handler; a different job.
 
 ## Testing without real workers
 
-Real workers need a browser. Everything above is *protocol logic*, so we test it against **fake ports**: `createFakePorts()` gives you two entangled `MessagePort`-like objects with async delivery, exactly like `new MessageChannel()`.
+Real workers need a browser. But everything above is *protocol logic*, so we test it against **fake ports**: `createFakePorts()` gives you two entangled `MessagePort`-like objects with asynchronous delivery, just like `new MessageChannel()`.
+
+## Quick check
+
+```check
+Q: Why are ids needed in worker messages?
+A) To encrypt the messages
+B) To match responses to calls when several are in flight, possibly out of order *
+C) Workers require them
+D) To limit the number of calls
+Why: Messages have no return values. The id is the only link between a question and its answer.
+---
+Q: A worker is stuck in a 400 ms synchronous loop. What happens to a "cancel" message?
+A) It is processed immediately
+B) It kills the worker
+C) It waits in the inbox until the loop finishes, unless the job yields/checks a flag *
+D) It is lost forever
+Why: A worker reads messages between tasks. Long jobs must be chunked or check a shared flag/signal.
+---
+Q: When is a Web Worker NOT worth using?
+A) For CPU-heavy work over ~50ms
+B) For parsing big payloads
+C) For image processing
+D) For tiny tasks where copying the data costs more than the work *
+Why: Messages are copied (structured clone). For small jobs the overhead exceeds the gain.
+---
+Q: What should happen to pending calls when you `terminate()` the worker?
+A) They stay pending forever
+B) They are rejected, and later calls are refused *
+C) They are retried
+D) They resolve with `undefined`
+Why: Dangling promises hide bugs. Reject them all and refuse new work.
+---
+Q: Why use a pool instead of creating a worker for each call?
+A) Workers can't be created more than once
+B) Pools are required by the spec
+C) Startup costs time and memory; a pool reuses workers and caps concurrency *
+D) It makes messages smaller
+Why: Reusing a fixed number of workers avoids constant startup cost and runaway parallelism.
+```
+
+## Recap
+
+- Move **heavy, independent** work to a **Worker**; talk with `postMessage` (data is **copied**; buffers can be **transferred**).
+- Build **RPC**: ids, result/error messages, **cancellation**, **timeouts**, **termination** that rejects pending calls.
+- Workers cancel **cooperatively**: chunk the work, check a signal.
+- **Pool** workers (lazy, FIFO queue, one job per worker); **latest-wins** for fast tick streams.
+- Test protocol logic with **fake ports**.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: a tiny RPC caller | The stepper and the fake-ports snippet |
+| Worker RPC client | Pending `Map`, abort/timeout handling, `terminate()` |
+| Worker RPC server | The message protocol, per-call `AbortSignal`, suppressing cancelled replies |
+| Worker pool with a queue | The pool figure: lazy creation, FIFO queue, stats, terminate |
+
+%% exercise prod-guided-caller | Guided: a tiny RPC caller | 1 | js | js | createCaller | 8 | guided
+Write `createCaller(post)` — the smallest useful RPC client. It returns `{ call(method, args), receive(message) }`.
+
+- `call(method, args)` gives the call the **next id** (starting at `1`), posts `{ id, type: 'call', method, args }` using `post(...)`, and returns a promise.
+- `receive(message)` is called with messages coming **back**:
+  - `{ id, type: 'result', result }` → resolve the promise for that id with `result`.
+  - `{ id, type: 'error', error: { name, message } }` → reject it with an `Error` having that `name` and `message`.
+  - Messages with an **unknown id** are ignored.
+
+%% worked
+**A similar problem, solved: a "request/response" helper for a chat server.**
+
+```js
+function createAsker(send) {
+  let nextId = 0;
+  const waiting = new Map();                              // ① id → { resolve, reject }
+
+  return {
+    ask(question) {
+      const id = ++nextId;                                // ② unique, increasing ids
+      return new Promise((resolve, reject) => {
+        waiting.set(id, { resolve, reject });             // ③ remember HOW to settle this promise later
+        send({ id, question });
+      });
+    },
+    onReply(reply) {
+      const entry = waiting.get(reply.id);
+      if (!entry) return;                                 // ④ unknown id → ignore
+      waiting.delete(reply.id);                           // ⑤ forget it (settled calls release their memory)
+      entry.resolve(reply.answer);
+    },
+  };
+}
+```
+
+A promise is settled by calling its `resolve`/`reject`, which only exist *inside* the `new Promise` callback — so stash them in a `Map` under the id, and call them when the matching reply arrives.
+
+%% explain
+- **Ids** start at 1 and increase by 1 per call.
+- **`post`** receives `{ id, type: 'call', method, args }`.
+- **Results** resolve the matching promise; **errors** reject with an `Error` carrying the given `name` and `message`.
+- **Unknown ids** are ignored; answers can arrive **out of order**.
+
+%% nudge
+- Where do you keep `resolve` and `reject` so `receive` can reach them later?
+- What should you do with the map entry once the call is settled?
+
+%% starter
+```js
+export function createCaller(post) {
+  let nextId = 0;
+  const pending = new Map();
+  return {
+    call(method, args) {
+      // Step 1 — const id = ++nextId;
+      // Step 2 — return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); post({ id, type: 'call', method, args }); });
+      return Promise.resolve();
+    },
+    receive(message) {
+      // Step 3 — look up pending.get(message.id); if there is none, return.
+      // Step 4 — delete it; then resolve(message.result) for 'result',
+      //          or reject(Object.assign(new Error(message.error.message), { name: message.error.name })) for 'error'.
+    },
+  };
+}
+```
+
+%% tests
+```js
+describe('createCaller', () => {
+  it('posts numbered call messages', () => {
+    const sent = [];
+    const caller = createCaller((m) => sent.push(m));
+    caller.call('price', [1, 2]);
+    caller.call('risk', []);
+    expect(sent).toEqual([
+      { id: 1, type: 'call', method: 'price', args: [1, 2] },
+      { id: 2, type: 'call', method: 'risk', args: [] },
+    ]);
+  });
+
+  it('resolves the matching call, even out of order', async () => {
+    const caller = createCaller(() => {});
+    const a = caller.call('a', []);
+    const b = caller.call('b', []);
+    caller.receive({ id: 2, type: 'result', result: 'B' });
+    caller.receive({ id: 1, type: 'result', result: 'A' });
+    expect(await a).toBe('A');
+    expect(await b).toBe('B');
+  });
+
+  it('rejects with an Error carrying name and message', async () => {
+    const caller = createCaller(() => {});
+    const p = caller.call('x', []);
+    caller.receive({ id: 1, type: 'error', error: { name: 'RangeError', message: 'bad input' } });
+    await expect(p).rejects.toMatchObject({ name: 'RangeError', message: 'bad input' });
+  });
+
+  it('ignores unknown ids', () => {
+    const caller = createCaller(() => {});
+    expect(() => caller.receive({ id: 99, type: 'result', result: 1 })).not.toThrow();
+  });
+});
+```
+
+%% hints
+- Promise executors run immediately, so `pending.set(...)` and `post(...)` can both go inside `new Promise(...)`.
+- Use the entry's `resolve` or `reject`, then `pending.delete(id)`.
+
+%% solution
+```js
+export function createCaller(post) {
+  let nextId = 0;
+  const pending = new Map();
+  return {
+    call(method, args) {
+      const id = ++nextId;
+      return new Promise((resolve, reject) => {
+        pending.set(id, { resolve, reject });
+        post({ id, type: 'call', method, args });
+      });
+    },
+    receive(message) {
+      const entry = pending.get(message.id);
+      if (!entry) return;
+      pending.delete(message.id);
+      if (message.type === 'result') entry.resolve(message.result);
+      else entry.reject(Object.assign(new Error(message.error.message), { name: message.error.name }));
+    },
+  };
+}
+```
 
 %% exercise prod-worker-client | Worker RPC client | 4 | js | js | createWorkerClient | 40
 Build `createWorkerClient(port, { timeoutMs = 0 } = {})`. `port` has `postMessage(data)` and an assignable `onmessage(event)` (`event.data` is the message). Return `{ call(method, args, { signal } = {}), terminate() }`.
@@ -221,6 +496,55 @@ describe('createWorkerClient — terminate', () => {
   });
 });
 ```
+
+%% worked
+**Build on the guided caller: each extra feature is "settle once, and clean up".** The key helper is a single `settle` that guarantees a call finishes **exactly once** and releases its timer and listener:
+
+```js
+function call(method, args, { signal } = {}) {
+  if (signal?.aborted) return Promise.reject(abortError());        // ① already aborted → reject NOW and post NOTHING
+
+  const id = ++nextId;
+  return new Promise((resolve, reject) => {
+    let timer, onAbort;
+
+    const entry = {
+      settle(fn, value) {                                          // ② the ONE place a call finishes
+        if (!pending.delete(id)) return;                           //    already settled? do nothing
+        clearTimeout(timer);                                       // ③ release the timer…
+        signal?.removeEventListener('abort', onAbort);             //    …and the abort listener
+        fn(value);
+      },
+    };
+    pending.set(id, entry);
+
+    if (signal) {
+      onAbort = () => { entry.settle(reject, abortError()); port.postMessage({ id, type: 'cancel' }); };   // ④ tell the worker too
+      signal.addEventListener('abort', onAbort);
+    }
+    if (timeoutMs > 0) timer = setTimeout(() => {
+      entry.settle(reject, timeoutError(method, timeoutMs));
+      port.postMessage({ id, type: 'cancel' });
+    }, timeoutMs);
+
+    port.postMessage({ id, type: 'call', method, args });
+  });
+}
+```
+
+Errors need the right **names**: `Object.assign(new Error(msg), { name: 'AbortError' })`. `terminate()` loops over `pending`, rejecting each with `Error('Worker terminated')`, calls `port.close?.()`, and sets a flag so later `call`s reject immediately. The response handler looks up the id and calls `entry.settle(resolve | reject, …)` — unknown/late ids are simply not found.
+
+%% explain
+- **Ids** are unique and increase from 1; responses are matched by id in any order; unknown ids are ignored.
+- **`error` responses** reject with an `Error` having the payload's `name` and `message`.
+- **Abort** while pending → reject with `AbortError`, post `{ id, type: 'cancel' }`, ignore late responses; an **already-aborted** signal rejects immediately and posts **nothing**.
+- **Timeout** (`timeoutMs > 0`) → reject with `TimeoutError` (`Call "<method>" timed out after <ms>ms`) and post a cancel.
+- **Settled calls release** their timer and abort listener.
+- **`terminate()`** rejects every pending call with `Error('Worker terminated')`, calls `port.close?.()`, and later calls reject the same way.
+
+%% nudge
+- How can you make sure a call can't settle twice (e.g. a timeout *and* a late result)?
+- What must you clean up when a call settles for any reason?
 
 %% hints
 - `pending = new Map<id, { resolve, reject, cleanup }>()`. `cleanup()` clears the timeout and removes the abort listener; every settle path calls it and deletes the entry.
@@ -459,6 +783,48 @@ describe('createWorkerServer', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: a server for one method, with per-call cancellation.**
+
+```js
+function createMiniServer(port, handler) {
+  const running = new Map();                                        // id → AbortController
+
+  port.onmessage = async ({ data }) => {
+    if (!data || typeof data.id !== 'number') return;               // ① ignore malformed messages
+
+    if (data.type === 'cancel') { running.get(data.id)?.abort(); return; }   // ② abort THAT call's signal
+    if (data.type !== 'call') return;
+
+    const controller = new AbortController();
+    running.set(data.id, controller);
+    try {
+      const result = await handler(data.args, { signal: controller.signal });   // ③ each call gets its own signal
+      if (!controller.signal.aborted) port.postMessage({ id: data.id, type: 'result', result });   // ④ a cancelled call NEVER replies
+    } catch (err) {
+      if (!controller.signal.aborted) port.postMessage({ id: data.id, type: 'error', error: { name: err.name, message: err.message } });
+    } finally {
+      running.delete(data.id);                                      // ⑤ forget finished calls (so late cancels are ignored)
+    }
+  };
+
+  return { close() { running.forEach((c) => c.abort()); running.clear(); port.onmessage = null; } };   // ⑥ abort everything, detach
+}
+```
+
+For the real server, look the handler up by `method` (unknown → an `Error('Unknown method "<method>"')` response), let **calls run concurrently** (don't `await` one before starting the next — each message handler is its own async function), and post **exactly one** response per call. After `close()`, in-flight handlers that finish later must also stay silent (their signals are aborted).
+
+%% explain
+- **`call`**: run the handler, post `{ id, type: 'result', result }`; unknown method → error `Unknown method "<method>"`.
+- **Handler throws/rejects** → `{ id, type: 'error', error: { name, message } }`.
+- **Each call gets its own `AbortSignal`**; `cancel` aborts it; **a cancelled call never replies** (even if the handler finishes).
+- **Exactly one response per call**; unknown/finished ids in `cancel` and malformed messages are ignored.
+- **Calls run concurrently.** **`close()`** aborts all in-flight calls, suppresses their replies, and detaches the port handler.
+
+%% nudge
+- How do you know, at the moment a handler finishes, whether its call was cancelled?
+- Where do you keep the per-call abort controllers so `cancel` and `close()` can find them?
+
 %% hints
 - `inFlight = new Map<id, AbortController>()`. Add on call, delete on settle or cancel.
 - After a cancel, remember it: delete the controller from the map, and check `controller.signal.aborted` (or `inFlight.get(id) === controller`) *before* posting any response.
@@ -679,6 +1045,44 @@ describe('createWorkerPool', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a limiter that runs at most `n` jobs at once** — the same queue logic a pool needs.
+
+```js
+function createLimiter(n) {
+  let active = 0;
+  const queue = [];                                     // FIFO: first in, first out
+
+  function next() {
+    while (active < n && queue.length > 0) {
+      const job = queue.shift();                        // ① oldest job first
+      active += 1;
+      Promise.resolve()
+        .then(job.run)
+        .then(job.resolve, job.reject)                  // ② success OR failure settles the caller's promise…
+        .finally(() => { active -= 1; next(); });       // ③ …and ALWAYS frees the slot and starts the next job
+    }
+  }
+
+  return function run(fn) {
+    return new Promise((resolve, reject) => { queue.push({ run: fn, resolve, reject }); next(); });
+  };
+}
+```
+
+A worker pool is the same thing, except a "slot" is a **specific client** (`createWorker()` result). Keep an array of clients and a parallel `busy` set: to start a job, pick an idle client or — if fewer than `size` exist — **create one lazily**; otherwise queue. When a job settles (either way), mark that client idle and pull the next queued job for it. `stats()` reports counts; `terminate()` calls `terminate()` on every client, rejects everything still queued with `Error('Pool terminated')`, and sets a flag so later `call`s reject the same way.
+
+%% explain
+- **Lazy creation**: clients are created only when needed, never more than `size`.
+- **`call`** runs on an idle client; otherwise waits in a **FIFO** queue. Each client runs **one job at a time**.
+- **When a job settles** (success or failure) the client takes the next queued job; one failure never affects others.
+- **`stats()`** → `{ workers, busy, idle, queued }`.
+- **`terminate()`** terminates every client, rejects queued jobs with `Error('Pool terminated')`, and later calls reject the same way. Arguments pass through unchanged.
+
+%% nudge
+- When does a slot become free — only on success, or on failure too?
+- How do you decide between "use an idle client", "create a new one" and "queue"?
 
 %% hints
 - State: `clients` (array of `{ client, busy }`), `queue` (array of jobs `{ method, args, options, resolve, reject }`), `terminated`.

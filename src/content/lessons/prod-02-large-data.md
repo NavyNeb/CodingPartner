@@ -2,60 +2,317 @@
 id: prod-large-data
 track: prod
 title: Case study: 20 000 events on one screen
-summary: The events page takes nine seconds to show anything. Paginate by cursor, normalise and index the data, slice long work, and load pages without races.
+summary: The events page takes nine seconds to show anything. Paginate with cursors, store data in an indexed form, slice long work into small chunks, and load pages without races.
 ---
 
 > **INCIDENT — Monday morning, cold cache.** The "All events" screen shows a blank page for ~9 seconds on mid-range Android, and the tab occasionally crashes on older iPhones.
 >
 > **What the trace shows:** a single 14 MB JSON response (20 000 events, every field of every market). `JSON.parse` = 600 ms of main-thread time. Then a 400 ms `Array.sort`, then React mounting 20 000 rows (≈ 4 s scripting, ≈ 2 s layout). Memory peaks at 900 MB.
 
+## The idea in one sentence
+
+Don't load, parse, sort and draw **everything at once** — bring in **only what the user can see, in small steps, in a shape that's fast to use**.
+
+> **Analogy** A library doesn't hand you every book on entering. You ask the librarian for **the next shelf** (pagination), they keep an **index card catalogue** so finding a book isn't a walk past every shelf (indexes), and they fetch things **between serving other readers** instead of making everyone wait (time slicing).
+
 ## Anatomy of the problem
 
-Everything happened **at once**, **on the main thread**, **for data the user can't see**. Each step has a standard remedy:
+Everything happened **at once**, **on the main thread**, for data the user **can't even see**. Each step has a standard remedy:
 
 | Symptom | Remedy |
 | --- | --- |
 | 14 MB payload | **Paginate** (cursor), select only the fields the list needs, compress, cache |
-| 20 000 rows mounted | **Virtualise** (you built this in the React track) — only ~30 rows exist |
-| Sorting / grouping on every update | **Normalise + index once**, then merge new pages incrementally |
+| 20 000 rows mounted | **Virtualise** (from the React track): only ~30 rows exist |
+| Sorting / grouping on every update | **Normalise + index once**, merge new pages incrementally |
 | A 600 ms task blocks input | **Time-slice** long loops so the browser can paint and handle taps between chunks |
 | Requests racing / duplicate rows | Idempotent, race-safe page loading |
 
-## Cursor vs. offset pagination
+## Cursor vs offset pagination
 
-`?page=40&limit=100` (offset) is simple but wrong for live data: while you read page 40, new events are inserted at the top, so page 41 repeats the last row of page 40 (or skips one). A **cursor** (`?after=evt_8123`) says "continue from *this* item", which is stable under inserts. It also lets the database seek via an index instead of scanning `OFFSET 4000`.
+`?page=40&limit=100` (**offset**) is simple, but wrong for *live* data: while you read page 40, new events are inserted at the top, so page 41 repeats the last row of page 40 (or skips one). A **cursor** (`?after=evt_8123`) says "continue after *this* item", which is stable under inserts — and lets the database jump straight there with an index instead of scanning past `OFFSET 4000` rows.
 
-Whichever you use, the client must **dedupe by id** and be ready to see the same event twice.
+![Offset pagination repeats an item when something is inserted; cursor pagination does not](fig:offset-vs-cursor "Whichever you use, the client must dedupe by id.")
+
+```js try
+let events = ['E5', 'E4', 'E3', 'E2', 'E1'];           // newest first
+
+const pageByOffset = (page, size) => events.slice(page * size, page * size + size);
+const pageAfter = (id, size) => { const i = events.indexOf(id); return events.slice(i + 1, i + 1 + size); };
+
+const first = pageByOffset(0, 3);
+console.log('page 1:', first);
+
+events = ['E6', ...events];                             // a new event arrives while you are reading
+
+console.log('offset page 2:', pageByOffset(1, 3));      // E3 appears again!
+console.log('cursor after E3:', pageAfter('E3', 3));    // E2, E1 — no repeat
+```
 
 ## Normalise, then index
 
-Store entities once, by id, and keep separate structures for *ordering* and *lookup*:
+Store each entity **once**, by id, and keep separate structures for *ordering* and *lookup*:
+
+![byId, an ordered id list and an idsByLeague index](fig:normalised-store "Updates touch one entry; filtering is an index read.")
 
 ```ts
 { byId: { evt1: {...}, evt2: {...} },
-  ids: ['evt2', 'evt1'],                       // display order
-  idsByLeague: { epl: ['evt2'], laliga: ['evt1'] } }   // O(1) filter
+  ids: ['evt2', 'evt1'],                              // display order
+  idsByLeague: { epl: ['evt2'], laliga: ['evt1'] } }  // O(1) filter
 ```
 
-- Updates touch one entry instead of rewriting arrays.
-- Filtering by league is an index read, not a 20 000-item `filter` on every keystroke.
-- **Merge new pages into the sorted order** (sort the *page*, then merge two sorted lists in O(n + m)) rather than re-sorting everything each time — the difference between O(pages × n log n) and O(pages × n).
+- An update changes **one** entry instead of rewriting arrays.
+- Filtering by league reads an index, not a 20 000-item `.filter` on every keystroke.
+- **Merge** each new page into the sorted order: sort just the *page*, then merge two sorted lists in **O(n + m)**. Re-sorting everything each time costs O(n log n) per page.
+
+Watch the merge step by step:
+
+```stepper Merging two sorted lists
+code:
+  function merge(a, b) {
+    const out = [];
+    let i = 0, j = 0;
+    while (i < a.length && j < b.length) {
+      out.push(a[i] <= b[j] ? a[i++] : b[j++]);
+    }
+    return out.concat(a.slice(i), b.slice(j));
+  }
+  merge([1, 4, 9], [2, 3, 10]);
+---
+line: 4-6
+say: Look at the **front** of each list: `a[0] = 1` and `b[0] = 2`. The smaller one goes to the output, and only that list moves forward.
+Comparing: 1 vs 2
+out: 1
+---
+line: 4-6
+say: Now `a[1] = 4` vs `b[0] = 2`. `2` is smaller.
+Comparing: 4 vs 2
+out: 1 | 2
+---
+line: 4-6
+say: `4` vs `3` → `3`.
+Comparing: 4 vs 3
+out: 1 | 2 | 3
+---
+line: 4-6
+say: `4` vs `10` → `4`. `a` moves on to `9`.
+Comparing: 4 vs 10
+out: 1 | 2 | 3 | 4
+---
+line: 4-6
+say: `9` vs `10` → `9`. Now list `a` is used up, so the loop stops.
+Comparing: 9 vs 10
+out: 1 | 2 | 3 | 4 | 9
+---
+line: 7
+say: One of the lists still has items (`10`). Since both inputs were sorted, the leftovers are already in order — just append them. Every item was touched once: **O(n + m)**.
+Comparing: (done)
+out: 1 | 2 | 3 | 4 | 9 | 10
+```
 
 ## Time slicing
 
-You can't make a 600 ms job fast, but you can make it **not block**: work for a small **budget** (say 8 ms), then hand the thread back and continue in the next task. Yield with `scheduler.yield()` (Chromium), `MessageChannel`/`setTimeout(0)` as a fallback, or `requestIdleCallback` for low-priority work. Always process **at least one item** per slice or a tiny budget will loop forever, and always allow **cancellation** (the user navigated away).
+You can't make a 600 ms job fast, but you can make it **not block**: work for a small **budget** (say 8 ms), then hand the thread back and continue in the next task.
+
+![One long task versus many slices with yields between them](fig:time-slice "Between slices the browser can paint and respond to taps.")
+
+Ways to yield: `scheduler.yield()` (Chromium), `MessageChannel` / `setTimeout(0)` as a fallback, `requestIdleCallback` for low priority. Two rules: always process **at least one item** per slice (or a tiny budget loops forever), and always allow **cancellation** (the user navigated away).
+
+```js try
+async function processInChunks(items, processItem, budgetMs = 8) {
+  let index = 0;
+  let chunks = 0;
+  while (index < items.length) {
+    const start = Date.now();
+    do {
+      processItem(items[index], index);
+      index++;
+    } while (index < items.length && Date.now() - start < budgetMs);   // do…while: at least ONE item per slice
+    chunks++;
+    if (index < items.length) await new Promise((resolve) => setTimeout(resolve, 0));  // yield to the browser
+  }
+  return { processed: index, chunks };
+}
+
+const items = Array.from({ length: 200000 }, (_, i) => i);
+let sum = 0;
+processInChunks(items, (n) => { sum += Math.sqrt(n); }).then((r) => console.log('processed', r.processed, 'in', r.chunks > 1 ? 'several chunks' : 'one chunk'));
+```
 
 ## Paging in the UI
 
-A `usePagedEvents` hook is the smallest correct piece of data-fetching infrastructure. The traps: double-firing `loadMore` from an intersection observer, a slow response from *before* a refresh overwriting fresh data, unmounted components updating state, and losing already-loaded rows when a later page fails.
+A `usePagedEvents` hook is the smallest correct piece of data-fetching infrastructure. The traps: **double-firing `loadMore`** from an intersection observer, a slow response from *before* a refresh overwriting fresh data, unmounted components updating state, and losing already-loaded rows when a later page fails.
 
 ## Also worth knowing
 
-- **Stale-while-revalidate:** paint from cache instantly, refresh in the background.
+- **Stale-while-revalidate:** paint from the cache instantly, refresh in the background.
 - **Streaming parse:** NDJSON + `fetch().body.getReader()` lets the first rows render before the last byte arrives.
-- **`content-visibility: auto`** skips layout/paint work for off-screen sections.
-- **Web Workers** for parsing/normalising big payloads (later lesson).
+- **`content-visibility: auto`** skips layout/paint for off-screen sections.
+- **Web Workers** for parsing/normalising big payloads (a later lesson).
 - Budget for **low-end devices**: throttle the CPU 4–6× in DevTools when you measure.
+
+## Quick check
+
+```check
+Q: Why is offset pagination a problem for a live list?
+A) It is slower on the client
+B) It doesn't work with JSON
+C) It requires cookies
+D) New items shifting positions make pages repeat or skip items *
+Why: The offset counts rows from the top, so an insert shifts everything down. A cursor anchors to a specific item.
+---
+Q: Why keep an `idsByLeague` index next to the entities?
+A) To filter by league without scanning every event *
+B) To save disk space
+C) To sort events
+D) It is required by React
+Why: An index turns "all events in league X" into a direct lookup instead of a filter over 20,000 items.
+---
+Q: Merging a sorted page into an already sorted list is…
+A) O(n²)
+B) O(n log n) every time
+C) O(n + m), because both inputs are already sorted *
+D) Impossible without sorting
+Why: Two sorted lists can be merged by walking both once. Re-sorting everything costs more.
+---
+Q: Why must a time-sliced loop process at least one item per slice?
+A) To keep the code short
+B) Otherwise a tiny (or zero) budget would never make progress *
+C) Because `setTimeout` needs it
+D) To avoid memory leaks
+Why: If the budget is already used up before the first item, the loop would yield forever without doing work.
+---
+Q: A user pages to the end quickly and the intersection observer fires `loadMore` three times. What protects you?
+A) Nothing; that's normal
+B) A bigger page size
+C) `loadMore` is a no-op while a request is in flight *
+D) Disabling the observer
+Why: An in-flight guard turns extra calls into no-ops, so you don't request the same page repeatedly.
+```
+
+## Recap
+
+- Load **less**, **later**, in a **faster shape**: cursor pagination, virtualised rows, normalised + indexed data.
+- **Cursor > offset** for live data; always **dedupe by id**.
+- **Merge** sorted pages in O(n + m) instead of re-sorting.
+- **Time-slice** long work (budget ~8 ms, at least one item, cancellable).
+- Make paging hooks **race-safe**: in-flight guard, ignore stale responses, keep loaded rows on error.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: merge two sorted lists | The merge stepper |
+| Normalised event store | `byId` + ordered ids + league index, and merge-on-insert |
+| Time-sliced processing | The `processInChunks` snippet, plus abort and error handling |
+| `usePagedEvents` | The paging traps list, an in-flight guard, a "generation" counter to ignore stale responses |
+
+%% exercise prod-guided-merge | Guided: merge two sorted lists | 1 | js | js | mergeSorted | 6 | guided
+Write `mergeSorted(a, b)`. `a` and `b` are arrays of numbers, each already sorted ascending. Return a **new** sorted array with every number from both, **without re-sorting**.
+
+```js
+mergeSorted([1, 4, 9], [2, 3, 10]); // [1, 2, 3, 4, 9, 10]
+```
+
+- When two numbers are equal, take the one from `a` first.
+- Do not change `a` or `b`.
+
+%% worked
+**A similar problem, solved: `mergeByLength(a, b)`** — the same two-pointer walk, comparing *string lengths* instead of numbers.
+
+```js
+function mergeByLength(a, b) {
+  const out = [];
+  let i = 0;                                   // ① one pointer per list
+  let j = 0;
+  while (i < a.length && j < b.length) {       // ② keep going while BOTH lists have items
+    if (a[i].length <= b[j].length) out.push(a[i++]);   // ③ take the smaller front item and advance THAT pointer
+    else out.push(b[j++]);
+  }
+  while (i < a.length) out.push(a[i++]);       // ④ one list is used up: copy the rest of the other
+  while (j < b.length) out.push(b[j++]);
+  return out;
+}
+```
+
+Because both inputs are already sorted, the smallest remaining item is always at the front of one of them — so you never need to sort again. Each item is touched once: **O(n + m)**.
+
+%% explain
+- **Output is sorted** and contains every item from both lists.
+- **Ties**: equal numbers take the one from `a` first.
+- **Inputs are not changed.**
+- **Works when one list is empty.**
+
+%% nudge
+- Which two values do you compare on each step?
+- When the loop stops, what might still be left over?
+
+%% starter
+```js
+export function mergeSorted(a, b) {
+  const out = [];
+  // Step 1 — two pointers:   let i = 0, j = 0;
+  // Step 2 — while BOTH lists have items, push the smaller front item and move THAT pointer
+  //          (use <= so ties take from `a`).
+  // Step 3 — push whatever is left in a, then whatever is left in b.
+  return out;
+}
+```
+
+%% tests
+```js
+describe('mergeSorted', () => {
+  it('merges two sorted lists', () => {
+    expect(mergeSorted([1, 4, 9], [2, 3, 10])).toEqual([1, 2, 3, 4, 9, 10]);
+  });
+
+  it('handles empty lists', () => {
+    expect(mergeSorted([], [1, 2])).toEqual([1, 2]);
+    expect(mergeSorted([1, 2], [])).toEqual([1, 2]);
+    expect(mergeSorted([], [])).toEqual([]);
+  });
+
+  it('keeps duplicates', () => {
+    expect(mergeSorted([1, 2, 2], [2, 3])).toEqual([1, 2, 2, 2, 3]);
+  });
+
+  it('does not change its inputs', () => {
+    const a = [1, 3];
+    const b = [2];
+    mergeSorted(a, b);
+    expect(a).toEqual([1, 3]);
+    expect(b).toEqual([2]);
+  });
+
+  it('is linear, not a full sort', () => {
+    const a = Array.from({ length: 50000 }, (_, i) => i * 2);
+    const b = Array.from({ length: 50000 }, (_, i) => i * 2 + 1);
+    const t = Date.now();
+    const out = mergeSorted(a, b);
+    expect(out.length).toBe(100000);
+    expect(out[99999]).toBe(99999);
+    expect(Date.now() - t).toBeLessThan(500);
+  });
+});
+```
+
+%% hints
+- `while (i < a.length && j < b.length) { out.push(a[i] <= b[j] ? a[i++] : b[j++]); }`
+- After the loop: `while (i < a.length) out.push(a[i++]);` and the same for `b`.
+
+%% solution
+```js
+export function mergeSorted(a, b) {
+  const out = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    out.push(a[i] <= b[j] ? a[i++] : b[j++]);
+  }
+  while (i < a.length) out.push(a[i++]);
+  while (j < b.length) out.push(b[j++]);
+  return out;
+}
+```
 
 %% exercise prod-event-store | Normalised event store with indexes | 3 | js | js | createEventStore | 30
 Build `createEventStore()`.
@@ -175,6 +432,43 @@ describe('createEventStore', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a tiny indexed store for books.**
+
+```js
+function createBookStore() {
+  const byId = new Map();                           // ① each entity stored ONCE
+  const byAuthor = new Map();                       // ② an index: author → Set of ids
+
+  function index(book) { (byAuthor.get(book.author) ?? byAuthor.set(book.author, new Set()).get(book.author)).add(book.id); }
+  function unindex(book) { byAuthor.get(book.author)?.delete(book.id); }
+
+  return {
+    upsert(book) {
+      const old = byId.get(book.id);
+      if (old && old.updatedAt >= book.updatedAt) return 'ignored';   // ③ older or equal → ignore
+      if (old) unindex(old);                                          // ④ an update may change the indexed field → fix the OLD index entry first
+      byId.set(book.id, book);
+      index(book);
+      return old ? 'updated' : 'added';
+    },
+    byAuthor: (a) => [...(byAuthor.get(a) ?? [])].map((id) => byId.get(id)),
+  };
+}
+```
+
+For events the ordered views (`list()`, `byLeague`) must be **sorted by `startTime`, then `id`**. Don't re-sort everything for each page: sort the *incoming page*, then merge it into the existing order (see the guided exercise). If an event's `startTime` or `leagueId` changes, remove its old position/index entry before inserting the new one. The same id can appear twice in one page — treat them as two sequential arrivals, so process the page items in order.
+
+%% explain
+- **`addPage(events)`** returns `{ added, updated, ignored }`: unknown id → added; newer `updatedAt` → updated; older or equal → ignored. Duplicates within one page act like sequential arrivals.
+- **`get(id)`, `size`**; **`list()`** ordered by `startTime` then `id`; **`byLeague(id)`** same order (`[]` if unknown).
+- **Changing `startTime` or `leagueId`** keeps both views correct.
+- **Fast**: 60,000 events in pages of 200 in well under a second — don't re-sort everything per page.
+
+%% nudge
+- When an event is updated, which index entries must you remove before adding the new ones?
+- How can you keep the ordered list sorted without sorting all 60,000 items for each page?
 
 %% hints
 - Keep `byId` (a `Map`), `ids` (sorted array of ids) and `idsByLeague` (`Map<league, sorted array of ids>`).
@@ -374,6 +668,37 @@ describe('processInChunks', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `forEachInSlices(items, fn, budgetMs)`** — the core loop, without abort or error handling.
+
+```js
+async function forEachInSlices(items, fn, budgetMs = 8, now = () => performance.now()) {
+  let i = 0;
+  while (i < items.length) {
+    const sliceStart = now();                                     // ① a slice starts by reading the clock
+    do {
+      fn(items[i], i);
+      i++;
+    } while (i < items.length && now() - sliceStart < budgetMs);  // ② do…while → at least ONE item per slice, even with budget 0
+    if (i < items.length) await new Promise((r) => setTimeout(r, 0));   // ③ yield — but NOT after the last item
+  }
+}
+```
+
+What `processInChunks` adds on top: count `chunks`; call `onProgress(processed, total)` at the **end of each slice**; check `signal?.aborted` **before starting each item** (stop and report `aborted: true`); let an error thrown by `processItem` reject the promise (simply don't catch it — `await`ing in an async function propagates it); and make `now` and `yieldToMain` injectable so tests can fake the clock.
+
+%% explain
+- **In order**, synchronously, `processItem(item, index)`.
+- **A slice** reads `now()`, processes until `now() - sliceStart >= budgetMs`, then `await yieldToMain()`.
+- **At least one item per slice** (so `budgetMs: 0` still finishes). **No yield after the last item.**
+- **`onProgress(processed, total)`** at the end of each slice.
+- **Abort**: stop before starting the next item when `signal` is aborted.
+- **Result** `{ processed, chunks, aborted }`; a throwing `processItem` rejects and nothing further runs.
+
+%% nudge
+- What kind of loop guarantees "at least one"?
+- Where exactly do you check the abort signal: before an item or after?
 
 %% hints
 - Outer loop over `index`; inner loop keeps going while `index < items.length` **and** the slice budget isn't exhausted **and** the signal isn't aborted.
@@ -581,6 +906,51 @@ describe('usePagedEvents', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a hook that loads "more" safely.**
+
+```tsx
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+export function useMore(fetchMore: (cursor?: string) => Promise<{ items: string[]; next: string | null }>) {
+  const [items, setItems] = useState<string[]>([]);
+  const [next, setNext] = useState<string | null | undefined>(undefined);   // undefined = nothing loaded yet
+  const inFlight = useRef(false);                          // ① a REF, not state: updated instantly, no stale reads
+  const generation = useRef(0);                            // ② bumped on refresh so old responses can be recognised
+
+  const load = useCallback(async (cursor?: string) => {
+    if (inFlight.current) return;                          // ③ spam-proof: a second call while loading is a no-op
+    inFlight.current = true;
+    const mine = generation.current;
+    try {
+      const page = await fetchMore(cursor);
+      if (mine !== generation.current) return;             // ④ a refresh happened meanwhile → this answer is STALE, drop it
+      setItems((prev) => [...prev, ...page.items]);
+      setNext(page.next);
+    } finally {
+      if (mine === generation.current) inFlight.current = false;   // ⑤ always release the guard (for the current generation)
+    }
+  }, [fetchMore]);
+
+  useEffect(() => { void load(); }, [load]);
+  return { items, hasMore: next !== null, loadMore: () => next && load(next) };
+}
+```
+
+What `usePagedEvents` adds: `loading` and `error` state (keep loaded items on error; a retry reuses the **same cursor**), **dedupe by `id`** (a repeated id replaces the earlier item *in place*), `refresh()` (bump the generation, clear the list, release the in-flight guard, load from the start), an **unmounted** flag to avoid updates after unmount, and `hasMore` = `nextCursor !== null`.
+
+%% explain
+- **First page loads on mount** (`cursor` undefined); `loading` is true until it settles.
+- **`loadMore()`** uses the last `nextCursor`; it's a **no-op** while a request is in flight or when `hasMore` is false.
+- **Items append and dedupe by `id`** (a repeated id replaces the earlier item in place).
+- **On failure**: `error` set, loaded items kept, `loadMore()` retries the **same cursor**.
+- **`refresh()`** clears and reloads; any response from a request started **before** the refresh is ignored.
+- **No state updates after unmount.**
+
+%% nudge
+- How can an old response recognise that it is stale when it finally arrives?
+- Why is the "in flight" guard a ref and not state?
 
 %% hints
 - Keep a **request generation** in a ref (`const gen = useRef(0)`). `refresh` increments it; every response checks `gen === myGen` before touching state. Unmount also increments it.

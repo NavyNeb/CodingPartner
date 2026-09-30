@@ -2,12 +2,18 @@
 id: prod-firehose
 track: prod
 title: Case study: the odds firehose
-summary: A live feed sends 500 updates a second and the whole page freezes. Coalesce updates, render once per frame, and re-render only the rows that changed.
+summary: A live feed sends 500 updates a second and the whole page freezes. Learn to coalesce updates, render at most once per frame, and re-render only the rows that changed.
 ---
 
 > **INCIDENT — Saturday 15:02, in-play football.** The trading desk reports the site is "frozen" during the second half. Customers can't tap markets; some see odds that are 20 seconds old. Support tickets spike.
 >
 > **What monitoring shows:** WebSocket traffic ≈ **500 messages/s** across ~2 000 live markets. Main-thread CPU pinned at 100%. Interaction to Next Paint (INP) p75 = **1.9 s**. React Profiler: hundreds of commits per second, every row rendering every time.
+
+## The idea in one sentence
+
+If data arrives **faster than anyone can see it**, don't render every update — **keep only the latest value and draw once per frame**.
+
+> **Analogy** A sports scoreboard operator hears the referee shout the score 30 times in a second. They don't repaint the board 30 times — they glance up once, and write the **latest** score. The fans only ever needed the latest.
 
 ## Why it happens
 
@@ -20,35 +26,271 @@ socket.onmessage = (e) => {
 };
 ```
 
-Three problems compound:
+Three problems stack up:
 
-1. **Every WebSocket message is its own task.** React 18 batches updates *within* a task (an event handler, a promise chain) — but 500 separate tasks per second means ~500 renders per second. The browser has a **16 ms frame budget**; render + reconcile + layout on thousands of rows blows through it, so input events queue behind rendering. That queue *is* your INP.
-2. **Most updates are obsolete before anyone could see them.** Market 42 changes price 30 times in a second; the screen refreshes 60 times a second at best. The human sees the latest one.
-3. **Every consumer re-renders for every change.** The parent holds all odds in one object, so a change to market 7 re-renders rows 1–2 000.
+1. **Every WebSocket message is its own task.** React 18 batches updates *inside* one task (a click handler, a promise chain). But 500 separate tasks a second means ~500 renders a second. The browser has a **16 ms frame budget** (for 60 frames/second); rendering thousands of rows blows through it, and taps queue up behind rendering. That queue **is** your INP (Interaction to Next Paint — how long the page takes to respond after a tap).
+2. **Most updates are obsolete before anyone could see them.** Market 42 changes price 30 times in a second; the screen refreshes at most 60 times a second. A human sees the latest one.
+3. **Every row re-renders for every change.** If the parent holds all odds in one object, a change to market 7 re-renders rows 1–2 000.
+
+![Naive: one render per message. Coalesced: one buffered update per frame](fig:firehose-flow "Drop the old values nobody could have seen, and flush once per frame.")
 
 ## The three fixes, in order of impact
 
-**1 · Coalesce (last-write-wins per key).** Keep a `Map<marketId, latestOdds>`; a new value for a key *replaces* the pending one. The information you drop was never displayed anyway.
+### Fix 1 — Coalesce: last write wins, per key
 
-**2 · Flush on a frame boundary.** Apply the whole batch in **one** state update at most once per frame. In a browser use `requestAnimationFrame` (or `scheduler.postTask`); in tests or Node a ~16 ms `setTimeout`. Note this is a **fixed window** opened by the first message — *not* a debounce. A debounce restarts on every message and would starve the UI for as long as the feed keeps talking.
+Keep a `Map` from market id to its latest odds. A new message for the same market **replaces** the pending value:
 
-**3 · Subscribe by slice.** Put the data in an external store and let each row subscribe to *its* value with `useSyncExternalStore(subscribe, () => selector(getState()))`. React compares the selected value with `Object.is` and skips rendering when it didn't change. `memo` on the row stops the parent's renders from cascading.
+```js try
+const pending = new Map();
+let received = 0;
+
+function push(key, value) {
+  received++;
+  pending.set(key, value);          // same key → replaces the old value; its position in the Map stays
+}
+
+// 500 messages for just 3 markets:
+for (let i = 0; i < 500; i++) push('m' + (i % 3), 1 + i / 100);
+
+console.log('received:', received, '| distinct values to draw:', pending.size);
+console.log([...pending]);
+```
+
+500 messages became **3 values**. The information you threw away was never going to be seen anyway.
+
+### Fix 2 — Flush on a frame boundary
+
+Apply the whole batch in **one** state update, at most once per frame (in a browser: `requestAnimationFrame`; in tests or Node: a ~16 ms `setTimeout`).
+
+> **Watch out** This is a **fixed window** that opens at the *first* message. It is **not a debounce**. A debounce restarts its timer on every message — and while a feed keeps talking, it would *never* fire, starving the UI for as long as the firehose runs.
+
+![Five messages inside one 16ms window produce a single flush with the latest value per key](fig:coalesce-window "The first push opens the window; further pushes do not extend it.")
+
+```stepper One buffer window, step by step
+code:
+  push('m7', 2.0);
+  push('m9', 1.5);
+  push('m7', 2.1);
+  // ...16ms after the FIRST push...
+  flush();  // onFlush(Map { m7 → 2.1, m9 → 1.5 }, { received: 3 })
+---
+line: 1
+say: The **first** push after a flush opens a window: a timer for 16 ms is started. The value is stored.
+Buffer (latest per key): m7 = 2.0
+Timer: running (16ms)
+Pushes received: 1
+---
+line: 2
+say: A different key goes into the buffer too. The timer is **not** restarted.
+Buffer (latest per key): m7 = 2.0 | m9 = 1.5
+Timer: running (16ms)
+Pushes received: 2
+---
+line: 3
+say: Same key as before: the new value **replaces** `m7`'s pending one (last write wins). Still the same timer.
+Buffer (latest per key): m7 = 2.1 | m9 = 1.5
+Timer: running (16ms)
+Pushes received: 3
+---
+line: 5
+say: The window ends. **One** flush delivers the latest values and reports `received: 3` so you can measure how much was coalesced. The buffer is now empty, ready for the next window.
+Buffer (latest per key):
+Timer: stopped
+Pushes received: 0
+```
+
+### Fix 3 — Subscribe by slice
+
+Even one update per frame re-renders every row if they all read one big object. Put the data in an **external store** and let each row subscribe to *only its own value*, using React's `useSyncExternalStore(subscribe, () => selector(getState()))`. React compares the *selected* value with `Object.is` and skips the render if it's the same. Add `memo` to the row so the parent list doesn't cascade renders.
+
+![One store, but only the row whose value changed re-renders](fig:slice-subscribe "Rows subscribe to slices of the store, not the whole thing.")
+
+Try it: click the buttons and read the console. Only the row you change logs a render:
+
+```tsx try
+import { memo, useSyncExternalStore } from 'react';
+
+// A tiny external store
+let odds: Record<string, number> = { m1: 2.0, m2: 3.5, m3: 1.8 };
+const listeners = new Set<() => void>();
+const store = {
+  getState: () => odds,
+  subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; },
+  setOdds(id: string, value: number) { odds = { ...odds, [id]: value }; listeners.forEach((l) => l()); },
+};
+
+const Row = memo(function Row({ id }: { id: string }) {
+  const value = useSyncExternalStore(store.subscribe, () => store.getState()[id]);  // the slice: ONE market
+  console.log('render row', id);
+  return <li>{id}: {value.toFixed(2)}</li>;
+});
+
+export default function App() {
+  return (
+    <div style={{ fontFamily: 'system-ui' }}>
+      <ul>{['m1', 'm2', 'm3'].map((id) => <Row key={id} id={id} />)}</ul>
+      {['m1', 'm2', 'm3'].map((id) => (
+        <button key={id} onClick={() => store.setOdds(id, Math.round(Math.random() * 500) / 100 + 1)}>change {id}</button>
+      ))}
+    </div>
+  );
+}
+```
 
 ## Trade-offs to be able to talk about
 
-- **Coalescing vs. queuing.** Coalescing is right for *state* (prices, scores). For *events* (a goal, a bet settled, a chat message) dropping is a bug — those must be queued and processed in order.
-- **Frame rate vs. freshness.** 60 fps is often more than users need; many trading UIs flush at 4–10 Hz. Make the interval a parameter.
-- **Immutability cost.** `{ ...prev, ...updates }` is O(n) per flush — fine once per frame, ruinous once per message. If it hurts at 50k keys, use a `Map` with a version counter and per-key subscriptions.
-- **Backpressure.** If the producer can outrun even the coalesced consumer, you must shed load (sample, lower priority markets first) or tell the server to slow down.
-- **Measure first.** Chrome Performance panel (long tasks > 50 ms), React Profiler ("why did this render?"), `performance.mark/measure`, and `PerformanceObserver({ type: 'long-animation-frame' })` in production.
+- **Coalescing vs queuing.** Coalescing is right for *state* (prices, scores). For *events* (a goal, a bet settled, a chat message) dropping is a **bug** — those must be queued and processed in order.
+- **Frame rate vs freshness.** 60 fps is often more than users need; many trading UIs flush at 4–10 Hz. Make the interval a parameter.
+- **Immutability cost.** `{ ...prev, ...updates }` is O(n) per flush — fine once per frame, ruinous once per message. At 50 000 keys use a `Map` with a version counter and per-key subscriptions.
+- **Backpressure.** If the producer can outrun even the coalesced consumer, shed load (sample, lower-priority markets first) or ask the server to slow down.
+- **Measure first.** Chrome's Performance panel (long tasks > 50 ms), React Profiler ("why did this render?"), `performance.mark/measure`, and `PerformanceObserver({ type: 'long-animation-frame' })` in production.
 
 ## Test helpers used in this track
 
-Your tests get a few synthetic-infrastructure helpers (no network needed):
+Your tests get synthetic infrastructure (no network needed):
 
 - `createFakeSocket(url)` — a WebSocket look-alike. Code sees `addEventListener/onmessage/send/close`; tests drive it with `.open()`, `.receive(obj)`, `.drop()`, `.fail()`, and can read `.sent` and `.listenerCount()`.
 - `flushPromises()` — lets pending microtasks settle.
-- Plus `jest.useFakeTimers()` for time, as in earlier lessons.
+- `jest.useFakeTimers()` for time, as in earlier lessons.
+
+## Quick check
+
+```check
+Q: Why do 500 WebSocket messages per second cause ~500 renders per second in the naive client?
+A) React can't batch anything
+B) Each message is a separate task, and React only batches updates within one task *
+C) `JSON.parse` triggers a render
+D) Sockets force synchronous rendering
+Why: React 18 batches inside a single task. Separate tasks each get their own render.
+---
+Q: What is wrong with using a debounce to batch feed updates?
+A) Debounce is too fast
+B) It would batch too many updates
+C) It needs a class component
+D) The timer restarts on every message, so a constant feed would never fire *
+Why: Use a fixed window opened by the first message, so a flush is guaranteed within one interval.
+---
+Q: When is dropping older updates (coalescing) the WRONG thing to do?
+A) For prices that update constantly
+B) For events that must all be processed, like a settled bet or a goal *
+C) For scores
+D) For odds you can't see
+Why: Coalescing is for *state* where only the latest matters. Events are facts that must not be lost.
+---
+Q: What does a selector passed to `useSyncExternalStore` let a row do?
+A) Mutate the store
+B) Skip subscribing
+C) Re-render only when its own slice of the store changes *
+D) Fetch data
+Why: React compares the selected value with `Object.is`; if it's the same, the component isn't re-rendered.
+---
+Q: What does a high INP (Interaction to Next Paint) tell you?
+A) The page takes a long time to respond after the user taps or types *
+B) The server is slow
+C) The bundle is large
+D) Memory is leaking
+Why: INP measures responsiveness: delay between an interaction and the next frame. A busy main thread makes it worse.
+```
+
+## Recap
+
+- Data faster than the eye → **don't render every update**.
+- **Coalesce** per key (last write wins), **flush once per frame** (a fixed window, *not* a debounce), and **subscribe by slice** so only changed rows render.
+- Coalescing is for **state**, never for **events**.
+- Make the flush interval a parameter; measure with the Profiler and long-task tooling.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: latest value per key | "Fix 1 — Coalesce": a `Map` and `set` |
+| Coalescing update buffer | Fix 1 + Fix 2 and the stepper: a `Map`, a window timer, `flushNow`, `dispose` |
+| `useLiveOdds` | The buffer (given) + a `useEffect` with cleanup and safe JSON parsing |
+| Re-render only the row that changed | Fix 3: `useSyncExternalStore`, a selector, `memo` |
+
+%% exercise prod-guided-latest | Guided: the latest value per key | 1 | js | js | latestByKey | 5 | guided
+Write `latestByKey(messages)`. `messages` is an array of `{ key, value }`. Return a **`Map`** from each key to the **latest** value seen for it. The keys appear in the order they were **first** seen.
+
+```js
+latestByKey([{ key: 'm7', value: 2.0 }, { key: 'm9', value: 1.5 }, { key: 'm7', value: 2.1 }]);
+// Map { 'm7' → 2.1, 'm9' → 1.5 }
+```
+
+This is the heart of the update buffer, without timers.
+
+%% worked
+**A similar problem, solved: `countByKey(messages)`** — the same loop, but counting instead of keeping the latest.
+
+```js
+function countByKey(messages) {
+  const counts = new Map();                              // ① a Map remembers the order keys were first inserted
+  for (const { key } of messages) {
+    counts.set(key, (counts.get(key) ?? 0) + 1);         // ② read the old value (or 0), write the new one
+  }
+  return counts;
+}
+```
+
+For `latestByKey` the body of the loop is even simpler: just `map.set(key, value)`. Setting a key that already exists **replaces its value but keeps its original position** in the Map — which gives you "latest value, first-seen order" for free.
+
+%% explain
+- **One entry per key** with the **latest** value.
+- **Order** is by each key's first arrival (not by last update).
+- **Empty input** gives an empty Map.
+
+%% nudge
+- What does `map.set(key, value)` do when `key` is already in the map?
+- Do you need an `if` at all?
+
+%% starter
+```js
+export function latestByKey(messages) {
+  // Step 1 — create a Map:  const latest = new Map();
+  // Step 2 — loop over the messages and store each one:  latest.set(message.key, message.value)
+  //          (a later message for the same key simply REPLACES the earlier value)
+  // Step 3 — return the Map.
+  return new Map();
+}
+```
+
+%% tests
+```js
+describe('latestByKey', () => {
+  it('keeps the latest value per key', () => {
+    const out = latestByKey([{ key: 'm7', value: 2.0 }, { key: 'm9', value: 1.5 }, { key: 'm7', value: 2.1 }]);
+    expect(out.get('m7')).toBe(2.1);
+    expect(out.get('m9')).toBe(1.5);
+    expect(out.size).toBe(2);
+  });
+
+  it('orders keys by first arrival', () => {
+    const out = latestByKey([{ key: 'b', value: 1 }, { key: 'a', value: 2 }, { key: 'b', value: 3 }]);
+    expect([...out.keys()]).toEqual(['b', 'a']);
+  });
+
+  it('handles empty input', () => {
+    expect(latestByKey([]).size).toBe(0);
+  });
+
+  it('returns a Map', () => {
+    expect(latestByKey([{ key: 'x', value: 1 }])).toBeInstanceOf(Map);
+  });
+});
+```
+
+%% hints
+- `for (const m of messages) latest.set(m.key, m.value);`
+
+%% solution
+```js
+export function latestByKey(messages) {
+  const latest = new Map();
+  for (const message of messages) {
+    latest.set(message.key, message.value);
+  }
+  return latest;
+}
+```
 
 %% exercise prod-update-buffer | Coalescing update buffer | 3 | js | js | createUpdateBuffer | 20
 Build `createUpdateBuffer(onFlush, { intervalMs = 16 } = {})`, the heart of the fix.
@@ -190,6 +432,47 @@ describe('createUpdateBuffer', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `createBatcher(onBatch, ms)`** — collects items for a fixed window, then delivers them all at once. It has the same skeleton as the buffer, without keys or `flushNow`.
+
+```js
+function createBatcher(onBatch, ms = 16) {
+  let items = [];
+  let timer = null;
+
+  function flush() {
+    if (timer !== null) { clearTimeout(timer); timer = null; }   // ① always clear the timer when flushing
+    if (items.length === 0) return;                               // ② never call onBatch with nothing
+    const batch = items;
+    items = [];                                                   // ③ reset BEFORE calling out, so pushes made during onBatch join the NEXT batch
+    onBatch(batch);
+  }
+
+  return {
+    push(item) {
+      items.push(item);
+      if (timer === null) timer = setTimeout(flush, ms);          // ④ only the FIRST push opens the window (not a debounce)
+    },
+    flush,
+    dispose() { if (timer !== null) clearTimeout(timer); timer = null; items = []; },   // ⑤ drop everything silently
+  };
+}
+```
+
+For `createUpdateBuffer`: store a `Map` instead of an array (`pending.set(key, value)` = last write wins, keeping first-arrival order), count `received` pushes, pass `(map, { received })` to `onFlush`, and expose `size` as `pending.size` (a getter).
+
+%% explain
+- **`push(key, value)`**: last write wins per key.
+- **The first push after a flush opens a window**; further pushes do **not** extend it (not a debounce). After `intervalMs` it flushes once.
+- **`onFlush(updates, meta)`**: a `Map` (first-arrival order) and `{ received }`.
+- **After a flush** the buffer is empty; pushes made *inside* `onFlush` belong to the next batch.
+- **`flushNow()`** flushes immediately (if anything is pending) and cancels the timer; an empty buffer never calls `onFlush`.
+- **`dispose()`** cancels the timer and drops pending data without flushing; **`size`** = distinct pending keys.
+
+%% nudge
+- When exactly do you start the timer — on every push, or only when none is running?
+- In `flush`, what must you reset *before* calling `onFlush`, and why?
 
 %% hints
 - State: `pending` (a `Map`), `received` (a counter) and `timer` (`null` when no window is open).
@@ -392,6 +675,55 @@ describe('useLiveOdds', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `useBufferedMessages(socket)`** — a hook that listens to a socket and collects the messages in batches.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export function useBufferedMessages(socket: WebSocketLike, ms = 16) {
+  const [batches, setBatches] = useState(0);
+
+  useEffect(() => {
+    let pending = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const onMessage = (event: { data: string }) => {
+      let parsed: unknown;
+      try { parsed = JSON.parse(event.data); } catch { return; }       // ① malformed JSON: ignore, never crash the page
+      if (typeof parsed !== 'object' || parsed === null) return;       // ② validate the SHAPE too
+      pending += 1;
+      if (timer === null) timer = setTimeout(() => {                   // ③ one state update per window
+        timer = null;
+        setBatches((n) => n + 1);
+        pending = 0;
+      }, ms);
+    };
+
+    socket.addEventListener('message', onMessage);
+    return () => {                                                     // ④ cleanup: listener AND timer
+      socket.removeEventListener('message', onMessage);
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [socket, ms]);
+
+  return batches;
+}
+```
+
+The real hook puts the **buffer** (already written in the starter) between the listener and `setState`: on each valid message call `buffer.push(marketId, odds)`; in `onFlush`, `setOdds((prev) => ({ ...prev, ...Object.fromEntries(updates) }))`. The cleanup must call `buffer.dispose()` **and** remove the listener.
+
+%% explain
+- **Returns `Record<marketId, odds>`.**
+- **At most one state update per interval**, however many messages arrive (uses the buffer).
+- **Batches merge immutably** into the existing record.
+- **Malformed messages** (bad JSON, missing/incorrectly typed fields) are ignored.
+- **Cleanup**: on unmount or when `socket` changes, remove the listener **and** dispose the buffer.
+
+%% nudge
+- Where does a parsed message go — straight to `setState`, or into the buffer first?
+- What would leak if the cleanup only removed the listener?
 
 %% hints
 - Create the buffer *inside* the effect (so each socket gets its own) with an `onFlush` that does a single `setOdds((prev) => ({ ...prev, ...Object.fromEntries(updates) }))`.
@@ -609,6 +941,42 @@ describe('slice subscriptions', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a tiny store with a hook that selects one field.**
+
+```tsx
+import { useSyncExternalStore } from 'react';
+
+function createCounterStore() {
+  let state = { a: 0, b: 0 };
+  const listeners = new Set<() => void>();
+  return {
+    getState: () => state,
+    subscribe(fn: () => void) { listeners.add(fn); return () => { listeners.delete(fn); }; },  // ① subscribe returns an unsubscribe
+    bump(key: 'a' | 'b') { state = { ...state, [key]: state[key] + 1 }; listeners.forEach((l) => l()); },  // ② new object → notify
+  };
+}
+
+function useSelector<T>(store: ReturnType<typeof createCounterStore>, selector: (s: { a: number; b: number }) => T): T {
+  return useSyncExternalStore(store.subscribe, () => selector(store.getState()));
+  //     ③ React calls the second function after every notification and compares results with Object.is
+}
+
+// const a = useSelector(store, (s) => s.a);   // re-renders ONLY when `a` changes
+```
+
+For the exercise: `useStoreSelector(store, selector)` is exactly that. Then `MarketList` should **not** read the odds at all — it only maps over `ids` and renders `<Row key={id} id={id} … />`, where `Row` is wrapped in `memo` and calls `useStoreSelector(store, (s) => s.odds[id])` itself. Make sure the props you pass to `Row` are stable (strings/functions that don't change), or `memo` can't skip.
+
+%% explain
+- **`useStoreSelector(store, selector)`** uses `useSyncExternalStore` and returns `selector(store.getState())`; the caller re-renders **only when the selected value changes** (`Object.is`).
+- **`MarketList`** renders `ids` as **memoised** `Row`s and does **not** subscribe to the odds.
+- **Each `Row`** selects only its own odds, calls `onRowRender(id)` while rendering, and shows `m3: 2.5`.
+- **Updating** `store.setOdds('m3', 2.5)` re-renders only row `m3`.
+
+%% nudge
+- Which component should call the selector hook: the list or each row?
+- What must be true about a memoised row's props for `memo` to skip it?
 
 %% hints
 - `useSyncExternalStore(store.subscribe, () => selector(store.getState()))`. The snapshot function must return the **same value** when nothing relevant changed — selecting a number (or any stable reference) satisfies that.
