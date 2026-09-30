@@ -2,71 +2,182 @@
 id: react-architecture
 track: react
 title: State architecture
-summary: Sharing state without prop drilling, modelling complex updates, controlled vs uncontrolled APIs, and failing gracefully.
+summary: Decide where state should live, share it without passing props through every level, model complex updates with a reducer, and make components work controlled or uncontrolled — plus failing gracefully.
 ---
+
+## The idea in one sentence
+
+**Architecture** in React is mostly one question asked over and over: **"who owns this piece of state, and who needs to see it?"**
+
+> **Analogy** Imagine a building. Some information is on a **sticky note on your own desk** (local state). Some is on a **whiteboard in the meeting room** two teams share (lifted state). Some is on the **company notice board** everyone can see but that rarely changes (context). And some lives in the **central database** with a proper front desk (an external store). You don't put the lunch order on the company notice board — and you don't keep the company holiday list on a sticky note.
 
 ## Choosing where state lives
 
-Work down this list and stop at the first that fits:
+Walk down this ladder and **stop at the first rung that fits**:
+
+![Five rungs: local state, lift to a parent, useReducer, context, external store](fig:state-ladder "Most state belongs on rungs 1–2. Reach further down only when you feel a specific pain.")
 
 1. **Local `useState`** — only this component cares.
 2. **Lift to the closest common parent** — two siblings need it.
-3. **`useReducer`** — many related fields, or transitions with rules ("you can't check out an empty cart").
-4. **Context** — many distant consumers, changes infrequently (theme, locale, current user, feature flags).
-5. **An external store** (Zustand, Redux, Jotai, TanStack Query for server state) — frequent updates, many subscribers, or state that must live outside the tree. Consumers subscribe to *slices* so only affected components re-render.
+3. **`useReducer`** — many related fields, or transitions with rules ("can't check out an empty cart").
+4. **Context** — many *distant* consumers, and it changes *infrequently* (theme, language, current user, feature flags).
+5. **An external store** (Zustand, Redux, Jotai; TanStack Query for *server* data) — frequent updates, many subscribers, or state that must live outside the tree. Components subscribe to *slices* so only the ones affected re-render.
 
 ## Context, precisely
 
-```tsx
-const ThemeContext = createContext<ThemeValue | null>(null);
+Context avoids **prop drilling** (passing a prop through five components that don't use it):
+
+```tsx try
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+
+type Theme = 'light' | 'dark';
+const ThemeContext = createContext<{ theme: Theme; toggle: () => void } | null>(null);
 
 function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const value = useMemo(() => ({ theme, setTheme }), [theme]);   // ← stable identity
+  const [theme, setTheme] = useState<Theme>('light');
+  const value = useMemo(
+    () => ({ theme, toggle: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')) }),
+    [theme],                                   // ← the value only changes when `theme` does
+  );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 function useTheme() {
   const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme must be used within a ThemeProvider');
+  if (!ctx) throw new Error('useTheme must be used within a ThemeProvider');   // a clear error beats a mysterious undefined
   return ctx;
 }
-```
 
-Key facts:
-
-- Every component that calls `useContext(X)` re-renders **whenever the provider's `value` changes** (by `Object.is`) — even if it uses one field. A fresh `{...}` literal each render means every consumer re-renders on every provider render. `useMemo` the value.
-- `memo` doesn't shield a context consumer; it only shields from *prop* changes.
-- **Split** state and dispatch into two contexts, or split unrelated concerns, so a frequently-changing value doesn't drag stable consumers along.
-- Wrap the context in a **custom hook** that throws outside the provider — a clear error beats a mysterious `undefined`.
-- Don't use context for fast-changing values (mouse position, typing) — that's what stores/`useSyncExternalStore` are for.
-
-## `useReducer`
-
-```tsx
-type Action = { type: 'add'; item: Item } | { type: 'remove'; id: string };
-
-function reducer(state: Item[], action: Action): Item[] {
-  switch (action.type) {
-    case 'add':    return [...state, action.item];
-    case 'remove': return state.filter((i) => i.id !== action.id);
-    default:       return state;
-  }
+function Badge() {
+  const { theme, toggle } = useTheme();        // no props passed down through the layers!
+  return <button onClick={toggle}>Theme: {theme}</button>;
 }
-const [items, dispatch] = useReducer(reducer, []);
+
+function Layer({ children }: { children?: ReactNode }) { return <div style={{ paddingLeft: 12 }}>{children}</div>; }
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <Layer><Layer><Layer><Badge /></Layer></Layer></Layer>
+    </ThemeProvider>
+  );
+}
 ```
 
-A reducer is a **pure function** `(state, action) → state`. That makes the update logic **unit-testable without React**, centralises the rules, and gives you a serialisable log of "what happened". `dispatch` is **stable** for the component's life — safe to pass down or list as a dependency. Return the **same state object** when nothing changed, so React skips the render.
+Facts to remember:
 
-## Controlled vs. uncontrolled components
+- Every component that calls `useContext(X)` **re-renders whenever the provider's `value` changes** (by `Object.is`) — even if it only reads one field. A fresh `{…}` each render means every consumer re-renders on every provider render. So `useMemo` the value.
+- `memo` does **not** protect a context consumer; it only guards against *prop* changes.
+- **Split** contexts (state vs dispatch, or unrelated concerns) so something that changes often doesn't drag stable consumers along.
+- Wrap the context in a **custom hook** that throws outside the provider (as above).
+- Don't use context for **fast-changing** values (typing, mouse position) — stores and `useSyncExternalStore` are built for that.
 
-A form control is **controlled** when its owner passes `value` and handles `onChange`; **uncontrolled** when it manages its own state (`defaultValue`). Well-designed reusable components support **both** — that's how libraries like Radix and MUI work. The pattern is a `useControllableState` hook: use the prop if provided, otherwise internal state, and call `onChange` either way.
+![A fresh value object re-renders every consumer; a memoised value and split contexts only re-render those affected](fig:context-rerender "Context is a broadcast: anyone listening hears every change.")
 
-Rules of thumb: a component must not *switch* between the two modes during its life; treat `value === undefined` as "uncontrolled".
+## `useReducer`: rules in one place
 
-## Error boundaries
+When state has many fields or updates follow rules, put the rules into a **reducer**: a **pure function** `(state, action) → nextState`.
 
-Rendering errors (a thrown exception in a component or hook) unmount the whole tree unless an **error boundary** catches them. Boundaries must be **class components** (`getDerivedStateFromError` + `componentDidCatch`) — libraries like `react-error-boundary` wrap that.
+![The UI dispatches an action; the pure reducer computes the next state; React re-renders](fig:reducer-flow "An action describes WHAT happened; the reducer decides HOW the state changes.")
+
+```stepper A cart reducer handling actions
+code:
+  function reducer(items, action) {
+    switch (action.type) {
+      case 'add':
+        return [...items, { ...action.item, qty: 1 }];
+      case 'remove':
+        return items.filter((i) => i.id !== action.id);
+      default:
+        return items;
+    }
+  }
+  dispatch({ type: 'add', item: { id: 'a', name: 'Tea' } });
+  dispatch({ type: 'add', item: { id: 'b', name: 'Mug' } });
+  dispatch({ type: 'remove', id: 'a' });
+  dispatch({ type: 'refund' });
+---
+line: 11
+say: The first `dispatch` sends an **action** — a plain object saying what happened. React calls `reducer(currentItems, action)`.
+Action:
+State after (items):
+Same reference?:
+---
+line: 3-4
+say: The `'add'` case returns a **new** array with the item appended (never `push`!).
+Action: add Tea
+State after (items): Tea
+Same reference?: no — new array
+---
+line: 12
+say: Another `add`. The reducer gets the *latest* state automatically.
+Action: add Mug
+State after (items): Tea | Mug
+Same reference?: no — new array
+---
+line: 13
+say: `remove` filters out the item with that id.
+Action: remove a
+State after (items): Mug
+Same reference?: no — new array
+---
+line: 14
+say: An action nobody handles hits the `default` branch, which returns the **same** `items`. React sees the identical reference, knows nothing changed, and **skips the re-render**.
+Action: refund (unknown)
+State after (items): Mug
+Same reference?: yes — same array, no re-render
+```
+
+Why bother?
+
+- The update rules are **unit-testable without React** (call `reducer(state, action)` and compare).
+- All transitions live in **one place**, and actions are a readable log of "what happened".
+- **`dispatch` has a stable identity** for the component's life, so it is safe to pass down or list in dependencies.
+- Return the **same** state object when nothing changed.
+
+## Controlled vs uncontrolled components
+
+A form control is **controlled** when its owner passes `value` and handles `onChange`; **uncontrolled** when it keeps its own state (`defaultValue`). Good reusable components support **both**:
+
+```tsx try
+import { useState } from 'react';
+
+function useControllableState<T>(value: T | undefined, defaultValue: T, onChange?: (v: T) => void) {
+  const [inner, setInner] = useState(defaultValue);
+  const isControlled = value !== undefined;         // the rule: value given → controlled
+  const state = isControlled ? value : inner;
+  const setState = (next: T) => {
+    if (!isControlled) setInner(next);               // uncontrolled: we store it
+    onChange?.(next);                                // both: tell the owner
+  };
+  return [state, setState] as const;
+}
+
+function Toggle({ checked, defaultChecked = false, onChange }: { checked?: boolean; defaultChecked?: boolean; onChange?: (v: boolean) => void }) {
+  const [on, setOn] = useControllableState(checked, defaultChecked, onChange);
+  return <button aria-pressed={on} onClick={() => setOn(!on)}>{on ? 'ON' : 'off'}</button>;
+}
+
+export default function App() {
+  const [parent, setParent] = useState(false);
+  return (
+    <div style={{ fontFamily: 'system-ui', display: 'flex', gap: 8, alignItems: 'center' }}>
+      <span>Uncontrolled:</span><Toggle />
+      <span>Controlled by parent ({String(parent)}):</span><Toggle checked={parent} onChange={setParent} />
+    </div>
+  );
+}
+```
+
+Rules of thumb: a component must not *switch* between the two modes during its life, and `value === undefined` means "uncontrolled". This is how Radix, MUI and friends work.
+
+## Error boundaries: fail gracefully
+
+If a component throws **while rendering**, the whole tree unmounts — unless an **error boundary** catches it.
+
+![An error boundary shows a fallback for the broken part while the rest of the page keeps working](fig:error-boundary-tree "Put several boundaries at meaningful granularity (a route, a widget) so one broken panel doesn't take down the page.")
+
+Boundaries must be **class components** (`getDerivedStateFromError` + `componentDidCatch`), or you use a library like `react-error-boundary` that wraps one:
 
 ```tsx
 <ErrorBoundary fallback={({ error, reset }) => <Oops error={error} onRetry={reset} />}>
@@ -74,7 +185,181 @@ Rendering errors (a thrown exception in a component or hook) unmount the whole t
 </ErrorBoundary>
 ```
 
-They catch errors during **rendering, lifecycle methods and constructors** of their children. They do **not** catch: event handlers (use try/catch), async code (promises, timers), server rendering, and errors in the boundary itself. Place several boundaries at meaningful granularity (a route, a widget) so one broken panel doesn't take down the page. Provide a **reset** path — usually "retry", or auto-reset when a key (route, id) changes.
+They catch errors during **rendering, lifecycle methods and constructors** of their children. They do **not** catch errors in **event handlers** (use `try/catch`), **async code** (promises, timers), server rendering, or in the boundary itself. Give users a **reset** path: a "Try again" button, or auto-reset when something changes (a route, an id).
+
+## Common mistakes
+
+1. **Putting everything in global state** "just in case" — start local, lift only when needed.
+2. **A non-memoised context value** — every consumer re-renders on every provider render.
+3. **One giant context** for unrelated things.
+4. **Mutating state inside a reducer** (`state.push(...)`).
+5. **Switching a component between controlled and uncontrolled.**
+6. **Expecting an error boundary to catch errors in event handlers or promises.**
+
+## Quick check
+
+```check
+Q: Two sibling components need the same piece of data. Which is the simplest correct place for the state?
+A) A global store
+B) localStorage
+C) Context with a custom hook
+D) Their closest common parent, passed down as props *
+Why: Lifting state up is rung 2 of the ladder. Reach for context or a store only when props become painful or the data is needed far away.
+---
+Q: A context provider uses `value={{ user, theme }}` (a new object each render). What is the effect?
+A) Nothing; objects are compared by content
+B) Every consumer re-renders whenever the provider renders *
+C) The context stops working
+D) Only components that read `user` re-render
+Why: Consumers re-render when the value's identity changes. A new object each render is always "different". Memoise it.
+---
+Q: What must a reducer be?
+A) Async, so it can fetch data
+B) A class
+C) A pure function: same state and action in, same new state out, no mutation *
+D) A component
+Why: Purity makes reducers predictable and trivially unit-testable, and lets React skip renders when the same state is returned.
+---
+Q: A component is "controlled" when…
+A) It has no state
+B) The parent passes `value` and updates it through `onChange` *
+C) It uses `useReducer`
+D) It is wrapped in `memo`
+Why: Controlled means the owner holds the truth. An uncontrolled component keeps its own state (`defaultValue`).
+---
+Q: An error is thrown inside an `onClick` handler. Does an error boundary catch it?
+A) Yes, always
+B) Only class component handlers
+C) No — boundaries only catch render/lifecycle errors; use try/catch in handlers *
+D) Only in development
+Why: Event handlers run outside rendering. Wrap them in `try/catch` (and handle async errors explicitly).
+```
+
+## Recap
+
+- **Choose state's home by the ladder**: local → lift → reducer → context → store. Stop at the first that fits.
+- **Context** fixes prop drilling; **memoise its value**, split unrelated concerns, wrap it in a hook that throws when missing, and don't use it for fast-changing data.
+- **`useReducer`** = pure `(state, action) → state`; testable, centralised, stable `dispatch`; return the same state when nothing changed.
+- **Controlled vs uncontrolled**: support both; `value !== undefined` means controlled; call `onChange` either way.
+- **Error boundaries** catch render/lifecycle errors, not handlers or async code; place several and provide a reset.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: a todo reducer | The cart reducer stepper: `switch` on `action.type`, return new arrays |
+| Theme context | The context example: provider, `useMemo`, a hook that throws |
+| Shopping cart reducer | The stepper + "return the same reference when nothing changes" |
+| Controlled or uncontrolled | The `useControllableState` example |
+| Error boundary | A class component with `getDerivedStateFromError` + `componentDidCatch`, and resetting |
+
+%% exercise arch-guided-todos | Guided: a todo reducer | 1 | tsx | react | todoReducer | 8 | guided
+Write a **pure reducer** `todoReducer(state, action)` for a todo list.
+
+```ts
+type Todo = { id: number; text: string; done: boolean };
+type TodoAction =
+  | { type: 'add'; id: number; text: string }
+  | { type: 'toggle'; id: number };
+```
+
+- `add`: return a **new** array with the new todo appended (`done: false`).
+- `toggle`: return a **new** array where the todo with that id has `done` flipped.
+- Any other action: return the **same** `state` object.
+- Never change the input.
+
+%% worked
+**A similar problem, solved: a counter reducer.**
+
+```ts
+type CounterAction = { type: 'inc' } | { type: 'dec' } | { type: 'set'; value: number };
+
+function counterReducer(state: number, action: CounterAction): number {
+  switch (action.type) {                 // ① decide by the action's `type`
+    case 'inc': return state + 1;        // ② return the NEXT state — don't "change" anything
+    case 'dec': return state - 1;
+    case 'set': return action.value;     // ③ the action can carry data (the payload)
+    default: return state;               // ④ unknown action: return the same state
+  }
+}
+
+counterReducer(5, { type: 'inc' });      // 6
+```
+
+A reducer has one job: given the **current state** and an **action**, return the **next state**. No fetching, no mutation, no randomness. For lists, "next state" means a **new array** — `[...state, item]`, `state.map(...)`, `state.filter(...)` — never `push`.
+
+%% explain
+- **`add`** appends `{ id, text, done: false }` in a new array.
+- **`toggle`** flips `done` on the matching todo only, without mutating the old one.
+- **Unknown actions** return the exact same reference.
+- **The input state is never changed** (the test checks it afterwards).
+
+%% nudge
+- Which array method returns a *new* array with one item replaced?
+- What should the `default` branch return?
+
+%% starter
+```tsx
+type Todo = { id: number; text: string; done: boolean };
+type TodoAction = { type: 'add'; id: number; text: string } | { type: 'toggle'; id: number };
+
+export function todoReducer(state: Todo[], action: TodoAction): Todo[] {
+  // Step 1 — switch on action.type
+  // Step 2 — 'add':    return [...state, { id: action.id, text: action.text, done: false }]
+  // Step 3 — 'toggle': return state.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t))
+  // Step 4 — default:  return state
+  return state;
+}
+```
+
+%% tests
+```tsx
+describe('todoReducer', () => {
+  const base = [{ id: 1, text: 'a', done: false }];
+
+  it('adds a todo', () => {
+    expect(todoReducer([], { type: 'add', id: 7, text: 'x' })).toEqual([{ id: 7, text: 'x', done: false }]);
+  });
+
+  it('toggles only the matching todo', () => {
+    const state = [{ id: 1, text: 'a', done: false }, { id: 2, text: 'b', done: false }];
+    const next = todoReducer(state, { type: 'toggle', id: 2 });
+    expect(next).toEqual([{ id: 1, text: 'a', done: false }, { id: 2, text: 'b', done: true }]);
+  });
+
+  it('does not mutate the old state', () => {
+    const snapshot = JSON.stringify(base);
+    todoReducer(base, { type: 'add', id: 2, text: 'b' });
+    todoReducer(base, { type: 'toggle', id: 1 });
+    expect(JSON.stringify(base)).toBe(snapshot);
+  });
+
+  it('returns the same reference for unknown actions', () => {
+    expect(todoReducer(base, { type: 'nope' } as any)).toBe(base);
+  });
+});
+```
+
+%% hints
+- Inside the `switch`, each `case` returns a value.
+- For `toggle`: `state.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t))`.
+
+%% solution
+```tsx
+type Todo = { id: number; text: string; done: boolean };
+type TodoAction = { type: 'add'; id: number; text: string } | { type: 'toggle'; id: number };
+
+export function todoReducer(state: Todo[], action: TodoAction): Todo[] {
+  switch (action.type) {
+    case 'add':
+      return [...state, { id: action.id, text: action.text, done: false }];
+    case 'toggle':
+      return state.map((t) => (t.id === action.id ? { ...t, done: !t.done } : t));
+    default:
+      return state;
+  }
+}
+```
 
 %% exercise arch-theme-context | Theme context | 2 | tsx | react | ThemeProvider, useTheme | 15
 Build a theme context.
@@ -182,6 +467,42 @@ describe('ThemeProvider / useTheme', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a language context.**
+
+```tsx
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+
+type Lang = 'en' | 'fr';
+interface LangValue { lang: Lang; setLang: (l: Lang) => void }
+
+const LangContext = createContext<LangValue | null>(null);          // ① `null` means "no provider above me"
+
+export function LangProvider({ children, initial = 'en' }: { children: ReactNode; initial?: Lang }) {
+  const [lang, setLangState] = useState<Lang>(initial);
+  const setLang = useCallback((l: Lang) => setLangState(l), []);    // ② stable function
+  const value = useMemo(() => ({ lang, setLang }), [lang, setLang]);   // ③ stable object: changes only when `lang` does
+  return <LangContext.Provider value={value}>{children}</LangContext.Provider>;
+}
+
+export function useLang() {
+  const ctx = useContext(LangContext);
+  if (!ctx) throw new Error('useLang must be used within a LangProvider');   // ④ fail loudly and clearly
+  return ctx;
+}
+```
+
+The three stability rules (②, ③) are what the test checks: a parent re-render that doesn't change the language must not re-render **memoised consumers**. For the theme add `toggleTheme` (use the updater form so it's stable too).
+
+%% explain
+- **`<ThemeProvider defaultTheme?>`** (default `'light'`) provides `{ theme, setTheme, toggleTheme }`.
+- **`useTheme()`** returns that value and **throws** `useTheme must be used within a ThemeProvider` outside a provider.
+- **The value is memoised**; `setTheme` and `toggleTheme` are stable, so memoised consumers don't re-render when an unrelated parent re-renders.
+
+%% nudge
+- What should the context's default value be so you can detect "no provider"?
+- Which hooks keep both the functions and the value object stable?
 
 %% hints
 - `createContext<ThemeValue | null>(null)` — `null` as the "no provider" sentinel.
@@ -388,6 +709,42 @@ describe('<Cart />', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a reducer for a tag list** — it shows the "return the same reference when nothing changes" rule.
+
+```ts
+type Action = { type: 'add'; tag: string } | { type: 'remove'; tag: string } | { type: 'clear' };
+
+function tagsReducer(state: string[], action: Action): string[] {
+  switch (action.type) {
+    case 'add':
+      if (state.includes(action.tag)) return state;                // ① nothing to change → SAME reference (React skips the render)
+      return [...state, action.tag];
+    case 'remove': {
+      if (!state.includes(action.tag)) return state;               // ① again
+      return state.filter((t) => t !== action.tag);
+    }
+    case 'clear':
+      return state.length === 0 ? state : [];                      // ① clearing an empty list changes nothing
+    default:
+      return state;
+  }
+}
+```
+
+For the cart: `add` either bumps `qty` of an existing item **in place in the array order** (`map`) or appends `qty: 1`; `setQty` with `qty <= 0` removes; unchanged cases return `state`. **`cartTotal`**: add up `Math.round(price * 100) * qty` in **cents** and divide by 100 at the end — floating-point dollars (`0.1 + 0.2`) drift. The component just wires `useReducer(cartReducer, [])` to buttons and renders `Total: $${total.toFixed(2)}`.
+
+%% explain
+- **`add`**: append with `qty: 1`, or `qty + 1` if the id exists (same position).
+- **`remove` / `setQty` / `clear`** as described; `qty <= 0` removes.
+- **Never mutate**; if nothing changes (unknown id, same qty, clearing an empty cart, unknown action) return the **same** reference.
+- **`cartTotal`** sums `price × qty` in cents (no float error).
+- **`<Cart catalog />`** renders Add/Increase/Decrease/Remove buttons, `Total: $12.34`, `Clear cart`, and `Your cart is empty`.
+
+%% nudge
+- For each action, when is "nothing changed" — and what do you return then?
+- Why is `0.1 + 0.2` a problem for money, and how does working in cents fix it?
 
 %% hints
 - Reducer skeleton: `switch (action.type)`; `default: return state`.
@@ -629,6 +986,37 @@ describe('Switch', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `useControlled(value, defaultValue)`** without `onChange` — the core decision.
+
+```tsx
+function useControlled<T>(value: T | undefined, defaultValue: T) {
+  const [inner, setInner] = useState(defaultValue);
+  const isControlled = value !== undefined;     // ① the ONE rule
+  return [isControlled ? value : inner, setInner] as const;   // ② controlled: show the prop; uncontrolled: show our own state
+}
+```
+
+What the exercise adds on top:
+
+- **`setState` in controlled mode stores nothing** — it only calls `onChange(next)` (the owner decides).
+- **Updater functions** `(prev) => next`: resolve them against the **current** state. In uncontrolled mode keep the latest value in a ref so two updaters in the same tick chain correctly.
+- **Only call `onChange` when the value actually changes** (`Object.is(prev, next)` → do nothing).
+- **Stable `setState`**: wrap it in `useCallback`, reading the latest value/onChange through refs.
+
+`Switch` then is just a `<button role="switch" aria-checked={on} aria-label={label}>` whose `onClick` calls `setState(!on)`.
+
+%% explain
+- **Controlled** (`value !== undefined`): `state` is always `value`; `setState(next)` only calls `onChange(next)`.
+- **Uncontrolled**: state starts at `defaultValue`; `setState` updates it **and** calls `onChange`.
+- **Updaters** resolve against the current state; two in one tick chain (uncontrolled).
+- **`onChange` fires only on real changes**; **`setState` is stable.**
+- **`<Switch>`**: `<button role="switch">` with `aria-checked` and the accessible name `label`.
+
+%% nudge
+- Where do you read "the current value" when an updater function arrives: from the prop or from your own state?
+- What makes `setState` keep the same identity even though `value` and `onChange` change?
+
 %% hints
 - Refs give a stable setter that still sees fresh data: `currentRef`, `controlledRef`, `onChangeRef`, all reassigned during render.
 - `const isControlled = value !== undefined;` `const current = isControlled ? value : internal;`
@@ -820,6 +1208,47 @@ describe('ErrorBoundary', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a minimal boundary with a fallback.**
+
+```tsx
+import { Component, type ReactNode } from 'react';
+
+interface Props { fallback: ReactNode; children: ReactNode }
+interface State { error: Error | null }
+
+export class SimpleBoundary extends Component<Props, State> {
+  state: State = { error: null };
+
+  static getDerivedStateFromError(error: Error): State {     // ① React calls this when a child throws while rendering
+    return { error };                                         //   → store the error in state, which triggers a re-render
+  }
+
+  componentDidCatch(error: Error, info: { componentStack?: string | null }) {   // ② a place for side effects: logging
+    console.log('caught', error.message);
+  }
+
+  render() {
+    return this.state.error ? this.props.fallback : this.props.children;   // ③ fallback if there is an error
+  }
+}
+```
+
+The exercise's extras: a **function fallback** (`fallback({ error, reset })`), `reset = () => this.setState({ error: null })`, calling `onError` **once per caught error**, and **auto-reset**: in `componentDidUpdate(prevProps)`, if an error is showing and any value in `resetKeys` differs from `prevProps.resetKeys` (compare `Object.is`, element by element), call `reset()`.
+
+Why a class? Only class components can implement `getDerivedStateFromError` / `componentDidCatch` — there is no hook equivalent.
+
+%% explain
+- **Normal rendering** shows the children.
+- **A child throws while rendering** → the `fallback` is shown (a node, or a function of `{ error, reset }`).
+- **`onError(error, info)`** is called once per caught error.
+- **`reset()`** clears the error and tries the children again.
+- **`resetKeys`**: while the fallback is showing, changing any key (`Object.is`, element-wise) resets automatically.
+
+%% nudge
+- Which static method stores the error in state, and which lifecycle method is the right place to *log* it?
+- When should you compare `resetKeys` — and only while what state is true?
 
 %% hints
 - Error boundaries need `static getDerivedStateFromError(error)` (return `{ error }`) and optionally `componentDidCatch(error, info)`.

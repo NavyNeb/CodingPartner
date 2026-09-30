@@ -2,72 +2,332 @@
 id: react-hooks
 track: react
 title: Writing custom hooks
-summary: Extracting stateful logic, keeping identities stable, and testing hooks in isolation with renderHook.
+summary: Package stateful logic into reusable hooks, keep what they return stable, and test them on their own with renderHook.
 ---
 
-## What a custom hook is
+## The idea in one sentence
 
-A custom hook is a function whose name starts with `use` and that calls other hooks. That's it. It lets you share **stateful logic** (not state — each caller gets its own copy) between components:
+A **custom hook** is a function whose name starts with `use` and that calls other hooks — a way to **reuse stateful logic** between components.
 
-```tsx
+> **Analogy** Think of a hook as a **recipe card** you can hand to any cook (component). The recipe (the logic) is shared; but each cook works in their **own kitchen** with their own ingredients (state). Two cooks following the same card don't share a bowl.
+
+```tsx try
+import { useCallback, useState } from 'react';
+
 function useToggle(initial = false) {
   const [on, setOn] = useState(initial);
   const toggle = useCallback(() => setOn((v) => !v), []);
   return [on, toggle] as const;
 }
+
+function Switch({ label }: { label: string }) {
+  const [on, toggle] = useToggle();
+  return <button onClick={toggle}>{label}: {on ? 'ON' : 'off'}</button>;
+}
+
+export default function App() {
+  return (
+    <div style={{ fontFamily: 'system-ui', display: 'flex', gap: 8 }}>
+      <Switch label="Wi-Fi" />
+      <Switch label="Bluetooth" />
+    </div>
+  );
+}
 ```
 
-Two components calling `useToggle()` have **independent** state. Hooks are for reusing *logic*; to share *state*, lift it up or use context/a store.
+Click one switch: the other doesn't move. Both use `useToggle`, but each has its **own copy** of the state.
 
-## The rules (and why)
+![Two components call the same hook and each gets independent state](fig:hook-sharing "Hooks share behaviour, not data. To share the value itself, lift state up or use context/a store.")
 
-1. Call hooks **at the top level** — never in loops, conditions or nested functions.
-2. Call them **only from components or other hooks**.
+## The rules of hooks (and why)
 
-React identifies each hook by **call order** within a component. A conditional hook shifts the order between renders and the state gets attached to the wrong hook. The `use` prefix is what lets the linter check rule 2.
+1. Call hooks **at the top level** of the component — never inside loops, conditions or nested functions.
+2. Call hooks **only from components or other hooks**.
+
+React doesn't know your hooks' names. It identifies each one by **the order in which they are called** during a render. That's why the order must be identical every time:
+
+![Hooks are matched to their saved state by call order; a conditional hook shifts the order and breaks the matching](fig:hook-order "If one hook is skipped on some renders, every hook after it reads the wrong slot.")
+
+The `use` prefix isn't decoration — it's what lets the linter check rule 2.
 
 ## Design for stable identities
 
-Anything you return from a hook becomes a dependency in the caller's effects/memos. If you return a **new function or object every render**, callers' effects re-run every render.
+Whatever you **return** from a hook ends up in the caller's dependency arrays. If you return a **new function or object on every render**, the caller's effects re-run on every render.
 
-- Wrap returned callbacks in `useCallback` (with functional `setState` so they don't need state in deps).
-- Wrap returned objects in `useMemo` — or return a **tuple** of primitives/stable functions.
-- Accept callbacks from callers, but store them in a **ref** ("latest ref") if the hook shouldn't re-subscribe whenever they change:
+- Wrap returned callbacks in `useCallback`, and use the **updater form** of `setState` so they don't need the state in their deps (see `toggle` above).
+- Return a **tuple** of primitives and stable functions, or wrap returned objects in `useMemo`.
+- Accept callbacks from the caller, but keep them in a **ref** ("latest ref") when the hook shouldn't re-subscribe every time the callback changes.
+
+## Refs as instance variables
+
+`useRef` gives you a **mutable box** (`{ current }`) that **survives renders** and **doesn't cause a render when you write to it**. Use it for:
+
+- DOM nodes (`ref={inputRef}`), timer ids, the previous value, "latest callback" holders,
+- any value that shouldn't trigger a re-render.
+
+Don't read or write `ref.current` **during render** for anything that affects what's drawn (except one-time initialisation) — refs aren't reactive.
+
+Here's the classic use: remembering **last render's value**. Step through it:
 
 ```tsx
-function useEventListener(target, type, handler) {
+function usePrevious<T>(value: T) {
+  const ref = useRef<T>();
+  useEffect(() => { ref.current = value; });   // runs AFTER the render
+  return ref.current;                          // so this still holds the OLD value
+}
+```
+
+```stepper How usePrevious returns last render's value
+code:
+  function usePrevious(value) {
+    const ref = useRef();
+    useEffect(() => { ref.current = value; });
+    return ref.current;
+  }
+---
+line: 4
+say: **Render 1**, `value = 1`. We `return ref.current` — nothing has been stored yet, so it's `undefined`.
+value (this render): 1
+ref.current: (empty)
+Returns: undefined
+---
+line: 3
+say: After the render is on screen, the effect runs and stores `1` in the ref. It does **not** trigger another render.
+ref.current: 1
+---
+line: 4
+say: **Render 2**, `value = 5`. The `return` happens *before* this render's effect, so `ref.current` is still `1` — the previous value.
+value (this render): 5
+ref.current: 1
+Returns: 1
+---
+line: 3
+say: Now the effect updates the ref to `5`, ready for the next render.
+ref.current: 5
+---
+line: 4
+say: **Render 3** with the same `value = 5` (maybe because the parent re-rendered). The hook returns `5`: it is "the previous *render's* value", not "the previous *different* value".
+value (this render): 5
+ref.current: 5
+Returns: 5
+```
+
+### The "latest ref" pattern
+
+A common problem: a hook subscribes to something (a listener, an interval) and calls a callback from the caller. If the callback is in the effect's dependencies, every new callback re-subscribes. If it's left out, you call a **stale** one. Store it in a ref instead:
+
+![Every render saves the newest handler in a ref; the listener is added once and always calls ref.current](fig:latest-ref "The subscription stays put; the callback it calls is always fresh.")
+
+```tsx
+function useEventListener(target: EventTarget, type: string, handler: (e: Event) => void) {
   const saved = useRef(handler);
-  useEffect(() => { saved.current = handler; });          // always the latest
+  useEffect(() => { saved.current = handler; });          // always the newest
   useEffect(() => {
-    const listener = (e) => saved.current(e);
+    const listener = (e: Event) => saved.current(e);
     target.addEventListener(type, listener);
     return () => target.removeEventListener(type, listener);
   }, [target, type]);                                      // no `handler` here
 }
 ```
 
-## Refs as instance variables
+Try a hook that uses it, where the handler reads fresh state but we subscribe only once:
 
-`useRef` gives you a mutable box that survives renders **without causing one** when written. Use it for: DOM nodes, timers/ids, the previous value, "latest" callbacks, and any value that shouldn't trigger a re-render. Don't read or write `ref.current` **during render** for anything that affects output (except lazy initialisation) — it isn't reactive.
+```tsx try
+import { useEffect, useRef, useState } from 'react';
 
-```tsx
-function usePrevious<T>(value: T) {
-  const ref = useRef<T>();
-  useEffect(() => { ref.current = value; });   // updated AFTER render
-  return ref.current;                          // so this is last render's value
+function useKey(key: string, handler: () => void) {
+  const saved = useRef(handler);
+  useEffect(() => { saved.current = handler; });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === key) saved.current(); };
+    document.addEventListener('keydown', onKey);
+    console.log('subscribed (should print once)');
+    return () => document.removeEventListener('keydown', onKey);
+  }, [key]);
+}
+
+export default function App() {
+  const [presses, setPresses] = useState(0);
+  useKey('a', () => setPresses(presses + 1));   // a NEW function every render — and it's fine!
+  return <p style={{ fontFamily: 'system-ui' }} tabIndex={0}>Click here, then press “a”: {presses}</p>;
 }
 ```
 
 ## Common hook shapes
 
-- **State + persistence** (`useLocalStorage`): initialise lazily from storage, write on change, guard against `JSON.parse` errors and disabled storage, sync via the `storage` event.
-- **Time** (`useDebounce`, `useInterval`): effect + cleanup; use functional updates or a ref for the callback.
-- **Data** (`useFetch`): loading/error/data as one state machine, abort on change/unmount.
+- **State + persistence** (`useLocalStorage`): read lazily, write on change, guard `JSON.parse` and disabled storage, sync via the `storage` event.
+- **Time** (`useDebounce`, `useInterval`): an effect with a timer and cleanup; use updater functions or a ref for the callback.
+- **Data** (`useFetch`): loading / error / data as one state machine; abort on change or unmount.
 - **DOM** (`useOnClickOutside`, `useMediaQuery`): subscribe once, keep a latest-callback ref, clean up.
 
 ## Testing hooks
 
-`renderHook(() => useX(args))` gives you `result.current` (the latest return value) and `rerender(newProps)` / `unmount()`. Wrap state changes that happen outside React's event system in `act`. For hooks that need DOM (refs, event targets), test them through a tiny component.
+`renderHook(() => useX(args))` returns `result.current` (the latest return value), plus `rerender(newProps)` and `unmount()`. Wrap updates that happen outside React's event system in **`act`**. For hooks that need the DOM (refs, event targets), test them through a tiny component.
+
+## Common mistakes
+
+1. **Conditional hooks** (`if (x) useState()`), or hooks after an early `return`.
+2. **Returning a new object/function each render**, making callers' effects re-run.
+3. **Sharing a hook and expecting shared state.**
+4. **Reading `ref.current` during render** to decide what to draw.
+5. **Stale callbacks** in subscriptions (missing deps) — or re-subscribing constantly (handler in deps). The latest-ref pattern fixes both.
+6. **Forgetting cleanup** inside the hook.
+
+## Quick check
+
+```check
+Q: Why must hooks be called in the same order on every render?
+A) JavaScript requires it
+B) Hooks run faster that way
+C) React matches each hook to its saved state by call order *
+D) Hooks are sorted alphabetically
+Why: React has no names for your hooks; it uses their position in the call sequence. A conditional hook shifts the positions and mixes up the state.
+---
+Q: Two components both call `useToggle()`. What is shared between them?
+A) Only the code — each gets its own state *
+B) The state value
+C) Nothing, it's a compile error
+D) The `toggle` function identity
+Why: A custom hook reuses logic. Each call to `useState` inside creates separate state for that component instance.
+---
+Q: A hook returns `{ open, close }` as a **new object each render**. What problem can this cause?
+A) The hook stops working
+B) Callers that put that object in an effect's dependencies re-run the effect on every render *
+C) Hooks can only return arrays
+D) Nothing; objects are compared by content
+Why: Dependencies are compared by identity (`Object.is`). A fresh object is always "different".
+---
+Q: What does writing to `ref.current` do?
+A) Triggers a re-render
+B) Updates the DOM
+C) Changes the value silently, without triggering a render *
+D) Throws in strict mode
+Why: Refs are plain mutable boxes that survive renders. They're for values that shouldn't cause updates.
+---
+Q: In `usePrevious`, why is `ref.current = value` inside an effect and not in the body?
+A) Effects run before render
+B) So the `return ref.current` in the body still sees the old value, and the ref is updated after the render *
+C) Because refs can't be written during render
+D) To make it asynchronous
+Why: The body runs first and returns the previous value; the effect then stores the current one for next time.
+```
+
+## Recap
+
+- A **custom hook** = a `use…` function calling other hooks; it **shares logic, not state**.
+- **Rules**: top level only; only from components/hooks — because React matches hooks **by call order**.
+- Keep **returned identities stable**: `useCallback`, updater-form `setState`, tuples, `useMemo`.
+- **Refs** are mutable boxes that don't trigger renders: DOM nodes, timer ids, previous value, **latest callback**.
+- Test with **`renderHook`**, `rerender`, `unmount`, and **`act`**.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: `useCounter` | The `useToggle` example: `useState` + `useCallback` with updater functions |
+| `useToggle` | Same, plus ignoring a non-boolean argument |
+| `usePrevious` | The stepper: ref written in an effect |
+| `useOnClickOutside` | The latest-ref pattern + a document listener with cleanup |
+| `useDebounce` | An effect with a timer and cleanup (from the effects lesson) |
+| `useLocalStorage` | Lazy initial state, updater functions, `try/catch`, the `storage` event |
+| `useFetch` | Effect + `AbortController` + a status state machine |
+
+%% exercise hooks-guided-counter | Guided: useCounter | 1 | tsx | react | useCounter | 6 | guided
+Write the custom hook `useCounter(initial = 0)` returning `{ count, increment, decrement, reset }`.
+
+- `increment()` adds 1, `decrement()` subtracts 1.
+- `reset()` goes back to `initial`.
+- The three functions keep **the same identity** between renders (so callers can safely use them in effect dependencies).
+
+%% worked
+**A similar problem, solved: `useToggle`.**
+
+```tsx
+import { useCallback, useState } from 'react';
+
+export function useToggle(initial = false) {
+  const [on, setOn] = useState(initial);                       // ① ordinary state inside a hook
+  const toggle = useCallback(() => setOn((v) => !v), []);      // ② updater form → no `on` in deps → stable identity
+  const reset = useCallback(() => setOn(initial), [initial]);  // ③ uses `initial`, so it IS a dependency
+  return { on, toggle, reset };                                // ④ return what callers need
+}
+```
+
+A custom hook is just a function. It can call `useState`, `useCallback`, `useEffect` … as if it were a component. **Tip:** if a callback only needs the *previous* state, use `setX((prev) => …)` — then it doesn't depend on the state and never changes identity.
+
+%% explain
+- **`count`** starts at `initial` (default 0).
+- **`increment` / `decrement`** change it by 1; **`reset`** restores `initial`.
+- **Stable functions**: the test checks that `increment` is the *same function* after a state change.
+
+%% nudge
+- Which form of the setter lets a callback avoid listing the state in its dependencies?
+- Which functions depend on `initial`?
+
+%% starter
+```tsx
+import { useCallback, useState } from 'react';
+
+export function useCounter(initial = 0) {
+  // Step 1 — keep the count in state:   const [count, setCount] = useState(initial);
+  // Step 2 — wrap each action in useCallback, using the UPDATER form for +1 / -1:
+  //          const increment = useCallback(() => setCount((c) => c + 1), []);
+  // Step 3 — reset sets the count back to `initial` (list it as a dependency).
+  // Step 4 — return { count, increment, decrement, reset }.
+  return { count: 0, increment() {}, decrement() {}, reset() {} };
+}
+```
+
+%% tests
+```tsx
+describe('useCounter', () => {
+  it('starts at the initial value', () => {
+    expect(renderHook(() => useCounter()).result.current.count).toBe(0);
+    expect(renderHook(() => useCounter(5)).result.current.count).toBe(5);
+  });
+
+  it('increments and decrements', () => {
+    const { result } = renderHook(() => useCounter());
+    act(() => result.current.increment());
+    act(() => result.current.increment());
+    act(() => result.current.decrement());
+    expect(result.current.count).toBe(1);
+  });
+
+  it('resets to the initial value', () => {
+    const { result } = renderHook(() => useCounter(10));
+    act(() => result.current.increment());
+    act(() => result.current.reset());
+    expect(result.current.count).toBe(10);
+  });
+
+  it('keeps stable function identities', () => {
+    const { result } = renderHook(() => useCounter());
+    const { increment, decrement, reset } = result.current;
+    act(() => result.current.increment());
+    expect(result.current.increment).toBe(increment);
+    expect(result.current.decrement).toBe(decrement);
+    expect(result.current.reset).toBe(reset);
+  });
+});
+```
+
+%% hints
+- `const increment = useCallback(() => setCount((c) => c + 1), []);`
+- `const reset = useCallback(() => setCount(initial), [initial]);`
+
+%% solution
+```tsx
+import { useCallback, useState } from 'react';
+
+export function useCounter(initial = 0) {
+  const [count, setCount] = useState(initial);
+  const increment = useCallback(() => setCount((c) => c + 1), []);
+  const decrement = useCallback(() => setCount((c) => c - 1), []);
+  const reset = useCallback(() => setCount(initial), [initial]);
+  return { count, increment, decrement, reset };
+}
+```
 
 %% exercise hooks-use-toggle | useToggle | 1 | tsx | react | useToggle | 8
 Write `useToggle(initial = false)` returning `[value, toggle, setValue]`.
@@ -143,6 +403,34 @@ describe('useToggle', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `useBoolean` with explicit on/off.**
+
+```tsx
+export function useBoolean(initial = false) {
+  const [value, setValue] = useState(initial);
+  const on = useCallback(() => setValue(true), []);
+  const off = useCallback(() => setValue(false), []);
+  const toggle = useCallback(() => setValue((v) => !v), []);   // ① updater form: stable identity, never stale
+  return { value, on, off, toggle, setValue };
+}
+```
+
+`useToggle` differs in one detail: **a single function** that can either flip or set. Decide by looking at the argument: `typeof next === 'boolean' ? setValue(next) : setValue((v) => !v)`. That's what makes `onClick={toggle}` work — the click event object is *not* a boolean, so it just flips.
+
+Return a **tuple** (`[value, toggle, setValue] as const`) so callers can name the pieces themselves.
+
+%% explain
+- **Returns `[value, toggle, setValue]`**; `initial` defaults to `false`.
+- **`toggle()`** flips; **`toggle(true)` / `toggle(false)`** sets explicitly.
+- **Non-boolean arguments** (e.g. a click event) are ignored and just flip.
+- **`setValue`** is the raw state setter.
+- **`toggle` is referentially stable** across renders and state changes.
+
+%% nudge
+- How can `toggle` tell "a click event" from "an explicit true/false"?
+- Which setter form lets `toggle` avoid depending on the current value?
 
 %% hints
 - `const toggle = useCallback((next?: unknown) => setValue((v) => (typeof next === 'boolean' ? next : !v)), []);`
@@ -223,6 +511,30 @@ describe('usePrevious', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `useRenderCount()`** — a value that survives renders without causing them.
+
+```tsx
+import { useRef } from 'react';
+
+export function useRenderCount() {
+  const count = useRef(0);        // ① a box that persists between renders
+  count.current += 1;             // ② writing doesn't trigger a re-render (fine for a debug counter)
+  return count.current;
+}
+```
+
+`usePrevious` also uses a ref, but with one important difference: **when** you write to it. If you updated the ref *during* render you'd overwrite the old value before returning it. Write it in an **effect** (runs after the render), and **return `ref.current` in the body** (which still holds the last render's value) — exactly what the stepper in the lesson shows.
+
+%% explain
+- **First render** returns `undefined`.
+- **After a re-render** it returns the value from the render before.
+- **Same value again** returns that same value ("previous render", not "previous different value").
+
+%% nudge
+- When does the effect run relative to `return ref.current`?
+- Why must the ref be written in an effect and not during render?
 
 %% hints
 - A ref holds the value between renders without causing a render.
@@ -344,6 +656,36 @@ describe('useOnClickOutside', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `useKey(key, handler)`** — a document listener with the latest-ref pattern.
+
+```tsx
+import { useEffect, useRef } from 'react';
+
+export function useKey(key: string, handler: () => void) {
+  const saved = useRef(handler);                          // ① holds the newest handler
+  useEffect(() => { saved.current = handler; });          // ② updated after every render (no deps)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === key) saved.current(); };   // ③ always calls the LATEST
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);                  // ④ cleanup
+  }, [key]);                                              // ⑤ `handler` is NOT a dependency → subscribed once
+}
+```
+
+For `useOnClickOutside(ref, handler)`: the same structure with two events (`mousedown`, `touchstart`) and a check inside the listener: `if (!ref.current || ref.current.contains(event.target as Node)) return;` (inside clicks, and a missing element, are ignored). Remember to remove **both** listeners in the cleanup.
+
+%% explain
+- **`handler(event)` is called** for a `mousedown` or `touchstart` **outside** the element in `ref`.
+- **Inside events** (including descendants) are ignored.
+- **Subscribes once** on `document`: a new `handler` each render must not re-subscribe — yet the **latest** handler runs.
+- **Cleanup** removes the listeners on unmount.
+
+%% nudge
+- Which method tells you whether a click was inside an element?
+- How can the listener call the newest handler without depending on it?
+
 %% hints
 - Save the handler in a ref and refresh it every render: `const saved = useRef(handler); saved.current = handler;` (assigning in an effect works too).
 - The subscription effect depends only on `[ref]`; its listener calls `saved.current(event)`.
@@ -453,6 +795,34 @@ describe('useDebounce', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `useDelayedFlag(flag, ms)`** — turns `true` only after it has stayed `true` for `ms`.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export function useDelayedFlag(flag: boolean, ms: number) {
+  const [delayed, setDelayed] = useState(false);
+  useEffect(() => {
+    if (!flag) { setDelayed(false); return; }     // ① turning off is immediate
+    const id = setTimeout(() => setDelayed(true), ms);   // ② turning on waits
+    return () => clearTimeout(id);                // ③ a change within `ms` cancels the pending timer
+  }, [flag, ms]);
+  return delayed;
+}
+```
+
+`useDebounce` is the general version: start a timer that copies the value into state after `delay`; **clean up** by clearing it, so a new value before the timer fires cancels the old one. Start the state with the **initial value** so the first render returns it immediately.
+
+%% explain
+- **First render** returns `value` immediately.
+- **A change appears after `delay` ms** with no further changes; rapid changes collapse into the last one.
+- **No timers left** after unmount.
+
+%% nudge
+- What should the effect's cleanup do with the pending timer?
+- What should the state start as, so the first render isn't `undefined`?
 
 %% hints
 - `const [debounced, setDebounced] = useState(value);`
@@ -596,6 +966,41 @@ describe('useLocalStorage', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `useSessionFlag(key)`** — state that is read lazily from storage and saved on change, without ever crashing.
+
+```tsx
+import { useCallback, useState } from 'react';
+
+export function useSessionFlag(key: string) {
+  const [flag, setFlagState] = useState<boolean>(() => {     // ① lazy initialiser: runs ONCE, on the first render
+    try { return sessionStorage.getItem(key) === '1'; }
+    catch { return false; }                                   // ② storage can throw (private mode): fall back
+  });
+
+  const setFlag = useCallback((next: boolean) => {
+    setFlagState(next);                                       // ③ state ALWAYS updates…
+    try { sessionStorage.setItem(key, next ? '1' : '0'); } catch { /* ignore */ }   // ④ …persisting is best-effort
+  }, [key]);
+
+  return [flag, setFlag] as const;
+}
+```
+
+Extra pieces for `useLocalStorage`: parse with `JSON.parse` inside the `try` (invalid JSON → `initial`); support **updater functions** by keeping the latest value in a ref (so two updates in the same tick both apply); a **`storage` event** listener (added in an effect, removed in cleanup) that reads `event.newValue` when `event.key === key` (`null` → back to the initial value); and stable `setValue`/`remove` with `useCallback`.
+
+%% explain
+- **Initial value**: read and `JSON.parse` the stored value once; missing/invalid → `initial` (a value or a lazy `() => T`).
+- **`setValue(next)`** takes a value or updater, updates state **and** writes JSON; two updater calls in one tick both apply.
+- **`remove()`** deletes the key and resets to the initial value.
+- **Never crashes** if storage throws; state still updates.
+- **Cross-tab sync** via the `storage` event; `null` → back to initial.
+- **`setValue` and `remove` are stable.**
+
+%% nudge
+- Which state-initialiser form runs only once?
+- If two `setValue((p) => p + 1)` calls happen together, where do you read the "previous" value from?
 
 %% hints
 - Helper `read(key, initial)` wraps `getItem` + `JSON.parse` in `try/catch`, falling back to the (possibly lazy) initial value.
@@ -815,6 +1220,51 @@ describe('useFetch', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `useJson(url)`** — a status-based fetch hook with abort-on-change.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+type State<T> = { loading: boolean; data?: T; error?: Error };
+
+export function useJson<T>(url: string) {
+  const [state, setState] = useState<State<T>>({ loading: true });
+
+  useEffect(() => {
+    const controller = new AbortController();                   // ① one controller per request
+    setState({ loading: true });                                // ② new url → back to loading (clears old data/error)
+    fetch(url, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);     // ③ fetch does NOT reject on 404/500
+        return res.json();
+      })
+      .then((data) => setState({ loading: false, data }))
+      .catch((error) => {
+        if (error.name === 'AbortError') return;                // ④ an abort is expected — not an error
+        setState({ loading: false, error });
+      });
+    return () => controller.abort();                            // ⑤ url changed or unmounted: cancel the request
+  }, [url]);
+
+  return state;
+}
+```
+
+Because an aborted request can never call `setState` with its result (it rejects with `AbortError`, which we ignore), late responses can't overwrite newer state. For `refetch`, keep a counter in state and include it in the dependency array (bumping it re-runs the effect).
+
+%% explain
+- **Initial state**: `loading: true`, no data, no error.
+- **Calls `fetch(url, { signal })`** and parses JSON; a non-OK response sets `error` to `Error('HTTP <status>')`; network failures set `error` too.
+- **When `url` changes**: abort the old request, go back to loading, fetch the new one; late responses never overwrite newer state.
+- **On unmount**: abort; no state updates afterwards.
+- **`refetch()`** re-runs the request and sets loading again.
+- **`AbortError` is not an error.**
+
+%% nudge
+- What is the cleanup's job when `url` changes or the component unmounts?
+- How can `refetch` make the same effect run again without changing `url`?
 
 %% hints
 - One state object `{ data, error, loading }` avoids three setters drifting apart.

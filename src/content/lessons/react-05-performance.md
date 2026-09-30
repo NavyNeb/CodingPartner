@@ -2,74 +2,396 @@
 id: react-performance
 track: react
 title: Rendering performance, memoization & refs
-summary: What triggers a render, when memo/useMemo/useCallback actually help, and how to render 10 000 rows.
+summary: What makes React re-render, when memo / useMemo / useCallback genuinely help, and how to show 10,000 rows without freezing the page.
 ---
+
+## The idea in one sentence
+
+Before making React faster, learn **what makes it do work** — most "performance problems" are fixed by *moving state* or *passing stable props*, not by sprinkling `useMemo` everywhere.
+
+> **Analogy** A component is a **restaurant order slip**. When one table changes its order, the kitchen re-reads the slip for that table — and, by default, for **every table under the same waiter**, even if nothing changed for them. `memo` is a sticky note saying "nothing changed here — skip it". But the note only works if the slip you hand over is the *same slip*, not a photocopy each time.
 
 ## What causes a render
 
 A component re-renders when:
 
-1. its **state** changes (`setState` with a different value by `Object.is`),
-2. its **parent** re-renders (regardless of whether props changed!),
+1. its own **state** changes (`setState` with a different value, compared by `Object.is`),
+2. its **parent** re-renders — *regardless of whether its props changed!*,
 3. a **context** it reads changes.
 
-Rendering = calling your function to get a new element tree. It's usually cheap; the cost is the **whole subtree** below, plus effects and DOM work. React then diffs and commits only real differences — so an "unnecessary render" often costs a function call, not a DOM update. Measure (React DevTools Profiler, `console.time`) before optimising.
+![A state change in App renders its children; a memo child with unchanged props is skipped](fig:what-renders "A render is a function call, not a DOM update. React then diffs and only commits real differences. The cost is the whole subtree below.")
+
+Rendering (calling your function) is usually cheap. What's expensive is **big subtrees**, slow computations inside render, and lots of DOM. So: **measure first** (React DevTools Profiler, `console.time`).
+
+Watch renders happen. Click the button and read the console panel:
+
+```tsx try
+import { memo, useState } from 'react';
+
+function Plain({ label }: { label: string }) {
+  console.log('render Plain');
+  return <p>{label}</p>;
+}
+
+const Memoized = memo(function Memoized({ label }: { label: string }) {
+  console.log('render Memoized');
+  return <p>{label}</p>;
+});
+
+export default function App() {
+  const [count, setCount] = useState(0);
+  return (
+    <div style={{ fontFamily: 'system-ui' }}>
+      <button onClick={() => setCount(count + 1)}>clicked {count}</button>
+      <Plain label="I re-render whenever my parent does" />
+      <Memoized label="I only re-render if my props change" />
+    </div>
+  );
+}
+```
+
+Each click re-renders `Plain` (its parent changed) but **not** `Memoized` (same props).
+
+### Step through: who re-renders?
+
+```stepper Why memo skips a child
+code:
+  function App() {
+    const [count, setCount] = useState(0);
+    return (<>
+      <button onClick={() => setCount(count + 1)}>{count}</button>
+      <Row label="Ada" />
+    </>);
+  }
+---
+line: 3-4
+say: The user clicks the button. `setCount` runs, so `App`'s **state** changed.
+Who re-renders:
+Why:
+---
+line: 1-2
+say: React calls `App` again. It returns new elements, including a new `<Row label="Ada" />` element.
+Who re-renders: App
+Why: its own state changed
+---
+line: 5
+say: Without `memo`: `Row` is a child of a component that rendered, so React calls `Row` too — even though `label` is still `"Ada"`.
+Who re-renders: App | Row (wasted)
+Why: parent rendered → children render by default
+---
+line: 5
+say: With `memo(Row)`: React first compares the **new props** with the **old props** using `Object.is`. `"Ada" === "Ada"`, so it **skips** `Row` and reuses the last result.
+Who re-renders: App only
+Why: memo: props are equal
+```
 
 ## Reference equality is everything
 
-`memo`, `useMemo`, `useCallback` and effect dependencies all compare with `Object.is`. A new object/array/function is created **every render**, so it's "different" every time:
+`memo`, `useMemo`, `useCallback` and effect dependencies all compare with `Object.is`. But every render creates **new** objects, arrays and functions, so they're "different" each time:
 
 ```tsx
-<Child style={{ color: 'red' }} onSelect={() => pick(id)} />   // new identities each render
+<Child style={{ color: 'red' }} onSelect={() => pick(id)} />   // new identities on every render
 ```
 
-- **`React.memo(Component)`** skips re-rendering when props are shallow-equal to last time.
-- **`useMemo(() => compute(a, b), [a, b])`** caches a **value** between renders.
-- **`useCallback(fn, deps)`** caches a **function** (= `useMemo(() => fn, deps)`).
+![Fresh props are never equal so memo is wasted; stable props let memo skip the render](fig:memo-identity "Memoise the child AND stabilise the props you pass it.")
 
-Memoizing a child is *pointless* if you pass it a fresh object/function each render. Memo the child **and** stabilise the props. And memoizing something cheap costs more (comparison + memory) than recomputing it.
+- **`React.memo(Component)`** — skip re-rendering when props are shallow-equal to last time.
+- **`useMemo(() => compute(a, b), [a, b])`** — cache a **value** between renders.
+- **`useCallback(fn, deps)`** — cache a **function** (it's `useMemo(() => fn, deps)`).
+
+Try it: the memo child gets a **new inline object** each render, so the memo does nothing. Then fix it with `useMemo`:
+
+```tsx try
+import { memo, useMemo, useState } from 'react';
+
+const Box = memo(function Box({ style, name }: { style: { color: string }; name: string }) {
+  console.log('render', name);
+  return <p style={style}>{name}</p>;
+});
+
+export default function App() {
+  const [n, setN] = useState(0);
+  const stable = useMemo(() => ({ color: 'teal' }), []);   // created once
+  return (
+    <div style={{ fontFamily: 'system-ui' }}>
+      <button onClick={() => setN(n + 1)}>re-render parent ({n})</button>
+      <Box name="inline object (wasted memo)" style={{ color: 'crimson' }} />
+      <Box name="stable object (memo works)" style={stable} />
+    </div>
+  );
+}
+```
+
+Memoising something cheap costs more (the comparison and the memory) than just recomputing it. Use these tools where they pay off.
 
 ## When memoization is worth it
 
-- A `memo` child that's expensive to render (a big list row, a chart) and re-rendered often by a busy parent.
-- A `useMemo` around a genuinely expensive computation (sorting/filtering thousands of items).
-- A `useCallback`/`useMemo` whose result is a **dependency** of an effect or another memo (to avoid re-running it).
-
-Otherwise, first try the structural fixes below — they don't need any memo at all.
+- A `memo` child that's **expensive to render** (a big row, a chart) and re-rendered often by a busy parent.
+- A `useMemo` around a genuinely **expensive computation** (sorting/filtering thousands of items).
+- A `useCallback`/`useMemo` whose result is a **dependency** of an effect or another memo.
 
 ## Structural fixes beat memo
 
-- **Colocate state.** Put state in the smallest component that needs it; typing in an input shouldn't re-render the whole page.
-- **Children as props.** A component that holds fast-changing state but renders `{children}` passed from above doesn't re-render those children (their element identity is unchanged).
-- **Split contexts** by update frequency, and memoise the context value.
-- **Avoid deriving in effects.** Compute during render.
-- **Keys:** stable keys preserve DOM/state; index keys cause remounts on reorder.
+1. **Colocate state.** Keep state in the smallest component that needs it. Typing in an input shouldn't re-render the whole page.
+2. **Children as props.** A component with fast-changing state that renders `{children}` passed from above doesn't re-render them (their element identity didn't change).
+3. **Split contexts** by how often they change, and memoise context values.
+4. **Compute during render** instead of "syncing" with effects.
+5. **Stable keys** keep DOM and state; index keys cause remounts on reorder.
 
-## The functional-update trick
+### The functional-update trick
 
-To make a callback stable **without** listing state in its deps, use the updater form:
+To make a callback **stable without listing state** in its deps, use the updater form:
 
 ```tsx
 const toggle = useCallback((id: number) => {
   setItems((prev) => prev.map((i) => (i.id === id ? { ...i, done: !i.done } : i)));
-}, []);   // no `items` dependency → identity never changes
+}, []);   // no `items` dependency → the identity never changes
 ```
 
 ## Refs
 
-`useRef` returns `{ current }`, stable for the component's life. Writing it **doesn't re-render**.
+`useRef` returns `{ current }`, the same object for the component's whole life. Writing it **doesn't re-render**.
 
-- **DOM access:** `<input ref={inputRef} />` then `inputRef.current?.focus()` — in an event handler or effect, not during render.
-- **Instance values:** timer ids, previous values, "latest callback" (`useEvent` pattern), flags like `isMounted`.
-- Ref callbacks (`ref={(el) => …}`) run on mount/unmount and when the function identity changes.
+- **DOM access**: `<input ref={inputRef} />`, then `inputRef.current?.focus()` — in an event handler or effect, *not* during render.
+- **Instance values**: timer ids, the previous value, the latest callback, flags like `isMounted`.
+- **Ref callbacks** (`ref={(el) => …}`) run on mount/unmount, and again if the function's identity changes.
 
-## Virtualisation
+```tsx try
+import { useRef } from 'react';
 
-Rendering 10 000 DOM rows is slow no matter how well you memoise. **Windowing** renders only what's in view: compute the visible index range from `scrollTop`, render those rows (plus overscan) absolutely positioned inside a tall spacer. Libraries: `react-window`, `@tanstack/react-virtual` — but you'll write the core yourself below.
+export default function App() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div style={{ fontFamily: 'system-ui' }}>
+      <input ref={inputRef} placeholder="type here…" />{' '}
+      <button onClick={() => inputRef.current?.focus()}>Focus</button>
+      <button onClick={() => { if (inputRef.current) { inputRef.current.value = ''; inputRef.current.focus(); } }}>Clear</button>
+    </div>
+  );
+}
+```
 
-## Updates are batched, transitions are interruptible
+## Virtualisation: render only what's visible
 
-`startTransition` / `useTransition` mark a state update as **non-urgent**: React keeps the UI responsive to typing and can abandon stale renders. `useDeferredValue(value)` gives you a lagging copy for expensive derived UI. Reach for them when a *single* slow render blocks input — not as a default.
+Rendering 10,000 DOM rows is slow **no matter how well you memoise**, because the browser has to lay out 10,000 elements. **Windowing** renders only the rows in view:
+
+![A tall spacer with only the visible rows plus overscan mounted](fig:virtual-window "The spacer keeps the scrollbar honest; only rows in [start, end) exist in the DOM.")
+
+1. A container with a fixed height and `overflow-y: auto`.
+2. A **spacer** `items.length × itemHeight` tall, so the scrollbar looks right.
+3. On scroll, read `scrollTop` and compute the visible index range (plus a little **overscan** above and below).
+4. Render only those rows, positioned with `top = index × itemHeight`.
+
+```tsx try
+import { useState } from 'react';
+
+const items = Array.from({ length: 10000 }, (_, i) => `Row ${i}`);
+const H = 240, ROW = 28, OVERSCAN = 3;
+
+export default function App() {
+  const [top, setTop] = useState(0);
+  const start = Math.max(0, Math.floor(top / ROW) - OVERSCAN);
+  const end = Math.min(items.length, Math.ceil((top + H) / ROW) + OVERSCAN);
+  return (
+    <div style={{ fontFamily: 'system-ui' }}>
+      <p>Rows in the DOM: <b>{end - start}</b> of {items.length}</p>
+      <div style={{ height: H, overflowY: 'auto', border: '1px solid #aaa' }} onScroll={(e) => setTop(e.currentTarget.scrollTop)}>
+        <div style={{ height: items.length * ROW, position: 'relative' }}>
+          {items.slice(start, end).map((t, k) => (
+            <div key={start + k} style={{ position: 'absolute', top: (start + k) * ROW, height: ROW }}>{t}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+Libraries (`react-window`, `@tanstack/react-virtual`) add polish, but you'll write the core yourself.
+
+## Transitions: keep typing responsive
+
+`startTransition` / `useTransition` mark an update as **non-urgent**: React stays responsive to typing and can abandon an out-of-date render. `useDeferredValue(value)` gives you a *lagging copy* of a value for expensive derived UI. Use them when **one slow render** blocks input — not by default.
+
+## Common mistakes
+
+1. **Memoising everything** "just in case" (extra comparisons, more bugs).
+2. **Memo child + inline object/function props** — the memo never hits.
+3. **Missing or wrong dependencies** in `useMemo`/`useCallback` (stale values).
+4. **State too high in the tree** — one keystroke re-renders the page.
+5. **Index keys** with reorderable lists.
+6. **Rendering huge lists without virtualisation.**
+
+## Quick check
+
+```check
+Q: A parent re-renders. Does a child re-render if its props are unchanged, and it is NOT wrapped in `memo`?
+A) No, React compares props automatically
+B) Only if it uses state
+C) Yes — children render whenever their parent renders, unless memoised *
+D) Only in development mode
+Why: React's default is to render the subtree. `memo` adds the props comparison.
+---
+Q: Why does `memo(Child)` not help here: `<Child options={{ dense: true }} />`?
+A) `memo` only works with strings
+B) `memo` needs `useCallback`
+C) Children can't receive objects
+D) The inline object is a new identity every render, so props are never "equal" *
+Why: `memo` compares props with `Object.is`. A fresh `{}` is never `===` to the previous one. Memoise the object or define it outside the component.
+---
+Q: Which change usually gives the biggest win when typing in a search box re-renders a whole slow page?
+A) Wrap everything in `useMemo`
+B) Move the input's state down into a small component (colocate the state) *
+C) Use `key={Math.random()}`
+D) Switch to class components
+Why: If the state lives in a small component, only that component (and its children) re-render when it changes.
+---
+Q: What is `useCallback(fn, [])` with a function that calls `setItems(prev => …)`?
+A) A function whose identity never changes and never reads stale state *
+B) A function that runs once
+C) A memoised value
+D) A compile error
+Why: The updater form means the callback doesn't need `items`, so an empty dependency array is correct, and the identity is stable.
+---
+Q: Why does a virtual list help with 10,000 items?
+A) It compresses the data
+B) It caches network requests
+C) It only mounts the rows in the visible window (plus overscan) instead of all of them *
+D) It turns rows into canvas drawings
+Why: Fewer DOM nodes means less layout and paint work. The spacer keeps the scrollbar the right size.
+```
+
+## Recap
+
+- Renders come from **state**, a **parent render**, or **context**; the cost is the subtree — **measure first**.
+- `memo` / `useMemo` / `useCallback` compare by **`Object.is`**: fresh objects and functions defeat them, so stabilise props.
+- **Structural fixes first**: colocate state, pass `children`, split contexts, compute during render.
+- The **updater form** keeps callbacks stable without state in deps.
+- **Refs** hold mutable values and DOM nodes without re-rendering.
+- **Virtualise** long lists; use **transitions** when one slow render blocks input.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: cache a calculation | `useMemo` and its dependency array |
+| Focus with a ref | "Refs": `useRef`, `ref={…}`, `.current.focus()` |
+| Cache the expensive filter | `useMemo` with the right dependencies |
+| Stop the wasted row renders | `memo` + `useCallback` + the functional-update trick |
+| `useEvent` | The latest-ref pattern (hooks lesson): stable function, fresh closure |
+| Virtual list | The windowing demo and the start/end formulas |
+
+%% exercise perf-guided-total | Guided: cache a calculation | 1 | tsx | react | Total | 6 | guided
+Build `<Total items sum />`. `sum(items)` is an **expensive** function passed in as a prop.
+
+- It renders `Total: <sum(items)>`.
+- There is also a **Toggle note** button that shows/hides a `<p>Note</p>` — an unrelated state change.
+- `sum` must be called **only when `items` changes** — not when the note is toggled.
+
+%% worked
+**A similar problem, solved: `<Doubled value expensive />`** — cache the result of a slow function between renders.
+
+```tsx
+import { useMemo, useState } from 'react';
+
+export function Doubled({ value, expensive }: { value: number; expensive: (n: number) => number }) {
+  const [open, setOpen] = useState(false);                     // unrelated state: changing it re-renders this component
+  const result = useMemo(() => expensive(value), [value, expensive]);
+  //             ① the function to run                ② re-run ONLY when one of these changes
+  return (
+    <div>
+      <p>Result: {result}</p>
+      <button onClick={() => setOpen((o) => !o)}>Toggle</button>
+      {open && <p>Extra</p>}
+    </div>
+  );
+}
+```
+
+Without `useMemo`, every click on the button re-renders the component, and `expensive(value)` would run again for nothing. `useMemo` remembers the last result and returns it as long as the dependencies are **identical** (`Object.is`).
+
+%% explain
+- **`Total: N`** where `N = sum(items)`.
+- **`sum` runs once on the first render**, and again only when `items` changes.
+- **Toggling the note** re-renders the component but does not call `sum` again.
+- **Changing `items`** (a new array) calls it again.
+
+%% nudge
+- Which hook caches the result of a calculation between renders?
+- What goes in its dependency array: what does the calculation depend on?
+
+%% starter
+```tsx
+import { useState } from 'react';
+
+export function Total({ items, sum }: { items: number[]; sum: (items: number[]) => number }) {
+  const [showNote, setShowNote] = useState(false);
+
+  // Step 1 — this line runs on EVERY render (even when only showNote changed). Wrap it in useMemo:
+  //          const total = useMemo(() => sum(items), [items, sum]);
+  const total = sum(items);
+
+  return (
+    <div>
+      <p>Total: {total}</p>
+      <button onClick={() => setShowNote((s) => !s)}>Toggle note</button>
+      {showNote && <p>Note</p>}
+    </div>
+  );
+}
+```
+
+%% tests
+```tsx
+describe('Total', () => {
+  const add = (xs) => xs.reduce((a, b) => a + b, 0);
+
+  it('shows the total', () => {
+    render(<Total items={[1, 2, 3]} sum={add} />);
+    expect(screen.getByText('Total: 6')).toBeInTheDocument();
+  });
+
+  it('does not recompute when an unrelated state changes', async () => {
+    const sum = jest.fn(add);
+    render(<Total items={[1, 2]} sum={sum} />);
+    expect(sum).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Toggle note' }));
+    expect(screen.getByText('Note')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Toggle note' }));
+    expect(sum).toHaveBeenCalledTimes(1);
+  });
+
+  it('recomputes when items change', () => {
+    const sum = jest.fn(add);
+    const { rerender } = render(<Total items={[1, 2]} sum={sum} />);
+    rerender(<Total items={[1, 2, 3]} sum={sum} />);
+    expect(sum).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Total: 6')).toBeInTheDocument();
+  });
+});
+```
+
+%% hints
+- `import { useMemo, useState } from 'react';`
+- `const total = useMemo(() => sum(items), [items, sum]);`
+
+%% solution
+```tsx
+import { useMemo, useState } from 'react';
+
+export function Total({ items, sum }: { items: number[]; sum: (items: number[]) => number }) {
+  const [showNote, setShowNote] = useState(false);
+  const total = useMemo(() => sum(items), [items, sum]);
+
+  return (
+    <div>
+      <p>Total: {total}</p>
+      <button onClick={() => setShowNote((s) => !s)}>Toggle note</button>
+      {showNote && <p>Note</p>}
+    </div>
+  );
+}
+```
 
 %% exercise perf-focus-input | Focus with a ref | 1 | tsx | react | SearchField | 8
 Build `<SearchField autoFocusOnMount? />` using a **ref** (no `autoFocus` attribute).
@@ -127,6 +449,35 @@ describe('SearchField', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<CopyField value />`** — a read-only input with a button that selects its text.
+
+```tsx
+import { useRef } from 'react';
+
+export function CopyField({ value }: { value: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);      // ① a box that will hold the real DOM node
+
+  return (
+    <div>
+      <input ref={inputRef} value={value} readOnly aria-label="Link" />   {/* ② React puts the DOM node into inputRef.current */}
+      <button onClick={() => inputRef.current?.select()}>Select</button> {/* ③ use it in an EVENT HANDLER (not during render) */}
+    </div>
+  );
+}
+```
+
+For `SearchField`: the input is **controlled** (state for its value), the **Focus** button calls `inputRef.current?.focus()`, **Clear** sets the state to `''` and focuses. "Focus on mount" is an **effect**: `useEffect(() => { if (autoFocusOnMount) inputRef.current?.focus(); }, [])` — the DOM node exists only after the first render, so you can't do it while rendering.
+
+%% explain
+- **An input labelled `Query`** (controlled).
+- **Focus** button focuses it; **Clear** empties it and focuses it.
+- **`autoFocusOnMount`** focuses it right after the first render — with a ref, not the `autoFocus` attribute.
+
+%% nudge
+- When does `inputRef.current` get filled in with the DOM node?
+- Which hook lets you run code right after the first render?
 
 %% hints
 - `const inputRef = useRef<HTMLInputElement>(null);` and `<input ref={inputRef} … />`.
@@ -266,6 +617,39 @@ describe('ProductList', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<FilteredNames names />`** — keep an expensive derived list from being recomputed on unrelated renders.
+
+```tsx
+import { useMemo, useState } from 'react';
+
+export function FilteredNames({ names, slowFilter }: { names: string[]; slowFilter: (n: string[], q: string) => string[] }) {
+  const [query, setQuery] = useState('');
+  const [dark, setDark] = useState(false);                 // unrelated state
+
+  const visible = useMemo(() => slowFilter(names, query), [names, query, slowFilter]);
+  //                         ① depends on names, query (and the function itself)
+
+  return (
+    <div data-theme={dark ? 'dark' : 'light'}>
+      <input aria-label="Filter" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <button onClick={() => setDark((d) => !d)}>Dark mode</button>
+      <ul>{visible.map((n) => <li key={n}>{n}</li>)}</ul>
+    </div>
+  );
+}
+```
+
+Toggling `dark` re-renders the component, but `names`, `query` and `slowFilter` are **the same**, so `useMemo` returns the cached list. Only typing (or new `names`) triggers the expensive call.
+
+%% explain
+- **Input `Filter`** (controlled), a **Dark mode** button (toggles `data-theme` on the wrapper), and a `<ul>` of names from `filterProducts`.
+- **`filterProducts` runs only when `products` or the query change** — not on the Dark-mode toggle.
+
+%% nudge
+- What are *all* the inputs of the expensive call? Those are your dependencies.
+- Does toggling dark mode change any of them?
 
 %% hints
 - `useMemo(() => filterProducts(products, query), [filterProducts, products, query])`.
@@ -419,6 +803,43 @@ describe('TodoApp', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: a memoised `Item` with a stable `onSelect`.**
+
+```tsx
+import { memo, useCallback, useState } from 'react';
+
+const Item = memo(function Item({ id, label, onSelect }: { id: number; label: string; onSelect: (id: number) => void }) {
+  console.log('render item', id);               // ① memo: only runs when a prop changed
+  return <li><button onClick={() => onSelect(id)}>{label}</button></li>;
+});
+
+export function Menu({ items }: { items: { id: number; label: string }[] }) {
+  const [selected, setSelected] = useState<number | null>(null);
+  const [clicks, setClicks] = useState(0);                                  // unrelated counter
+
+  const onSelect = useCallback((id: number) => setSelected(id), []);        // ② STABLE identity → memo can compare equal
+  return (
+    <>
+      <button onClick={() => setClicks((c) => c + 1)}>Clicked {clicks}</button>
+      <ul>{items.map((it) => <Item key={it.id} {...it} onSelect={onSelect} />)}</ul>
+    </>
+  );
+}
+```
+
+Three pieces work together: **`memo`** on the row (skip when props are equal), a **`useCallback`** for the handler passed to it (so the prop *is* equal), and — for changing one row's data — the **functional update** (`setItems(prev => prev.map(...))`) so the handler doesn't need `items` in its dependencies. Missing any one of the three and every row re-renders again.
+
+%% explain
+- **Clicking the counter re-renders no rows.**
+- **Toggling a row re-renders only that row.**
+- **Behaviour is unchanged**: checkboxes still toggle.
+- The test counts renders through the `onRowRender(id)` callback.
+
+%% nudge
+- Which props does `Row` receive, and which of them get a *new identity* on every `TodoApp` render?
+- How can the toggle handler avoid depending on the `items` array?
+
 %% hints
 - Two things must hold for `memo(Row)` to skip a render: every prop keeps its identity. `item` does (untouched items are the same object) and `onRender` does (a stable prop) — but `toggle` is a brand-new function each render.
 - Make `toggle` stable: `useCallback((id) => setItems((prev) => prev.map(...)), [])`. The **functional** update means it no longer closes over `items`.
@@ -563,6 +984,37 @@ describe('useEvent', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `useLatest(value)`** — always gives you the newest value, through a ref.
+
+```tsx
+import { useRef } from 'react';
+
+export function useLatest<T>(value: T) {
+  const ref = useRef(value);
+  ref.current = value;          // ① update on every render (cheap, and intended for this pattern)
+  return ref;                   // ② the ref object itself is stable forever
+}
+```
+
+`useEvent(fn)` wraps that idea into a **function**:
+
+```tsx
+const latest = useLatest(fn);                         // newest fn, always
+return useCallback((...args) => latest.current(...args), []);   // stable wrapper that forwards to it
+```
+
+The wrapper function is created **once** (empty deps), so its identity never changes — but when called, it reads `latest.current`, which is the `fn` from the most recent render. That is "stable identity, fresh closure". (Write to the ref in an effect if you want to be strictly render-pure; both approaches pass the tests.)
+
+%% explain
+- **The returned function is the same object** on every render.
+- **Calling it forwards all arguments** and returns the latest `fn`'s result.
+- **After a re-render with a new `fn`**, the next call uses the new one.
+
+%% nudge
+- Where can you keep "the newest `fn`" so a never-changing wrapper can reach it?
+- Why must the wrapper have an empty dependency list?
+
 %% hints
 - Hold `fn` in a ref: `const ref = useRef(fn);`.
 - Update the ref **after** each render commits: `useLayoutEffect(() => { ref.current = fn; })` (layout effect so it's fresh before any event or passive effect can fire).
@@ -699,6 +1151,29 @@ describe('VirtualList', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: the range calculation for a *horizontal* strip of columns.**
+
+```ts
+function visibleRange(scrollLeft: number, width: number, colWidth: number, count: number, overscan = 2) {
+  const start = Math.max(0, Math.floor(scrollLeft / colWidth) - overscan);     // ① first column touching the window, minus a margin
+  const end = Math.min(count, Math.ceil((scrollLeft + width) / colWidth) + overscan);   // ② one past the last column, plus a margin
+  return [start, end] as const;
+}
+```
+
+It's the same formula the exercise gives, just written once in a helper. Then the component is three pieces: a **container** with fixed height and `onScroll={(e) => setTop(e.currentTarget.scrollTop)}`, a **spacer** div with `height: items.length * itemHeight` and `position: 'relative'`, and **only** `items.slice(start, end).map(...)` rows, each positioned with `top: (start + k) * itemHeight`. Use the real index as the `key`. Follow the roles and test ids in the prompt exactly: the tests find the viewport by `data-testid`.
+
+%% explain
+- **Container**: `role="list"`, `aria-label="Items"`, `data-testid="viewport"`, `height` and `overflow-y: auto`.
+- **Spacer**: `items.length * itemHeight` tall, `position: relative`.
+- **Rows**: `role="listitem"`, absolutely positioned (`top = index * itemHeight`, `height = itemHeight`), showing the item text.
+- **Range**: `start`/`end` from `scrollTop` with `overscan` (default 3); rows outside `[start, end)` are never rendered.
+
+%% nudge
+- What state changes when the user scrolls, and where do you read it from?
+- Which rows should exist at `scrollTop = 0` if the viewport is 200px tall and each row 20px?
 
 %% hints
 - One piece of state: `scrollTop`, set from `e.currentTarget.scrollTop`.

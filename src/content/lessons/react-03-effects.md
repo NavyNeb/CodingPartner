@@ -2,50 +2,174 @@
 id: react-effects
 track: react
 title: Effects, cleanup & data fetching
-summary: Synchronising with the outside world, dependency arrays, race conditions — and when not to use an effect at all.
+summary: How to sync a component with the outside world (timers, events, network), how the dependency array and cleanup work, and when you don't need an effect at all.
 ---
 
-## What an effect is for
+## The idea in one sentence
 
-Rendering must be pure: same props/state in → same JSX out. An **effect** is where you do things that *aren't* rendering, to **synchronise** your component with something outside React: a subscription, a timer, the document title, a WebSocket, a network request.
+An **effect** is where a component does something that **isn't rendering** — talking to the world outside React — **after** the screen has been updated.
+
+> **Analogy** Rendering is **drawing a poster**: it should only depend on the information you were given. An effect is the **errand you run after the poster is hung**: change the shop's window sign, start a timer, subscribe to a newsletter. And good errands have an **undo**: when the poster is replaced or taken down, you cancel what you set up. That undo is called **cleanup**.
+
+Rendering must stay **pure** (same props and state in → same JSX out). Anything else — a subscription, a timer, the document title, a WebSocket, a network request — goes in an effect:
 
 ```tsx
 useEffect(() => {
-  // runs AFTER the DOM is committed
+  // runs AFTER the DOM is updated
   const id = setInterval(tick, 1000);
-  return () => clearInterval(id);    // cleanup
+  return () => clearInterval(id);    // cleanup: undo what we set up
 }, [tick]);                          // re-run when `tick` changes
 ```
 
-## The dependency array
+## A live example: the lifecycle in order
 
-The array lists every reactive value (props, state, functions/objects defined in the component) that the effect **reads**. React re-runs the effect when any of them changed (`Object.is`).
+Press the buttons and **read the console panel** under the preview. It logs when the effect starts and when its cleanup runs:
 
-| Deps | Runs |
-| --- | --- |
-| omitted | after **every** render |
-| `[]` | once after mount (cleanup on unmount) |
-| `[a, b]` | after mount and whenever `a` or `b` changed |
+```tsx try
+import { useEffect, useState } from 'react';
 
-**Don't lie to the array.** Leaving out a value you use creates a **stale closure**: the effect keeps using the value from the render it was created in. The lint rule `react-hooks/exhaustive-deps` is right far more often than you are.
+function Watcher({ id }: { id: number }) {
+  useEffect(() => {
+    console.log('effect: start watching', id);
+    return () => console.log('cleanup: stop watching', id);
+  }, [id]);
+  return <p style={{ fontFamily: 'system-ui' }}>Watching #{id}</p>;
+}
 
-## Cleanup runs before the next effect, and on unmount
-
-Order for a change from A → B: render(B) → **cleanup(A)** → effect(B). That's how you avoid leaking listeners and timers, and it's how you cancel in-flight work:
-
-```tsx
-useEffect(() => {
-  const onResize = () => setWidth(window.innerWidth);
-  window.addEventListener('resize', onResize);
-  return () => window.removeEventListener('resize', onResize);
-}, []);
+export default function App() {
+  const [id, setId] = useState(1);
+  const [shown, setShown] = useState(true);
+  return (
+    <div style={{ fontFamily: 'system-ui' }}>
+      <button onClick={() => setId((n) => n + 1)}>Change id</button>{' '}
+      <button onClick={() => setShown((s) => !s)}>{shown ? 'Unmount' : 'Mount'}</button>
+      {shown && <Watcher id={id} />}
+    </div>
+  );
+}
 ```
 
-In development, **StrictMode mounts → unmounts → mounts again** on purpose. If your effect isn't idempotent with a proper cleanup, you'll see it immediately. That isn't a bug in React; it's a preview of what happens when users navigate away and back.
+Step through the same story:
 
-## Data fetching and race conditions
+```stepper Effect and cleanup, in order
+code:
+  function Watcher({ id }) {
+    useEffect(() => {
+      console.log('start', id);
+      return () => console.log('stop', id);
+    }, [id]);
+    return <p>Watching #{id}</p>;
+  }
+---
+line: 6
+say: **Mount** with `id = 1`. React renders the component first. The effect has not run yet.
+What React does: render (id = 1)
+Console:
+---
+line: 2-3
+say: The DOM is updated on screen. **Now** the effect runs and logs `start 1`.
+What React does: commit → run effect
+Console: start 1
+---
+line: 6
+say: The parent changes `id` to `2`. React renders again with the new value, and updates the DOM. The old effect is **still in place**.
+What React does: render (id = 2) → commit
+---
+line: 4
+say: Before running the new effect, React runs the **cleanup of the previous one**: `stop 1`. (The cleanup still remembers `id = 1` — it's a closure from that render.)
+What React does: cleanup of the effect from id = 1
+Console: start 1 | stop 1
+---
+line: 3
+say: Then the new effect runs: `start 2`.
+What React does: run effect (id = 2)
+Console: start 1 | stop 1 | start 2
+---
+line: 4
+say: **Unmount:** the component disappears, and its last cleanup runs: `stop 2`. Nothing is left running.
+What React does: unmount → cleanup
+Console: start 1 | stop 1 | start 2 | stop 2
+```
 
-Two requests can resolve out of order. If the user clicks user 1 then user 2 quickly, response 1 may arrive **after** response 2 and overwrite it. Guard with a flag (or an `AbortController`) in the cleanup:
+![The order of render, commit, cleanup and effect on mount, update and unmount](fig:effect-timeline "Cleanup of the OLD effect runs before the NEW effect. That's how you avoid leaking listeners and timers.")
+
+> **Good to know** In development, `<StrictMode>` deliberately **mounts → unmounts → mounts again** a component to test that your effect and cleanup are a matched pair. If you see "start, stop, start" on first load, that's a *preview of what happens when users navigate away and back*, not a bug.
+
+## The dependency array
+
+The array lists every **reactive value** (props, state, and any function or object defined in the component) that the effect **reads**. React re-runs the effect when one of them changed (compared with `Object.is`).
+
+![No array runs every render; empty runs once; with values runs on mount and when they change](fig:deps-array "Filled dot = the effect runs.")
+
+| Deps | The effect runs |
+| --- | --- |
+| omitted | after **every** render |
+| `[]` | once, after mount (cleanup on unmount) |
+| `[a, b]` | after mount, and whenever `a` or `b` changed |
+
+**Don't lie to the array.** If the effect uses a value but you leave it out, the effect keeps using the value from the render it was created in — a **stale closure**. The lint rule `react-hooks/exhaustive-deps` is right far more often than you are.
+
+```tsx try
+import { useEffect, useState } from 'react';
+
+export default function App() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      console.log('interval sees count =', count);   // `count` is captured from the render that created this effect
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);                                             // ← lying: we read `count` but didn't list it
+
+  return <button onClick={() => setCount((c) => c + 1)}>count: {count}</button>;
+}
+```
+
+Click a few times and watch the console: it keeps printing `0`. Change `[]` to `[count]` and run again: now the effect restarts whenever `count` changes (and the cleanup clears the old interval), so it prints the current value.
+
+## Fetching data — and the race condition
+
+Two requests can finish **out of order**. If the user clicks user 1 and then quickly user 2, the slow response for user 1 might arrive *after* user 2's and overwrite it. Try it: click **user 1** then immediately **user 2**. Watch what's displayed at the end — then tick the checkbox and repeat:
+
+```tsx try
+import { useEffect, useState } from 'react';
+
+// Pretend network: user 1 is slow (800ms), user 2 is fast (100ms).
+const fakeFetch = (id: number) =>
+  new Promise<string>((resolve) => setTimeout(() => resolve(`User ${id}`), id === 1 ? 800 : 100));
+
+function Profile({ id, guard }: { id: number; guard: boolean }) {
+  const [text, setText] = useState('…');
+
+  useEffect(() => {
+    let ignore = false;                       // set to true by the cleanup
+    fakeFetch(id).then((t) => {
+      if (!guard || !ignore) setText(t);      // with the guard: drop answers nobody wants any more
+    });
+    return () => { ignore = true; };
+  }, [id, guard]);
+
+  return <p>Showing: <b>{text}</b></p>;
+}
+
+export default function App() {
+  const [id, setId] = useState(2);
+  const [guard, setGuard] = useState(false);
+  return (
+    <div style={{ fontFamily: 'system-ui' }}>
+      <button onClick={() => setId(1)}>user 1 (slow)</button>{' '}
+      <button onClick={() => setId(2)}>user 2 (fast)</button>{' '}
+      <label><input type="checkbox" checked={guard} onChange={(e) => setGuard(e.target.checked)} /> ignore stale answers</label>
+      <Profile id={id} guard={guard} />
+    </div>
+  );
+}
+```
+
+![Two fetches finish out of order; the cleanup sets ignore so the late one is discarded](fig:effect-race "Cleanup says: whatever I started is no longer wanted.")
+
+The pattern:
 
 ```tsx
 useEffect(() => {
@@ -58,26 +182,192 @@ useEffect(() => {
 }, [id]);
 ```
 
-Model async state as a **discriminated union** (`idle | loading | ok | error`) rather than three booleans that can disagree. In real apps prefer a data library (TanStack Query, SWR, RSC/`use`) — but you need to understand this to debug them.
+Model async state as **one object with a status** (`idle | loading | ok | error`) — a *discriminated union* — rather than three booleans (`isLoading`, `isError`, `data`) that can disagree. In real apps reach for a data library (TanStack Query, SWR) — but you need to understand this to debug them.
 
 ## You might not need an effect
 
 Effects are an escape hatch. Before writing one, ask:
 
 - Can I **calculate it during render**? (`const fullName = first + ' ' + last` — no state, no effect.)
-- Is it a response to a **user event**? Do it in the event handler.
-- Am I copying props into state and syncing with an effect? Use the prop directly, or reset with a `key`.
-- Am I notifying a parent after state changes? Call the parent's callback in the same event handler.
+- Is it a **reaction to a user action**? Do it in the event handler.
+- Am I **copying props into state** and syncing with an effect? Use the prop directly, or reset with a `key`.
+- Do I need to **tell the parent** something changed? Call its callback in the same event handler.
 
-`useEffect` after every state change to "keep two states in sync" produces extra renders and flicker, and is a classic interview red flag.
+```tsx
+// ❌ an effect to "keep two states in sync": extra render + flicker
+useEffect(() => { setFullName(first + ' ' + last); }, [first, last]);
 
-## `useLayoutEffect`
+// ✅ just calculate it
+const fullName = first + ' ' + last;
+```
 
-Runs synchronously after DOM mutation but **before paint** — use it to measure layout and adjust before the user sees a frame (tooltips, scroll restoration). Otherwise stick to `useEffect`.
+**`useLayoutEffect`** runs after the DOM changes but **before the browser paints** — use it only to measure layout and adjust before the user sees a frame (tooltips, scroll restoration). Otherwise use `useEffect`.
 
 ## Testing effects
 
-Wrap time-travel and async in `act` so React flushes effects and state: `act(() => jest.advanceTimersByTime(1000))`, `await act(async () => { … })`, or `await screen.findBy…`/`waitFor`. Tests check *observable* outcomes — DOM text, listener registration, timers left running — not "the effect ran".
+Wrap time travel and async work in `act` so React flushes effects and state: `act(() => jest.advanceTimersByTime(1000))`, `await act(async () => { … })`, or `await screen.findBy…` / `waitFor`. Test *observable outcomes* — the text on screen, the listener registered, timers left running — not "the effect ran".
+
+## Common mistakes
+
+1. **Lying in the dependency array** → stale values.
+2. **Forgetting cleanup** → duplicate timers/listeners and memory leaks.
+3. **No race protection** in fetch effects.
+4. **An effect to derive state** (should be computed during render).
+5. **Putting an object/function created each render in the deps** → the effect re-runs every time (memoise it or move it inside the effect).
+6. **Making the effect callback itself `async`** — it must return either nothing or a cleanup function, not a promise. Define an async function *inside* and call it.
+
+## Quick check
+
+```check
+Q: When does `useEffect(fn, [])` run `fn`?
+A) After every render
+B) Once after the first render (and its cleanup on unmount) *
+C) Before the first render
+D) Only when a prop changes
+Why: An empty dependency array means "no reactive values to watch", so the effect runs once after mount.
+---
+Q: A dependency changes from A to B. In what order do things happen?
+A) effect(B), then cleanup(A)
+B) cleanup(A), then render
+C) render(B), then effect(B) only — cleanup is for unmount
+D) render(B), then cleanup(A), then effect(B) *
+Why: React renders with the new value, commits, runs the old effect's cleanup, then runs the new effect.
+---
+Q: An effect reads `count` but the dependency array is `[]`. What happens?
+A) The effect always sees the `count` from the render where it was created (a stale closure) *
+B) React throws an error
+C) `count` becomes global
+D) The effect runs on every render
+Why: The effect is only recreated when a dependency changes; with `[]` it keeps using its first render's values.
+---
+Q: You keep `fullName` in state and update it in an effect whenever `first` or `last` changes. What is the better approach?
+A) Use `useLayoutEffect`
+B) Add a third effect
+C) Compute `fullName` during render; it doesn't need state or an effect *
+D) Store it in `localStorage`
+Why: Values that can be derived from props or state should be calculated while rendering. Effects for "syncing state" cause extra renders.
+---
+Q: Why is an `ignore` flag set in the cleanup of a fetch effect?
+A) To make the request faster
+B) To stop an old request's late response from overwriting newer data *
+C) To cancel the network request itself
+D) Because `fetch` requires it
+Why: The flag doesn't cancel the request; it makes the stale response harmless. (`AbortController` can cancel the request too.)
+```
+
+## Recap
+
+- **Effects** sync a component with the outside world **after** render; rendering stays pure.
+- The effect can return a **cleanup**. Order on change: render → **cleanup(old)** → effect(new); on unmount: cleanup.
+- **Dependencies**: omitted = every render, `[]` = once, `[a, b]` = when they change. **Never lie** — stale closures.
+- **Fetching**: guard against races with an `ignore` flag or `AbortController`; model state as `idle | loading | ok | error`.
+- **You might not need an effect**: derive during render, use event handlers, reset with `key`.
+- Test outcomes with `act` / `waitFor`, not implementation.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: mount & unmount messages | The lifecycle example: an effect with `[]` and a cleanup |
+| Document title | Effect + cleanup that restores the previous value; dependencies |
+| Window width listener | Subscribing once, removing the listener in cleanup, reading initial state lazily |
+| Stopwatch | `setInterval` with cleanup, and updater functions (so you don't need `count` in deps) |
+| User profile with race-safe fetching | The race example, status as a union, retry |
+| Debounced search box | Debounce as an effect (timer + cleanup) + race protection |
+
+%% exercise react-guided-lifecycle | Guided: mount & unmount messages | 1 | tsx | react | Lifecycle | 6 | guided
+Build `<Lifecycle onMount onUnmount />`. It renders nothing visible (`null`), but:
+
+- calls `onMount()` **once**, after the component has mounted;
+- calls `onUnmount()` **once**, when the component is removed;
+- does **not** call them again when the parent re-renders.
+
+%% worked
+**A similar problem, solved: `<LogWhileMounted message />`** — logs a message when it appears and another when it disappears.
+
+```tsx
+import { useEffect } from 'react';
+
+export function LogWhileMounted({ message }: { message: string }) {
+  useEffect(() => {
+    console.log('appeared:', message);                 // ① runs after the component is on screen
+    return () => console.log('disappeared:', message); // ② the cleanup: runs on unmount
+  }, []);                                              // ③ [] = "run once" (the effect watches nothing)
+  return null;                                         // ④ nothing to draw
+}
+```
+
+The effect function is the "**do this**"; the function it returns is the "**undo this**". With `[]`, React runs "do" once after mount and "undo" once on unmount — exactly the two calls you need here. (The linter will remind you that `message` is used inside but not listed; in this exercise the callbacks are expected to be called once, so `[]` is what the tests want.)
+
+%% explain
+- **`onMount`** is called once after the first render.
+- **`onUnmount`** is called once when the component is removed.
+- **Re-rendering** with the same props calls neither again.
+
+%% nudge
+- Which part of `useEffect` runs on unmount?
+- What do you put in the dependency array to say "only once"?
+
+%% starter
+```tsx
+import { useEffect } from 'react';
+
+export function Lifecycle({ onMount, onUnmount }: { onMount: () => void; onUnmount: () => void }) {
+  // Step 1 — call useEffect with an empty dependency array [].
+  // Step 2 — inside it, call onMount().
+  // Step 3 — return a cleanup function that calls onUnmount().
+  return null;
+}
+```
+
+%% tests
+```tsx
+describe('Lifecycle', () => {
+  it('calls onMount once after mounting', () => {
+    const onMount = jest.fn();
+    render(<Lifecycle onMount={onMount} onUnmount={() => {}} />);
+    expect(onMount).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call onUnmount while mounted', () => {
+    const onUnmount = jest.fn();
+    render(<Lifecycle onMount={() => {}} onUnmount={onUnmount} />);
+    expect(onUnmount).not.toHaveBeenCalled();
+  });
+
+  it('calls onUnmount once when removed', () => {
+    const onUnmount = jest.fn();
+    const { unmount } = render(<Lifecycle onMount={() => {}} onUnmount={onUnmount} />);
+    unmount();
+    expect(onUnmount).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run again on re-render', () => {
+    const onMount = jest.fn();
+    const onUnmount = jest.fn();
+    const { rerender } = render(<Lifecycle onMount={onMount} onUnmount={onUnmount} />);
+    rerender(<Lifecycle onMount={onMount} onUnmount={onUnmount} />);
+    expect(onMount).toHaveBeenCalledTimes(1);
+    expect(onUnmount).not.toHaveBeenCalled();
+  });
+});
+```
+
+%% hints
+- `useEffect(() => { onMount(); return () => onUnmount(); }, []);`
+
+%% solution
+```tsx
+import { useEffect } from 'react';
+
+export function Lifecycle({ onMount, onUnmount }: { onMount: () => void; onUnmount: () => void }) {
+  useEffect(() => {
+    onMount();
+    return () => onUnmount();
+  }, []);
+  return null;
+}
+```
 
 %% exercise react-page-title | Document title | 1 | tsx | react | PageTitle | 8
 Build `<PageTitle title />` — it renders nothing but keeps `document.title` in sync.
@@ -131,6 +421,32 @@ describe('PageTitle', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<BodyClass name />`** — adds a CSS class to `<body>` while mounted, and removes it afterwards.
+
+```tsx
+import { useEffect } from 'react';
+
+export function BodyClass({ name }: { name: string }) {
+  useEffect(() => {
+    document.body.classList.add(name);             // ① set up: change something OUTSIDE React
+    return () => document.body.classList.remove(name);   // ② undo it exactly
+  }, [name]);                                      // ③ re-run (undo old, apply new) when `name` changes
+  return null;
+}
+```
+
+For the title, the "undo" is **restore the previous value**: save it before you overwrite it (`const previous = document.title;`), and in the cleanup put `document.title = previous` back. Saving inside the effect means each run remembers what *it* replaced.
+
+%% explain
+- **While mounted**, `document.title` is `"<title> | App"`.
+- **It updates** when the `title` prop changes.
+- **On unmount** the previous title is restored.
+
+%% nudge
+- Where should you save the old title so the cleanup can put it back?
+- Which value belongs in the dependency array?
 
 %% hints
 - Effect with `[title]` as its dependency.
@@ -222,6 +538,42 @@ describe('WindowSize', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<OnlineStatus />`** — shows whether the browser is online, updating live.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export function OnlineStatus() {
+  const [online, setOnline] = useState(() => navigator.onLine);   // ① lazy initial state: read the real value on the FIRST render (no flash)
+
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);            // ② subscribe once…
+    window.addEventListener('offline', off);
+    return () => {                                    // ③ …and unsubscribe in cleanup
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);                                             // ④ [] — nothing reactive is read inside
+
+  return <p>{online ? 'Online' : 'Offline'}</p>;
+}
+```
+
+For the window width the same three ideas apply: `useState(() => window.innerWidth)` for the first render, one `resize` listener added in an effect, removed in the cleanup.
+
+%% explain
+- **Renders `Width: <n>`** with the real `window.innerWidth` already in the first render.
+- **Updates live** on `resize` events.
+- **Subscribes once** (not on every render).
+- **Removes the listener on unmount.**
+
+%% nudge
+- How can the very first render already show the real width (no flash of `0`)?
+- What must the cleanup remove, and is it *the same function* you added?
 
 %% hints
 - Lazy initial state: `useState(() => window.innerWidth)` — no effect needed for the first value.
@@ -331,6 +683,44 @@ describe('Stopwatch', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<Countdown from />`** — counts down once per second while running, and stops at 0.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+export function Countdown({ from }: { from: number }) {
+  const [left, setLeft] = useState(from);
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    if (!running) return;                                // ① not running → no interval (and no cleanup needed)
+    const id = setInterval(() => setLeft((n) => n - 1), 1000);   // ② updater form: no need to list `left` in deps
+    return () => clearInterval(id);                      // ③ stopping or unmounting clears it
+  }, [running]);                                         // ④ re-run exactly when running flips
+
+  return (
+    <div>
+      <p>Left: {left}s</p>
+      <button onClick={() => setRunning((r) => !r)}>{running ? 'Pause' : 'Start'}</button>
+    </div>
+  );
+}
+```
+
+Why `setLeft((n) => n - 1)` and not `setLeft(left - 1)`? The second would read `left` from the render that created the interval (stale), *and* force `left` into the dependency array, restarting the interval every second. The updater form removes both problems. For the stopwatch, count **up**, and add **Reset** (`setValue(0); setRunning(false)`).
+
+%% explain
+- **Shows `Elapsed: <n>s`**, starting at 0.
+- **One button** toggles **Start** / **Stop**; while running, it adds 1 each second.
+- **Stopping pauses** (keeps the value); **starting again resumes**.
+- **Reset** sets the value to 0 and stops.
+- **Never more than one interval**, and none when stopped or unmounted (the tests check for leftover timers).
+
+%% nudge
+- Which state decides whether an interval should exist?
+- Why is `setValue((v) => v + 1)` better than `setValue(value + 1)` inside the interval?
 
 %% hints
 - State: `seconds` and `running`.
@@ -486,6 +876,50 @@ describe('UserProfile', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<Joke fetchJoke />`** — loading / success / error with a retry, using a status union.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+type State =
+  | { status: 'loading' }
+  | { status: 'ok'; text: string }
+  | { status: 'error' };
+
+export function Joke({ fetchJoke }: { fetchJoke: () => Promise<string> }) {
+  const [state, setState] = useState<State>({ status: 'loading' });
+  const [attempt, setAttempt] = useState(0);              // ① bumping this re-runs the effect: that's our "Retry"
+
+  useEffect(() => {
+    let ignore = false;                                   // ② race/unmount guard
+    setState({ status: 'loading' });
+    fetchJoke()
+      .then((text) => { if (!ignore) setState({ status: 'ok', text }); })
+      .catch(() => { if (!ignore) setState({ status: 'error' }); });
+    return () => { ignore = true; };                      // ③ the cleanup marks this request as unwanted
+  }, [fetchJoke, attempt]);
+
+  if (state.status === 'loading') return <p role="status">Loading…</p>;
+  if (state.status === 'error') return <div><p role="alert">Could not load</p><button onClick={() => setAttempt((a) => a + 1)}>Retry</button></div>;
+  return <p>{state.text}</p>;
+}
+```
+
+For `UserProfile`, replace the dependency `fetchJoke` with `[userId, fetchUser, attempt]` so a new `userId` refetches (and shows `Loading…` again), and render the name in a heading and the email in a paragraph.
+
+%% explain
+- **Loading**: `Loading…` with `role="status"`.
+- **Success**: the name in a heading and the email in a paragraph.
+- **Failure**: an alert `Could not load user` and a **Retry** button that fetches again (showing `Loading…` between).
+- **New `userId`** fetches the new user and shows `Loading…` again.
+- **Race safety**: only the current `userId`'s response is displayed; nothing updates after unmount.
+- **`fetchUser` is called once per `userId`** (and once more per retry).
+
+%% nudge
+- What state must change when `userId` changes, *before* the new data arrives?
+- How does the cleanup make an old response harmless?
 
 %% hints
 - Model the state as one object: `{ status: 'loading' } | { status: 'ok', user } | { status: 'error' }`.
@@ -684,6 +1118,36 @@ describe('SearchBox', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `useDebounced(value, ms)`** — the debounce as an effect: a timer that restarts whenever the value changes.
+
+```tsx
+import { useEffect, useState } from 'react';
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), ms);   // ① start a countdown
+    return () => clearTimeout(id);                          // ② a new value → cleanup cancels the old countdown
+  }, [value, ms]);
+  return debounced;
+}
+```
+
+That's the whole trick: **cleanup = "cancel the previous timer"**, so only a value that stays unchanged for `ms` gets through. `SearchBox` then has a *second* effect that reacts to the debounced query: if it's blank → clear results and don't call `search`; otherwise set `Searching…`, call `search(query)`, and use the `ignore`-flag pattern from the lesson so only the **latest** query's answer is shown (and nothing updates after unmount).
+
+%% explain
+- **An input labelled `Search`.**
+- **Calls `search` only after `delay` ms without typing** (default 300), with the trimmed query; every keystroke restarts the wait.
+- **Blank query** never calls `search` and clears results.
+- **`Searching…`** (`role="status"`) while a request is in flight.
+- **Results** as a `<ul>`; none → `No results`; rejection → alert `Search failed`.
+- **Latest wins**: out-of-order responses are ignored. **No timers or updates outlive the component.**
+
+%% nudge
+- Which part of an effect cancels the previous countdown when a new keystroke arrives?
+- When the query changes while a request is in flight, how do you make the old answer harmless?
 
 %% hints
 - State: `query`, `results`, and a `status` (`'idle' | 'searching' | 'done' | 'error'`).
