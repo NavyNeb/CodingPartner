@@ -76,6 +76,7 @@ function loadSources(): Record<string, string> {
   return out;
 }
 const tracks = buildTracks(loadSources(), trackMeta);
+process.on('unhandledRejection', () => { /* starters often leave promises dangling; the browser only logs these */ });
 const filter = process.argv[2];
 let failures = 0, total = 0, tests = 0;
 const seen = new Set<string>();

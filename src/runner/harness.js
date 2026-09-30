@@ -989,6 +989,24 @@
       };
     }
 
+    /* Sandboxed iframes have an opaque origin, so real localStorage throws there. Fall back to an in-memory Storage. */
+    function memoryStorage() {
+      var data = {};
+      return {
+        getItem: function (k) { return Object.prototype.hasOwnProperty.call(data, k) ? data[k] : null; },
+        setItem: function (k, v) { data[String(k)] = String(v); },
+        removeItem: function (k) { delete data[k]; },
+        clear: function () { data = {}; },
+        key: function (i) { return Object.keys(data)[i] || null; },
+        get length() { return Object.keys(data).length; },
+      };
+    }
+    ['localStorage', 'sessionStorage'].forEach(function (name) {
+      var usable = true;
+      try { g[name].getItem('__probe'); } catch (e) { usable = false; }
+      if (!usable) Object.defineProperty(g, name, { value: memoryStorage(), configurable: true });
+    });
+
     reactCleanups.push(cleanup);
     var screen = bindQueries(doc.body);
     return Object.assign({}, {
