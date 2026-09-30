@@ -1,6 +1,7 @@
 import { Marked } from 'marked';
 import { classHighlighter, highlightCode } from '@lezer/highlight';
 import { javascriptLanguage } from '@codemirror/lang-javascript';
+import { getFigure } from '../figures';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const JS_LANGS = new Set(['js', 'jsx', 'ts', 'tsx', 'javascript', 'typescript', 'json']);
@@ -19,6 +20,8 @@ export function highlightToHtml(code: string, lang?: string): string {
   return out;
 }
 
+const capHtml = (t: string): string => esc(t).replace(/`([^`]+)`/g, '<code>$1</code>');
+
 export const slug = (s: string) =>
   s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-');
 
@@ -26,8 +29,27 @@ const marked = new Marked({
   gfm: true,
   renderer: {
     code({ text, lang }) {
-      const l = (lang ?? '').split(/\s/)[0];
+      const info = (lang ?? '').trim().split(/\s+/);
+      const l = info[0];
+      const enc = (v: string) => encodeURIComponent(v);
+      if (l === 'check') return `<div class="widget w-check" data-body="${enc(text)}"><p class="muted">Loading quick check…</p></div>\n`;
+      if (l === 'stepper') return `<div class="widget w-stepper" data-info="${enc(lang ?? '')}" data-body="${enc(text)}"><p class="muted">Loading walkthrough…</p></div>\n`;
+      if (info.includes('try')) {
+        const fallback = `<pre class="code" data-lang="${l}"><code>${highlightToHtml(text, l)}</code></pre>`;
+        return `<div class="widget w-try" data-lang="${l}" data-predict="${info.includes('predict') ? 1 : 0}" data-code="${enc(text)}">${fallback}</div>\n`;
+      }
       return `<pre class="code"${l ? ` data-lang="${l}"` : ''}><code>${highlightToHtml(text, l)}</code></pre>`;
+    },
+    paragraph({ tokens }) {
+      const img = tokens.length === 1 && tokens[0].type === 'image' ? tokens[0] : null;
+      if (img && img.href.startsWith('fig:')) {
+        const id = img.href.slice(4);
+        const fig = getFigure(id);
+        if (!fig) return `<p class="fig-missing">Missing figure “${esc(id)}”</p>\n`;
+        const cap = img.title ? `<figcaption>${capHtml(img.title)}</figcaption>` : '';
+        return `<figure class="fig"${fig.animated ? ' data-anim="1"' : ''}><div class="fig-art">${fig.svg}</div>${cap}</figure>\n`;
+      }
+      return `<p>${this.parser.parseInline(tokens)}</p>\n`;
     },
     heading({ tokens, depth }) {
       const inner = this.parser.parseInline(tokens);
@@ -37,7 +59,9 @@ const marked = new Marked({
     blockquote({ tokens }) {
       const inner = this.parser.parse(tokens);
       const isIncident = /^\*\*INCIDENT/.test(tokens[0]?.raw ?? '') || /^<p><strong>INCIDENT/.test(inner);
-      return `<blockquote${isIncident ? ' class="incident"' : ''}>${inner}</blockquote>\n`;
+      const kind = /^<p><strong>(Analogy|Remember|Real life|Big idea)/.test(inner) ? 'idea' : /^<p><strong>(Watch out|Common mistake|Careful)/.test(inner) ? 'warn' : /^<p><strong>(Try this|You should now|Good to know)/.test(inner) ? 'ok' : '';
+      const cls = isIncident ? 'incident' : kind ? `callout ${kind}` : '';
+      return `<blockquote${cls ? ` class="${cls}"` : ''}>${inner}</blockquote>\n`;
     },
     link({ href, tokens }) {
       const inner = this.parser.parseInline(tokens);

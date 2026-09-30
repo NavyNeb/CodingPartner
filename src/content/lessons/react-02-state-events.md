@@ -2,85 +2,547 @@
 id: react-state
 track: react
 title: State, events & forms
-summary: State as a snapshot, updater functions, controlled inputs, lifting state up — and building real widgets.
+summary: How a React component remembers things, reacts to clicks and typing, and shares data — explained step by step, then used to build real widgets.
 ---
 
-## State is a snapshot
+## The idea in one sentence
 
-`useState` gives you the value **for this render**. Calling the setter doesn't change the variable you're holding; it schedules a re-render, and the *next* call to your component sees the new value.
+In React you don't change the screen directly. You **change a piece of remembered data called *state***, and React **redraws the screen** to match it.
+
+> **Analogy** Think of a restaurant menu board with a chalkboard behind the counter. You (the component) never run out and repaint the sign yourself. You just update the stock list on the back wall — "Soup: 3 left" — and a helper (React) repaints the sign to match. **State is the stock list. The screen is the sign.**
+
+![The React loop: state becomes a screen, the user triggers an event, the event changes state, React redraws](fig:react-loop "① State holds the data. ② React turns state into the screen (this step is called a render). ③ When the user clicks or types, an event handler changes the state, and the loop repeats.")
+
+Everything in this lesson is a detail of that loop:
+
+1. **State** — what the component remembers (`useState`).
+2. **Render** — your component function runs and returns what the screen should look like *for the current state*.
+3. **Events** — clicks and typing run your handler functions, which call a *setter* to change the state.
+
+## `useState`, line by line
 
 ```tsx
-function Counter() {
-  const [n, setN] = useState(0);
-  function addThree() {
-    setN(n + 1);
-    setN(n + 1);
-    setN(n + 1);   // n is 0 in ALL three → result is 1, not 3
-  }
+import { useState } from 'react';
+
+function LikeButton() {
+  const [likes, setLikes] = useState(0);
+
+  return <button onClick={() => setLikes(likes + 1)}>👍 {likes}</button>;
 }
 ```
 
-Fix: pass an **updater function**, which receives the latest queued state:
+- `useState(0)` says: *"remember a value; the first time, start it at `0`."*
+- It gives back **two things** in an array: the current value (`likes`) and a **setter** function (`setLikes`). We grab both using array destructuring.
+- `setLikes(likes + 1)` says: *"please remember a new value, and redraw."*
+- `onClick={() => …}` passes React a function to call later. (Pass the function — don't call it yourself.)
 
-```tsx
-setN((prev) => prev + 1); // ×3 → 3
+Try it. Click the button, then edit the code (change the start value, add a second button, …) and run again:
+
+```tsx try
+import { useState } from 'react';
+
+export default function App() {
+  const [likes, setLikes] = useState(0);
+
+  return (
+    <div style={{ fontFamily: 'system-ui', padding: 12 }}>
+      <button onClick={() => setLikes(likes + 1)}>👍 {likes}</button>
+      <p>{likes === 0 ? 'No likes yet' : `${likes} people like this`}</p>
+    </div>
+  );
+}
 ```
 
-Use the updater form whenever the new state depends on the old one — it also fixes stale-closure bugs inside timeouts and effects.
+The text under the button isn't stored anywhere — it's **calculated from `likes`** every time the component redraws. Remember that: *UI = a function of state*.
 
-## Batching
+## Big gotcha: state is a snapshot
 
-React batches all updates in an event handler (and, since 18, in promises/timeouts too) into **one render**. Reading state right after `setX` still gives the old value — the update hasn't been applied yet.
+This is the concept most juniors get wrong, so we'll go slowly.
 
-## Never mutate state
+Every time React redraws, it **calls your component function again from the top**. Each call gets its own fixed value of `count`. That value doesn't change *during* that call — even after you call `setCount`. It is a **snapshot** of the state taken at the start of that render.
 
-React compares by identity (`Object.is`). Mutating an array/object and re-setting the same reference means "nothing changed": no re-render, or worse, a half-updated UI.
+```tsx try
+import { useState } from 'react';
 
-```tsx
-setTodos([...todos, newTodo]);                       // add
-setTodos(todos.filter((t) => t.id !== id));          // remove
-setTodos(todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t))); // update
+export default function App() {
+  const [count, setCount] = useState(0);
+
+  function handleClick() {
+    setCount(count + 1);
+    console.log('count right after setCount is', count);
+  }
+
+  return (
+    <div style={{ fontFamily: 'system-ui', padding: 12 }}>
+      <button onClick={handleClick}>Add one</button>
+      <p>On screen: {count}</p>
+    </div>
+  );
+}
 ```
 
-## What should be state?
+Click once and read the console below the preview: it says `0`, even though the screen will show `1`. `setCount` doesn't change the `count` variable you're holding; it **asks for a new render**, and *that* render has `count = 1`.
 
-Put it in state only if it **changes over time** *and* **can't be computed** from other state/props. Derive the rest during render:
+Now the classic puzzle. What do you expect when this handler runs?
+
+```tsx
+function addThree() {
+  setCount(count + 1);
+  setCount(count + 1);
+  setCount(count + 1);
+}
+```
+
+Three additions means `+3`, right? Step through it and see what really happens:
+
+```stepper Why three setCount calls add only 1
+code:
+  function addThree() {
+    setCount(count + 1);
+    setCount(count + 1);
+    setCount(count + 1);
+  }
+---
+line: 1
+say: The user clicks. React runs the handler **from Render #1**, where `count` is frozen at `0`.
+count in this render: 0
+React's to-do list:
+Next render: (not yet)
+---
+line: 2
+say: `count + 1` is `0 + 1 = 1`. React does **not** change anything yet. It just adds a note to its to-do list: "set count to 1".
+React's to-do list: set count to 1
+---
+line: 3
+say: `count` is **still 0** in this render, so this is `0 + 1 = 1` again. Another note: "set count to 1".
+React's to-do list: set count to 1 | set count to 1
+---
+line: 4
+say: Same story a third time. Three notes, all saying "set count to **1**".
+React's to-do list: set count to 1 | set count to 1 | set count to 1
+---
+line: 5
+say: The handler ends. React reads its to-do list — every note says 1, so the result is `1`. React redraws **once** (this is called *batching*).
+Next render: count = 1
+```
+
+![Three calls to setCount(count + 1) all use the same old value 0, so the next render has count 1](fig:state-snapshot "① All three lines read the same frozen `count` of 0. ② The next render therefore shows 1, not 3.")
+
+**The fix: pass a function.** Instead of a value, give `setCount` an **updater function** — "take whatever the latest value is and return the new one":
+
+```tsx
+function addThree() {
+  setCount((c) => c + 1);
+  setCount((c) => c + 1);
+  setCount((c) => c + 1);
+}
+```
+
+```stepper The updater function fixes it
+code:
+  function addThree() {
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+    setCount((c) => c + 1);
+  }
+---
+line: 2
+say: Now React's to-do list stores a **recipe** — "take the current number and add 1" — not a fixed answer.
+React's to-do list: c => c + 1
+Running value: 0
+---
+line: 3
+say: A second recipe is added to the list.
+React's to-do list: c => c + 1 | c => c + 1
+---
+line: 4
+say: And a third.
+React's to-do list: c => c + 1 | c => c + 1 | c => c + 1
+---
+line: 5
+say: When the handler ends, React runs the recipes **in order**, feeding each one the result of the previous: 0 → 1 → 2 → 3.
+Running value: 1 → 2 → 3
+Next render: count = 3
+```
+
+> **Remember** Whenever the new state depends on the old state — counters, toggles, "add to a list" — use the updater form: `setX((prev) => …)`. It is always correct, and it saves you from stale values inside timeouts and effects.
+
+## Never change state directly ("immutability")
+
+For objects and arrays there's a second trap. React decides whether something changed by comparing **identity** (`===`): "is this the *same object* as before?" If you change an array in place and hand the *same* array back, React sees nothing new and skips the redraw.
+
+```tsx
+// ❌ same array, changed in place → React does not notice
+todos.push(newTodo);
+setTodos(todos);
+
+// ✅ a NEW array → React notices
+setTodos([...todos, newTodo]);
+```
+
+![Mutating keeps the same array reference so React sees no change; copying creates a new reference so React redraws](fig:immutable-update "React compares references, not contents. Always hand `setState` a new array or object.")
+
+`[...todos, newTodo]` means "a new array with everything from `todos`, then `newTodo`". The three recipes you'll use all the time:
+
+```tsx
+// add
+setTodos([...todos, newTodo]);
+
+// remove — filter keeps everything that is NOT the one to remove
+setTodos(todos.filter((t) => t.id !== id));
+
+// change one item — map builds a new array, swapping just the matching item for a modified copy
+setTodos(todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+```
+
+(`{ ...t, done: !t.done }` means "a copy of `t`, but with `done` flipped".)
+
+Run this and read the code. Add a couple of items, then tick a box:
+
+```tsx try
+import { useState } from 'react';
+
+export default function App() {
+  const [todos, setTodos] = useState([
+    { id: 1, text: 'Learn state', done: true },
+    { id: 2, text: 'Learn events', done: false },
+  ]);
+
+  function toggle(id: number) {
+    setTodos(todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  }
+
+  return (
+    <ul style={{ fontFamily: 'system-ui' }}>
+      {todos.map((t) => (
+        <li key={t.id}>
+          <label>
+            <input type="checkbox" checked={t.done} onChange={() => toggle(t.id)} />{' '}
+            {t.text}
+          </label>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+## What should be state, and what shouldn't?
+
+Put something in state only if it **changes over time** *and* you **can't work it out** from other state or props. Everything else is calculated while rendering:
 
 ```tsx
 const [todos, setTodos] = useState<Todo[]>([]);
-const remaining = todos.filter((t) => !t.done).length; // ✅ derived — no second state to keep in sync
+const remaining = todos.filter((t) => !t.done).length; // calculated — no second state needed
 ```
 
-Duplicated/derived state is the source of most "why is my UI out of sync" bugs.
+If you stored `remaining` in its own state you'd have to remember to update it everywhere `todos` changes — and sooner or later you'd forget. **Two copies of the same truth drift apart.** Most "my UI is out of sync" bugs are this.
 
-## Controlled inputs
+## Forms: controlled inputs
 
-A **controlled** input's value lives in React state and flows back through `onChange`:
+A **controlled input** is an `<input>` whose text lives in React state. React always decides what it shows:
 
 ```tsx
 const [text, setText] = useState('');
+
 <input value={text} onChange={(e) => setText(e.target.value)} />
 ```
 
-Single source of truth ⇒ you can validate, transform, disable buttons, and reset it (`setText('')`) from anywhere. An **uncontrolled** input keeps its value in the DOM (read it via a ref or `FormData`) — fine for simple forms, awkward for live validation.
+![A controlled input: user types, onChange fires, the handler saves the text in state, React redraws with the value from state](fig:controlled-input "①–④ Typing doesn't change the input directly. It goes through state and comes back as the new `value`.")
 
-Forms: handle `onSubmit` on the `<form>` (not `onClick` on the button) so Enter works, and call `e.preventDefault()`.
+Step through a keystroke:
 
-## Events
+```stepper What happens when you type a letter
+code:
+  const [text, setText] = useState('');
 
-Handlers are functions you pass, not call: `onClick={handle}` ✅, `onClick={handle()}` ❌ (runs during render). React's synthetic events bubble like DOM events; `stopPropagation`/`preventDefault` work as you'd expect. To pass arguments, wrap: `onClick={() => remove(id)}`.
+  <input
+    value={text}
+    onChange={(e) => setText(e.target.value)}
+  />
+---
+line: 3
+say: The input shows `value={text}`. Right now `text` is `""`, so the box is empty.
+Box shows: (empty)
+state text: (empty)
+---
+line: 4
+say: You type **a**. The browser fires a change event, and React calls your `onChange` with it. `e.target.value` is what's in the box right now: `"a"`.
+Event says: e.target.value = "a"
+---
+line: 4
+say: `setText("a")` asks React to remember `"a"` and redraw.
+state text: a
+---
+line: 3
+say: React redraws. `value={text}` is now `"a"`, so the box shows **a**. The text went *through state* and came back.
+Box shows: a
+```
 
-## Lifting state up
+Because the state is the single source of truth, you can validate it, transform it, disable a button when it's empty, or clear it from anywhere (`setText('')`). Try making the box force uppercase:
 
-When two components need the same data, move the state to their **closest common parent** and pass value + setter down. If that gets tedious across many levels, reach for context/reducers (later lesson) — not for duplicated state.
+```tsx try
+import { useState } from 'react';
+
+export default function App() {
+  const [text, setText] = useState('');
+
+  return (
+    <div style={{ fontFamily: 'system-ui', padding: 12 }}>
+      <input value={text} onChange={(e) => setText(e.target.value.toUpperCase())} placeholder="Type here" />
+      <p>{text.length} characters</p>
+    </div>
+  );
+}
+```
+
+> **Watch out** If you write `value={text}` but forget `onChange`, the box becomes frozen — React keeps putting the old value back. (It will also warn you in the console.)
+
+**Submitting a form.** Handle `onSubmit` on the `<form>` — not `onClick` on the button — so pressing Enter works too, and call `e.preventDefault()` to stop the browser reloading the page:
+
+```tsx
+function handleSubmit(e: React.FormEvent) {
+  e.preventDefault();
+  addTodo(text.trim());
+  setText('');
+}
+
+<form onSubmit={handleSubmit}>
+  <input value={text} onChange={(e) => setText(e.target.value)} />
+  <button type="submit">Add</button>
+</form>
+```
+
+## Events: pass the function, don't call it
+
+```tsx
+<button onClick={remove}>      {/* ✅ React calls remove when clicked */}
+<button onClick={remove()}>    {/* ❌ calls remove RIGHT NOW, while rendering */}
+<button onClick={() => remove(id)}>   {/* ✅ need an argument? wrap it in an arrow function */}
+```
+
+## Sharing state: lift it up
+
+What if two components need the same data? Say a list on the left and a detail panel on the right, both needing "which item is selected".
+
+Siblings can't see each other's state. The fix: **move the state up to their closest common parent.** The parent passes the value **down** as a prop, and gives the children a **function** to report changes back **up**.
+
+![Before: two siblings each have their own copy. After: the parent owns the state and passes it down; children call functions to change it](fig:lift-state-up "Data flows down (props ↓). Events flow up (callbacks ↑). ① The parent owns the state. ② Children just display it and report clicks.")
+
+```tsx try
+import { useState } from 'react';
+
+function List({ items, selected, onSelect }: { items: string[]; selected: string; onSelect: (s: string) => void }) {
+  return (
+    <ul>
+      {items.map((it) => (
+        <li key={it}>
+          <button onClick={() => onSelect(it)} style={{ fontWeight: it === selected ? 700 : 400 }}>{it}</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Detail({ selected }: { selected: string }) {
+  return <p>You picked: <b>{selected || 'nothing yet'}</b></p>;
+}
+
+export default function App() {
+  const [selected, setSelected] = useState('');
+  return (
+    <div style={{ fontFamily: 'system-ui' }}>
+      <List items={['Apples', 'Pears', 'Plums']} selected={selected} onSelect={setSelected} />
+      <Detail selected={selected} />
+    </div>
+  );
+}
+```
+
+`App` owns `selected`. `List` and `Detail` are both just functions of the props they're given.
 
 ## Resetting state with `key`
 
-State belongs to a component *at a position in the tree*. Change its `key` and React treats it as a new component — state resets. `<Profile key={userId} />` is the idiomatic "reset this form when the user changes."
+State belongs to a component **at a particular place in the tree**. If you give a component a different `key`, React treats it as a brand-new component and throws its state away. `<Profile key={userId} />` is the standard way to say "start fresh when the user changes".
 
-## Testing what users do
+## How the exercises test you
 
-In these exercises tests interact like a user: `userEvent.click`, `userEvent.type`, `fireEvent.submit`; and query by **role/label/text**, not by implementation details. Reading the tests tells you exactly which accessible names your UI must expose.
+The tests behave like a user: `userEvent.click`, `userEvent.type`, and they find things by **role, label and text** — the same way a screen reader does (`getByRole('button', { name: 'Add' })`). So read each exercise's wording carefully: the labels and button names you must use are part of the spec.
+
+## Quick check
+
+```check
+Q: A component has `const [n, setN] = useState(0)`. A button handler runs `setN(n + 1); setN(n + 1);`. What will `n` be on the next render?
+A) 2
+B) 1 *
+C) 0
+D) It depends on the browser
+Why: Both calls use the same snapshot `n = 0`, so both queue "set to 1". The last one wins, giving 1. `setN((c) => c + 1)` twice would give 2.
+---
+Q: Which line correctly adds an item to a todo array held in state?
+A) `todos.push(item); setTodos(todos);`
+B) `todos[todos.length] = item;`
+C) `setTodos([...todos, item]);` *
+D) `setTodos(todos.concat);`
+Why: React compares by identity. Only a **new** array tells it something changed. `push` changes the old array in place, so `setTodos(todos)` hands back the same reference.
+---
+Q: You render `<input value={text} />` without an `onChange`. What happens when the user types?
+A) The box looks frozen — React keeps restoring the old value *
+B) The text appears normally
+C) The page reloads
+D) `text` updates automatically
+Why: A controlled input shows whatever `value` says. With nothing updating the state, it never changes.
+---
+Q: Two sibling components both need to know which item is selected. Where should `selected` live?
+A) In each sibling, kept in sync manually
+B) In a global variable
+C) In `localStorage`
+D) In their closest common parent, passed down as props *
+Why: Lifting state up keeps one source of truth. The parent passes the value down and a setter function down for the children to call.
+---
+Q: Which of these is **best** kept as state, rather than calculated?
+A) The number of unchecked todos
+B) `todos.length === 0`
+C) The text currently typed in a search box *
+D) The full name, made from first and last name
+Why: The typed text changes over time and can't be worked out from anything else. The other three can all be computed from existing state, so storing them would create a second copy that could drift out of sync.
+```
+
+## Recap
+
+- **State** = what a component remembers. Changing it makes React **redraw**; the screen is always a function of state.
+- **State is a snapshot**: inside one render, the value never changes, even right after `setX`.
+- If the new value depends on the old one, use the **updater form**: `setX((prev) => …)`.
+- **Never mutate** arrays/objects in state — build **new** ones (`[...arr, x]`, `filter`, `map`, `{ ...obj, key: v }`).
+- **Controlled input**: `value={state}` + `onChange` that sets the state. Submit with `onSubmit` + `preventDefault()`.
+- **Derive** what you can during render; only store what truly changes over time.
+- Share data by **lifting state up** to the closest common parent: props down, callbacks up.
+- Change a component's **`key`** to reset its state.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: like button | "`useState`, line by line" |
+| Counter (and the batching trap) | "State is a snapshot" + the updater function |
+| Accordion | State holding *which section is open*; `aria-expanded` from state; "what should be state" |
+| Star rating | Two pieces of state (selected + hover); events that pass arguments |
+| Todo list | "Never change state directly" recipes; controlled input; `onSubmit`; derived "items left" |
+| Signup form | Controlled inputs, `onSubmit`, and async state (a `submitting` flag) |
+
+Each exercise has a **worked example**, a plain-English list of **what the tests check**, and gentle **nudges** before the hints.
+
+%% exercise react-guided-like | Guided: like button | 1 | tsx | react | LikeButton | 6 | guided
+Build `<LikeButton />`.
+
+- It shows one button whose text is `Like (0)`. Each click adds one: `Like (1)`, `Like (2)`, …
+- Once there is at least one like, a paragraph `Thanks for the like!` appears under the button. Before that, it is not on the page at all.
+
+The skeleton is started for you — follow the numbered steps in the comments, running the tests after each one.
+
+%% worked
+**A similar problem, solved: `<Toggle />`** — a button that flips between `Off` and `On`, and shows a message only while it is on.
+
+```tsx
+import { useState } from 'react';
+
+export function Toggle() {
+  const [on, setOn] = useState(false);            // ① remember one value, start at false
+
+  return (
+    <div>
+      <button onClick={() => setOn((v) => !v)}>   {/* ② the updater form flips the old value */}
+        {on ? 'On' : 'Off'}                       {/* ③ what's on screen is calculated from state */}
+      </button>
+      {on && <p>The light is on</p>}              {/* ④ && renders the <p> only when on is true */}
+    </div>
+  );
+}
+```
+
+① `useState(false)` gives you the current value and its setter. ② Clicking *asks* React to remember the opposite value and redraw. ③ The button text isn't stored — it's worked out from `on` each render. ④ `cond && <jsx>` renders the element only when `cond` is true (when it's `false`, React renders nothing).
+
+Your exercise has the same four parts: a number instead of a boolean, `likes + 1` instead of `!v`, and `likes > 0` instead of `on`.
+
+%% explain
+- **Starts at `Like (0)`** and each click goes up by exactly one.
+- **The message is hidden at first** — the test checks it is *not in the document* (hidden with CSS would fail).
+- **The message appears after the first click** and stays.
+- **Each button keeps its own count** — two `<LikeButton />`s on the page must not affect each other.
+
+%% nudge
+- What is the one piece of data this component has to remember?
+- Is "should the thank-you show?" something you need to *store*, or can you work it out from the number?
+
+%% starter
+```tsx
+import { useState } from 'react';
+
+export function LikeButton() {
+  // Step 1 — remember the number of likes, starting at 0:
+  //          const [likes, setLikes] = useState(0);
+
+  // Step 2 — return a <button> whose text is  Like (<likes>)
+  //          and whose onClick adds one, using the updater form:  setLikes((n) => n + 1)
+
+  // Step 3 — under the button, show  <p>Thanks for the like!</p>  only when likes > 0.
+  //          Hint: {likes > 0 && <p>…</p>}
+  //          (Step 2 and 3 live inside the same returned <div>.)
+
+  return null;
+}
+```
+
+%% tests
+```tsx
+describe('LikeButton', () => {
+  it('starts at zero', () => {
+    render(<LikeButton />);
+    expect(screen.getByRole('button', { name: 'Like (0)' })).toBeInTheDocument();
+  });
+
+  it('adds one per click', async () => {
+    render(<LikeButton />);
+    await userEvent.click(screen.getByRole('button', { name: 'Like (0)' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Like (1)' }));
+    expect(screen.getByRole('button', { name: 'Like (2)' })).toBeInTheDocument();
+  });
+
+  it('only thanks you after the first like', async () => {
+    render(<LikeButton />);
+    expect(screen.queryByText('Thanks for the like!')).toBeNull();
+    await userEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('Thanks for the like!')).toBeInTheDocument();
+  });
+
+  it('keeps separate counts per button', async () => {
+    render(<><LikeButton /><LikeButton /></>);
+    await userEvent.click(screen.getAllByRole('button')[0]);
+    expect(screen.getAllByRole('button')[0]).toHaveTextContent('Like (1)');
+    expect(screen.getAllByRole('button')[1]).toHaveTextContent('Like (0)');
+  });
+});
+```
+
+%% hints
+- `const [likes, setLikes] = useState(0);` goes at the top of the function.
+- The button text `Like ({likes})` — JSX lets you drop a value in with curly braces.
+- Wrap the button and the paragraph in one `<div>` so you return a single element.
+
+%% solution
+```tsx
+import { useState } from 'react';
+
+export function LikeButton() {
+  const [likes, setLikes] = useState(0);
+  return (
+    <div>
+      <button onClick={() => setLikes((n) => n + 1)}>Like ({likes})</button>
+      {likes > 0 && <p>Thanks for the like!</p>}
+    </div>
+  );
+}
+```
 
 %% exercise react-counter | Counter (and the batching trap) | 1 | tsx | react | Counter | 8
 Build `<Counter initial? step? />`.
@@ -152,6 +614,45 @@ describe('Counter', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<Stepper />`** — a number with **+2** and **+4** buttons, where **+4** is built from *two* `setN` calls in one handler.
+
+```tsx
+import { useState } from 'react';
+
+export function Stepper() {
+  const [n, setN] = useState(0);
+
+  function plusFour() {
+    setN((v) => v + 2);      // ① updater form: "take the latest value and add 2"
+    setN((v) => v + 2);      //    runs on the result of the line above → +4 in total
+  }
+
+  return (
+    <div>
+      <p>Value: {n}</p>
+      <button onClick={() => setN((v) => v + 2)}>+2</button>
+      <button onClick={plusFour}>+4</button>
+    </div>
+  );
+}
+```
+
+If you had written `setN(n + 2)` twice, both lines would use the same frozen `n` and you'd only get `+2` (see the "state is a snapshot" stepper in the lesson).
+
+The **Reset** button is a plain `setN(initial)`: no old value needed, so a normal value is fine.
+
+%% explain
+- **Shows `Count: <initial>`** at the start (default 0).
+- **Increment / Decrement** move by `step` (default 1) — including going negative.
+- **"Add 3" really adds 3** even though it calls the setter three times — that's the updater-function test. If you see `Count: 1` after clicking it, you used `setCount(count + 1)`.
+- **Reset** goes back to `initial`, not always to 0.
+- **Independent instances** — two counters on the page don't share anything.
+
+%% nudge
+- After `setCount(count + 1)` three times, what does `count` equal on each line?
+- Which form of the setter always sees the *latest* value?
 
 %% hints
 - `const [count, setCount] = useState(initial);`
@@ -316,6 +817,54 @@ describe('Accordion', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<Tabs />`** — only one of several panels is visible, chosen by clicking its button. Same core idea as the accordion: **the only state is "which one is open"**; everything else is calculated from it.
+
+```tsx
+import { useState } from 'react';
+
+const tabs = [
+  { id: 'a', title: 'Overview', body: 'Hello' },
+  { id: 'b', title: 'Details', body: 'More info' },
+];
+
+export function Tabs() {
+  const [openId, setOpenId] = useState('a');             // ① state = the id of the open tab
+
+  return (
+    <div>
+      {tabs.map((t) => (
+        <button
+          key={t.id}                                      // ② key: a stable id per item
+          aria-selected={t.id === openId}                 // ③ attributes calculated from state
+          onClick={() => setOpenId(t.id)}
+        >
+          {t.title}
+        </button>
+      ))}
+      {tabs.map((t) => (
+        <div key={t.id} hidden={t.id !== openId}>{t.body}</div>  // ④ hidden keeps it in the DOM
+      ))}
+    </div>
+  );
+}
+```
+
+For the accordion: with `multiple`, "which are open" is a **list** of ids (an array, or a `Set` you copy each time) and clicking toggles one id in or out. Without `multiple`, it's the same list but holding at most one id. **Don't store `isOpen` inside each section** — derive it with `openIds.includes(section.id)`.
+
+%% explain
+- **Structure/accessibility**: each title is a `<button>` inside an `<h3>`, with `aria-expanded` (true/false) and `aria-controls` pointing at the panel's `id`. The panel has `role="region"`, `aria-labelledby` the button, and `hidden` while closed.
+- **Toggling**: click opens, click again closes.
+- **Single-open mode (default)**: opening one closes the others.
+- **`multiple`**: sections open and close independently.
+- **`defaultOpen`**: those sections start open (only the first one if not `multiple`).
+- **Closed panels stay in the DOM** (just `hidden`), so `aria-controls` always points at something real.
+
+%% nudge
+- What is the *smallest* thing you need to remember to know which sections are open?
+- Could you work out each `aria-expanded` from that, instead of storing it?
+- For a toggle that adds/removes an id from a list: `filter` to remove, `[...ids, id]` to add.
 
 %% hints
 - State: the list of open ids: `useState<string[]>(...)`.
@@ -487,6 +1036,49 @@ describe('StarRating', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<ThumbsRating />`** — two buttons (👍 / 👎); hovering previews your choice before you click. The shape is the same as star rating: **one state for the real value, one for the hover preview**, and the screen shows `hover ?? value`.
+
+```tsx
+import { useState } from 'react';
+
+export function ThumbsRating({ onChange }: { onChange?: (v: 'up' | 'down' | null) => void }) {
+  const [value, setValue] = useState<'up' | 'down' | null>(null);      // ① the committed choice
+  const [hover, setHover] = useState<'up' | 'down' | null>(null);      // ② the temporary preview
+  const shown = hover ?? value;                                        // ③ what to DISPLAY (derived!)
+
+  function choose(v: 'up' | 'down') {
+    const next = v === value ? null : v;                               // ④ clicking again clears it
+    setValue(next);
+    onChange?.(next);                                                  // ⑤ tell the parent too
+  }
+
+  return (
+    <div onMouseLeave={() => setHover(null)}>
+      {(['up', 'down'] as const).map((v) => (
+        <button key={v} aria-pressed={shown === v} onMouseEnter={() => setHover(v)} onClick={() => choose(v)}>
+          {v === 'up' ? '👍' : '👎'}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+For stars, "filled" is `star <= shown` (every star up to the shown value), and keyboard arrows call the same `choose`-style function with `value ± 1`.
+
+%% explain
+- **Structure**: a `radiogroup` named "Rating" with `max` radio buttons named `"1 star"`, `"2 stars"`, … and `aria-checked` on the selected one.
+- **Filled stars**: star *n* has `data-filled="true"` when *n* ≤ the displayed value.
+- **Clicking** sets the rating and calls `onChange(n)`; clicking the selected star again clears it to `0`.
+- **Hovering** previews the fill without changing the real value; leaving restores it.
+- **Keyboard**: arrows change the value by one, clamped between `0` and `max`, each calling `onChange`.
+- **`readOnly`** switches off all three ways of changing it.
+
+%% nudge
+- You need two separate pieces of state. What's the difference between "what is selected" and "what is shown right now"?
+- Write one `setRating(n)` function and call it from both the click handler and the key handler.
 
 %% hints
 - Two pieces of state: `value` and `hover`. What you display is `hover || value`.
@@ -671,6 +1263,59 @@ describe('TodoList', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<ShoppingList />`** — add items with a form and remove them. It uses the exact recipes the exercise needs.
+
+```tsx
+import { useState } from 'react';
+
+export function ShoppingList() {
+  const [items, setItems] = useState<{ id: number; name: string }[]>([]);
+  const [text, setText] = useState('');                       // ① controlled input state
+  const [nextId, setNextId] = useState(1);                    // ② a simple way to get unique ids
+
+  function add(e: React.FormEvent) {
+    e.preventDefault();                                       // ③ don't reload the page
+    const name = text.trim();
+    if (!name) return;                                        // ④ ignore blank input
+    setItems([...items, { id: nextId, name }]);               // ⑤ NEW array (never push)
+    setNextId(nextId + 1);
+    setText('');                                              // ⑥ clear the box
+  }
+
+  const remove = (id: number) => setItems(items.filter((i) => i.id !== id));   // ⑦ filter to delete
+
+  return (
+    <form onSubmit={add}>
+      <label>Item <input value={text} onChange={(e) => setText(e.target.value)} /></label>
+      <button type="submit">Add</button>
+      <ul>
+        {items.map((i) => (
+          <li key={i.id}>                                      {/* ⑧ key = id, never the index or the text */}
+            {i.name} <button type="button" onClick={() => remove(i.id)}>Delete {i.name}</button>
+          </li>
+        ))}
+      </ul>
+      <p role="status">{items.length} {items.length === 1 ? 'item' : 'items'}</p>   {/* ⑨ derived, not stored */}
+    </form>
+  );
+}
+```
+
+For toggling "done" use the `map` recipe from the lesson: `items.map((i) => i.id === id ? { ...i, done: !i.done } : i)`.
+
+%% explain
+- **Adding**: submitting (button *or* Enter) adds the **trimmed** text; blank input is ignored; the box clears after.
+- **Each todo** is an `<li>` with a checkbox whose accessible name is the todo text, and a button named `Delete <text>`.
+- **Checking** a todo sets `data-done="true"` on its `<li>`.
+- **"N items left"** counts *unchecked* todos, with correct singular ("1 item left") — derived, not stored.
+- **Duplicates allowed**: two todos with the same text must be independent, so use a unique **id** as the `key` and as the thing you toggle/delete by.
+- **`initialTodos`** seeds the list.
+
+%% nudge
+- Is "items left" something you need to store? (What would happen if you forgot to update it?)
+- Two todos are both called "Buy milk". If you delete by *text*, what goes wrong? What could you use instead?
 
 %% hints
 - State: `todos` (with stable numeric `id`s) and the `draft` text. Derive "items left" during render.
@@ -867,6 +1512,56 @@ describe('SignupForm', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `<NameForm onSubmit />`** — one required field, validation only after the first submit attempt, and a "saving…" state. It shows the three ideas the signup form combines.
+
+```tsx
+import { useState } from 'react';
+
+export function NameForm({ onSubmit }: { onSubmit: (name: string) => Promise<void> | void }) {
+  const [name, setName] = useState('');
+  const [attempted, setAttempted] = useState(false);        // ① has the user tried to submit yet?
+  const [saving, setSaving] = useState(false);              // ② async state: are we waiting?
+
+  const error = name.trim() ? '' : 'Name is required';      // ③ the error is DERIVED from the input
+  const showError = attempted && error;                      //    ...and only SHOWN after an attempt
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setAttempted(true);
+    if (error || saving) return;                              // ④ invalid or already sending → stop
+    setSaving(true);
+    try {
+      await onSubmit(name.trim());
+    } finally {
+      setSaving(false);                                       // ⑤ always re-enable, success or failure
+    }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate>
+      <label>Name <input value={name} onChange={(e) => setName(e.target.value)} aria-invalid={!!showError} /></label>
+      {showError && <p role="alert">{error}</p>}
+      <button disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+    </form>
+  );
+}
+```
+
+Extras the exercise adds: two fields (so two derived errors), **focus the first invalid field** using a `ref` (`emailRef.current?.focus()`), and catching a rejection to show "Something went wrong" (put a `submitError` state in the `catch`).
+
+%% explain
+- **No errors before the first submit attempt**, then they update live as the user types.
+- **Messages & accessibility**: `Enter a valid email` / `Password must be at least 8 characters`, each in a `role="alert"` element, with `aria-invalid="true"` on the bad input.
+- **Invalid submit**: `onSubmit` is *not* called, and focus moves to the first invalid field.
+- **Valid submit**: `onSubmit({ email, password })` with the **trimmed** email.
+- **While waiting**: the button is disabled and says `Creating…`; pressing Enter again does nothing.
+- **On failure** (promise rejects): show `Something went wrong. Please try again.` and re-enable the button.
+
+%% nudge
+- Which of these are *state* and which can be *calculated*: the error messages, `attempted`, `submitting`?
+- What must always happen after `await onSubmit(...)`, whether it succeeds or throws? (Think `try` / `finally`.)
 
 %% hints
 - Derive `errors` from `values` on every render — don't store them. Show them only when `attempted` is `true`.

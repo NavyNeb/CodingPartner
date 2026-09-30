@@ -4,7 +4,7 @@
 in interviews, then live coding against real tests — from warm-ups to senior-level problems. Built for getting your
 fundamentals back after leaning on AI.
 
-- **129 exercises** in **28 lessons**, four difficulty tiers (Warm-up → Core → Hard → Interview)
+- **132 exercises** in **28 lessons** (three lessons — Closures, React state, Promises — are fully illustrated; the rest are being upgraded the same way), four difficulty tiers (Warm-up → Core → Hard → Interview)
 - **A real editor** (CodeMirror 6) with `Ctrl/⌘ + Enter` to run, autosaved drafts, and optional autocomplete
 - **Real tests**, run in your browser — no server, nothing leaves your machine
 - **Interview mode**: per-exercise countdown, no hints, no solution, no autocomplete
@@ -105,6 +105,36 @@ export function exportedName() { return 1; }
 ````
 
 Files are ordered by filename within a track. Run `npm run verify` after adding an exercise.
+
+### Illustrated lessons
+
+Lesson theory can embed visuals and interactive blocks (all linted by `npm run verify`):
+
+````md
+![alt text](fig:closure-backpack "Caption with ① numbered callouts")   ← SVG figure from src/figures/index.ts
+
+```js try            ← editable, runnable snippet  (```js try predict = "guess the output first"; ```tsx try = live React preview)
+console.log('hi');
+```
+
+```check             ← multiple-choice concept check ("*" marks the right option)
+Q: Question?
+A) Wrong
+B) Right *
+Why: Explanation.
+```
+
+```stepper Title     ← step-through walkthrough: code lines, highlighted line, live state panels
+code:
+  const a = 1;
+---
+line: 1
+say: What happens now.
+Variables: a = 1
+```
+````
+
+Exercises can also carry `%% worked` (a solved example of the same shape), `%% explain` (what the tests check, in plain English), `%% nudge` (a gentle "stuck? think about…"), and an 8th header field `guided` for a guided ramp-up exercise.
 
 ## Known limits
 

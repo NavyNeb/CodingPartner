@@ -17,6 +17,10 @@ import type { Difficulty, Exercise, Kind, Lang, Lesson, Track } from './types';
  *   %% tests          → next fenced block
  *   %% hints          → "- " list, one hint per item
  *   %% solution       → next fenced block
+ *   %% worked         → (optional) markdown: a solved example of the same shape
+ *   %% explain        → (optional) markdown: what the tests check, in plain English
+ *   %% nudge          → (optional) markdown: a gentle "stuck? think about…"
+ *   (8th header field "guided" marks a guided ramp-up exercise)
  *
  * Directives are only recognised outside fenced code blocks.
  */
@@ -68,7 +72,7 @@ const trim = (lines: string[]) => lines.join('\n').trim();
 
 function parseExercise(first: Chunk, rest: Chunk[], file: string): Exercise {
   const parts = first.args.split('|').map((s) => s.trim());
-  const [id, title, diff, lang, kind, exp, minutes] = parts;
+  const [id, title, diff, lang, kind, exp, minutes, flag] = parts;
   const where = `${file} › ${id}`;
   if (!id || !title || !diff || !lang || !kind) throw new Error(`${where}: bad exercise header "${first.args}"`);
   if (![1, 2, 3, 4].includes(+diff)) throw new Error(`${where}: difficulty must be 1-4`);
@@ -80,10 +84,13 @@ function parseExercise(first: Chunk, rest: Chunk[], file: string): Exercise {
     prompt: trim(first.lines), hints: [],
   };
   if (minutes) ex.minutes = +minutes;
+  if (flag === 'guided') ex.guided = true;
+  else if (flag) throw new Error(`${where}: unknown flag "${flag}" (only "guided")`);
   for (const c of rest) {
     if (c.directive === 'starter') ex.starter = firstFence(c.lines, `${where} starter`);
     else if (c.directive === 'tests') ex.tests = firstFence(c.lines, `${where} tests`);
     else if (c.directive === 'solution') ex.solution = firstFence(c.lines, `${where} solution`);
+    else if (c.directive === 'worked' || c.directive === 'explain' || c.directive === 'nudge') ex[c.directive] = trim(c.lines);
     else if (c.directive === 'hints') {
       const items: string[] = [];
       for (const l of c.lines) {

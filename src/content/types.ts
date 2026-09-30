@@ -28,6 +28,14 @@ export interface Exercise {
   solution: string;
   /** Suggested time-box for interview mode. Defaults by difficulty. */
   minutes?: number;
+  /** Guided ramp-up: a pre-filled skeleton with step-by-step TODOs, for learners who are not ready for a blank editor. */
+  guided?: boolean;
+  /** Markdown: a solved, annotated problem of the same shape, shown before the learner starts. */
+  worked?: string;
+  /** Markdown: plain-English list of what the tests check and why. */
+  explain?: string;
+  /** Markdown: a gentle "stuck? think about…" nudge shown before the numbered hints. */
+  nudge?: string;
 }
 
 export interface Lesson {

@@ -10,6 +10,8 @@ import { readdirSync } from 'node:fs';
 import { buildTracks } from '../src/content/parse';
 import { trackMeta } from '../src/content/tracks';
 import { compile } from '../src/runner/transform';
+import { findBlocks } from '../src/lib/blocks';
+import { getFigure } from '../src/figures';
 import type { Exercise } from '../src/content/types';
 
 const require = createRequire(import.meta.url);
@@ -118,5 +120,47 @@ for (const track of tracks) for (const lesson of track.lessons) for (const ex of
     problems.forEach((p) => console.log('   ', p));
   } else console.log(green('✓'), ex.id, dim(`(${ex.kind})`));
 }
+
+/* ───── Lesson lint: every figure resolves, every block parses, every runnable snippet runs ───── */
+let lessonProblems = 0, lintedLessons = 0, snippets = 0, figs = 0;
+if (!filter) {
+  for (const track of tracks) for (const lesson of track.lessons) {
+    const problems: string[] = [];
+    try {
+      const b = findBlocks(lesson.theory);
+      const v3 = b.checks.length > 0 || b.figs.length > 0 || b.steppers.length > 0;
+      if (v3) {
+        lintedLessons++;
+        figs += b.figs.length;
+        for (const id of b.figs) if (!getFigure(id)) problems.push(`unknown figure "${id}"`);
+        if (b.figs.length < 3 && b.figs.length + b.steppers.length < 4) problems.push(`needs at least 3 visuals (figures + walkthroughs), has ${b.figs.length + b.steppers.length}`);
+        if (!b.tries.length) problems.push('no runnable "try" snippet');
+        if (!b.checks.length) problems.push('no concept check');
+        if (!/^## Before you start the exercises/m.test(lesson.theory)) problems.push('missing "## Before you start the exercises" section');
+        if (!/^## Recap/m.test(lesson.theory)) problems.push('missing "## Recap" section');
+        for (const t of b.tries) {
+          snippets++;
+          try {
+            const isReact = t.lang === 'jsx' || t.lang === 'tsx';
+            const lang = isReact ? 'tsx' : t.lang === 'ts' ? 'ts' : 'js';
+            const fake = { id: 'snippet', lang, kind: isReact ? 'react' : 'js', tests: "it('runs', () => {});", exports: [] } as unknown as Exercise;
+            if (isReact) {
+              compile(t.code, 'tsx'); // React snippets are mounted in the browser; here we only check that they compile
+            } else {
+              const r = await run(fake, t.code);
+              if (r.fatal) problems.push(`try snippet throws: ${r.fatal.split('\n').slice(0, 2).join(' / ')} — in: ${t.code.split('\n')[0]}`);
+            }
+          } catch (e) { problems.push(`try snippet fails to compile: ${(e as Error).message}`); }
+        }
+      }
+    } catch (e) { problems.push((e as Error).message); }
+    if (problems.length) {
+      lessonProblems++;
+      console.log(red('✗'), `lesson ${lesson.id}`);
+      problems.forEach((p) => console.log('   ', p));
+    }
+  }
+  console.log(lessonProblems ? red(`${lessonProblems} lesson(s) with problems`) : green(`lessons: ${lintedLessons} v3 lesson(s) linted · ${figs} figures · ${snippets} snippets ran`));
+}
 console.log(`\n${total - failures}/${total} exercises verified · ${tests} solution tests · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-process.exit(failures ? 1 : 0);
+process.exit(failures || lessonProblems ? 1 : 0);

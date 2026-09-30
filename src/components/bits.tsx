@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, NavLink } from 'react-router-dom';
 import { DIFFICULTY_LABEL, type Difficulty } from '../content/types';
 import { renderInline, renderMarkdown } from '../lib/markdown';
@@ -57,9 +58,69 @@ export function SolvedMark({ state }: { state: 'none' | 'solved' | 'assisted' })
   );
 }
 
+const Stepper = lazy(() => import('./widgets').then((m) => ({ default: m.Stepper })));
+const ConceptCheck = lazy(() => import('./widgets').then((m) => ({ default: m.ConceptCheck })));
+const RunnableSnippet = lazy(() => import('./widgets'));
+
+interface Mount { el: HTMLElement; kind: 'try' | 'check' | 'stepper' }
+
 export function Prose({ md, className = '' }: { md: string; className?: string }) {
   const html = useMemo(() => renderMarkdown(md), [md]);
-  return <div className={`prose ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+  const root = useRef<HTMLDivElement>(null);
+  const [mounts, setMounts] = useState<Mount[]>([]);
+
+  // Interactive blocks are rendered as placeholders in the HTML, then mounted here as real React components.
+  useEffect(() => {
+    const host = root.current;
+    if (!host) return;
+    const found: Mount[] = [];
+    host.querySelectorAll<HTMLElement>('.widget').forEach((el) => {
+      el.replaceChildren();
+      found.push({ el, kind: el.classList.contains('w-try') ? 'try' : el.classList.contains('w-check') ? 'check' : 'stepper' });
+    });
+    setMounts(found);
+
+    // Play/pause for animated figures (paused by default when the user prefers reduced motion).
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const cleanups: (() => void)[] = [];
+    host.querySelectorAll<HTMLElement>('figure.fig[data-anim]').forEach((fig) => {
+      const svg = fig.querySelector('svg') as SVGSVGElement | null;
+      if (!svg || fig.querySelector('.fig-ctl')) return;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'fig-ctl';
+      let playing = !reduce;
+      const apply = () => {
+        if (playing) svg.unpauseAnimations(); else { svg.pauseAnimations(); svg.setCurrentTime(0.1); }
+        btn.textContent = playing ? 'Pause' : 'Play';
+        btn.setAttribute('aria-pressed', String(!playing));
+      };
+      btn.onclick = () => { playing = !playing; apply(); };
+      fig.querySelector('.fig-art')?.appendChild(btn);
+      apply();
+      cleanups.push(() => btn.remove());
+    });
+    return () => { cleanups.forEach((c) => c()); };
+  }, [html]);
+
+  return (
+    <>
+      <div ref={root} className={`prose ${className}`} dangerouslySetInnerHTML={{ __html: html }} />
+      {mounts.map((m, i) => {
+        const d = m.el.dataset;
+        const dec = (v?: string) => decodeURIComponent(v ?? '');
+        return createPortal(
+          <Suspense fallback={<p className="muted">Loading…</p>}>
+            {m.kind === 'try' && <RunnableSnippet code={dec(d.code)} lang={d.lang ?? 'js'} predict={d.predict === '1'} />}
+            {m.kind === 'check' && <ConceptCheck body={dec(d.body)} />}
+            {m.kind === 'stepper' && <Stepper info={dec(d.info)} body={dec(d.body)} />}
+          </Suspense>,
+          m.el,
+          `${m.kind}-${i}`,
+        );
+      })}
+    </>
+  );
 }
 
 export function SiteHeader({ children }: { children?: ReactNode }) {

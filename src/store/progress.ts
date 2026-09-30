@@ -11,12 +11,14 @@ export interface ProgressState {
   drafts: Record<string, string>;
   hints: Record<string, number>;
   solutionSeen: Record<string, true>;
+  /** Lesson concept checks the learner has finished, keyed by a hash of the check. */
+  checks: Record<string, true>;
   last?: { lessonId: string; exId: string };
   timed: boolean;
 }
 
 const KEY = 'whetstone:progress:v1';
-const empty: ProgressState = { solved: {}, drafts: {}, hints: {}, solutionSeen: {}, timed: false };
+const empty: ProgressState = { solved: {}, drafts: {}, hints: {}, solutionSeen: {}, checks: {}, timed: false };
 
 function load(): ProgressState {
   try {
@@ -62,6 +64,10 @@ export const progress = {
   },
   markSolutionSeen(id: string) {
     commit({ ...state, solutionSeen: { ...state.solutionSeen, [id]: true } });
+  },
+  markCheck(key: string) {
+    if (state.checks[key]) return;
+    commit({ ...state, checks: { ...state.checks, [key]: true } });
   },
   setLast(lessonId: string, exId: string) {
     if (state.last?.lessonId === lessonId && state.last.exId === exId) return;

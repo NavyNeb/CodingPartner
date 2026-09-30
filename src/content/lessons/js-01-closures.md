@@ -2,89 +2,429 @@
 id: closures
 track: js
 title: Closures & scope
-summary: The one idea underneath callbacks, hooks, module patterns and most "trick" questions.
+summary: How a function can remember its surroundings — the idea behind callbacks, React hooks, private state and most "trick" interview questions.
 ---
 
-A **closure** is a function bundled with the variables that were in scope where it was *created* — not where it is *called*. That's the whole definition. Everything else in this lesson is consequences.
+## The idea in one sentence
 
-## Lexical scope, concretely
+A **closure** is a function that *remembers the variables from the place where it was created* — even after that place has finished running.
 
-Every time a function runs, the engine creates a fresh **environment record**: a little table of that call's variables, plus a pointer to the environment of wherever the function was defined. Looking up a name walks that chain outward until it finds a match.
+That's it. If you can picture a function carrying a little backpack of variables wherever it goes, you already understand closures. The rest of this lesson makes that picture precise, step by step.
 
-```js
+> **Analogy** Imagine a waiter leaving for a shift with a backpack. Inside: the pen and the notepad they were handed at the start of the day. Hours later, in a different room, they still use *that* pen and *that* notepad. A closure is a function that was handed some variables when it was created and keeps using them wherever it is later called.
+
+![Function makeCounter finishes, but the function it returns carries the variable count in a backpack](fig:closure-backpack "① makeCounter runs and creates `count`. ② It returns a function. ③ That function keeps `count` in its backpack.")
+
+Read the picture from left to right: ① `makeCounter()` creates a variable, then finishes. ② It hands back a new function. ③ The function carries the variable it needs with it. That backpack is the closure.
+
+## First, what is "scope"?
+
+Before closures make sense, we need one earlier idea: **scope**. Scope answers a simple question — *"from this line of code, which variables can I see?"*
+
+- A variable you create **inside a function** can be seen only **inside that function** (and inside functions nested in it).
+- A variable created **outside everything** ("global") can be seen from everywhere.
+
+Functions can be nested like boxes inside boxes. When your code uses a name, JavaScript looks for it in the **innermost box first**. If it isn't there, it steps **one box outward**, and keeps going until it finds it (or runs out of boxes and gives a `ReferenceError`). This chain of boxes is called the **scope chain**.
+
+![Three nested boxes: global contains outer which contains inner; a lookup starts in inner and walks outward](fig:scope-chain "① Global, ② outer, ③ inner. `inner` finds `c` right away, but has to walk outward to find `b` and `a`.")
+
+Try it. **Before you press Run**, guess what gets printed — then check.
+
+```js try predict
+const a = 'global';
+
 function outer() {
-  let count = 0;            // lives in outer's environment
-  return function inner() {
-    count += 1;             // found by walking one link outward
+  const b = 'outer';
+
+  function inner() {
+    const c = 'inner';
+    console.log(a, b, c);
+  }
+
+  inner();
+}
+
+outer();
+```
+
+Notice that scope is decided by **where you wrote the code**, not by where it runs. That's called **lexical scope** ("lexical" just means "by position in the source text"). Closures are a direct consequence of it.
+
+## Walking through a closure, one step at a time
+
+Here is the smallest useful closure: a counter. Use **Next** to step through. Watch the two panels on the right — they show what JavaScript is holding in memory.
+
+```stepper A counter that remembers
+code:
+  function makeCounter() {
+    let count = 0;
+    return function () {
+      count = count + 1;
+      return count;
+    };
+  }
+  const a = makeCounter();
+  a();
+  a();
+---
+line: 1-7
+say: JavaScript reads the definition of `makeCounter` and stores it. **Nothing inside it runs yet** — defining a function is not calling it.
+makeCounter's variables:
+a's backpack:
+a() returned:
+---
+line: 8
+say: We **call** `makeCounter()`. JavaScript opens a fresh, private set of variables just for this call.
+makeCounter's variables: (nothing yet)
+---
+line: 2
+say: `let count = 0` creates a variable inside that private set.
+makeCounter's variables: count = 0
+---
+line: 3-6
+say: A new function is created and returned. Because it was *created here*, it remembers where it came from and packs `count` into its backpack.
+a's backpack: count = 0
+---
+line: 8
+say: `makeCounter` has finished, and the returned function is stored in `a`. Normally the variables of a finished call are thrown away — but `a` still needs `count`, so it stays alive in the backpack.
+makeCounter's variables: (finished)
+a's backpack: count = 0
+---
+line: 9
+say: First call: `a()`. The function body runs.
+---
+line: 4
+say: `count` isn't declared inside the function body, so JavaScript looks **outward** — and finds it in the backpack. Its value is `0`, so `count + 1` is `1`, and the backpack is updated.
+a's backpack: count = 1
+---
+line: 5
+say: The function returns `1`.
+a() returned: 1
+---
+line: 10
+say: Second call: `a()`. The backpack still holds `1` from last time, so this call sets it to `2` and returns `2`. **The value survived between calls.** That's a closure.
+a's backpack: count = 2
+a() returned: 1 | 2
+```
+
+Now watch the same thing as an animation — each call reads the value from the backpack, adds one, and puts it back:
+
+![Animation of a counter function reading and updating the count stored in its backpack](fig:closure-alive "Each call reads `count` from the backpack and saves the new value. The backpack outlives every individual call.")
+
+Press **Run** and change things — call `counter()` more times, rename the variable, add a second counter:
+
+```js try
+function makeCounter() {
+  let count = 0;
+  return function () {
+    count = count + 1;
     return count;
   };
 }
 
-const a = outer();
-const b = outer();          // a second call → a second, separate environment
-a(); a();                   // 1, 2
-b();                        // 1  — b never saw a's count
+const counter = makeCounter();
+console.log(counter());
+console.log(counter());
+console.log(counter());
 ```
 
-`outer` has returned, so you might expect `count` to be gone. It isn't, because `inner` still holds a pointer to that environment. As long as *anything* can still reach `inner`, the environment stays alive.
+> **Remember** The backpack holds the **variable itself**, not a copy of its value at the time. That's why the number kept growing: every call changed the *same* `count`.
 
-> **Mental model:** a closure is a function with a backpack. The backpack holds *references* to variables, not copies of their values.
+## Every call gets its own backpack
 
-That last sentence matters. Two closures created in the same scope share the same variables:
+What happens if we call `makeCounter()` twice? Each call creates a **brand-new set of variables**, so each returned function gets its **own** backpack. They never interfere:
 
-```js
-function pair() {
-  let n = 0;
-  return { inc: () => ++n, read: () => n };
+```js try predict
+function makeCounter() {
+  let count = 0;
+  return () => ++count;
 }
-const p = pair();
-p.inc(); p.inc();
-p.read(); // 2 — both functions look at the same `n`
+
+const a = makeCounter();
+const b = makeCounter();
+
+console.log(a());
+console.log(a());
+console.log(b());
 ```
 
-## What closures buy you
+(`++count` means "add one to `count`, then use the new value". `() => ++count` is just a shorter way to write the function from before.)
 
-- **Private state** without classes. There is no way to reach `n` above except through `inc` and `read`.
-- **Function factories.** `makeMultiplier(3)` returns a function that remembers `3`.
-- **Callbacks that remember context.** Every `setTimeout(() => use(x), 100)` is a closure over `x`.
-- **Partial application, memoization, once-only guards, debounce** — the rest of this track builds on it.
+Two functions created **in the same place** *do* share a backpack, though. That's how you can build private state with a public "remote control":
 
-## The classic trap: `var` in loops
+```js try
+function createWallet() {
+  let balance = 0; // private: nobody outside can touch this directly
 
-```js
-var fns = [];
+  return {
+    deposit(amount) { balance += amount; },
+    read() { return balance; },
+  };
+}
+
+const wallet = createWallet();
+wallet.deposit(50);
+wallet.deposit(25);
+console.log(wallet.read());
+console.log(wallet.balance); // undefined — there is no way in
+```
+
+`deposit` and `read` were created inside the same call, so they look at the **same** `balance`. Outside code can only change it through them.
+
+## Where you'll actually meet closures
+
+You have used closures many times without naming them.
+
+**1 · Function factories** — a function that builds customised functions:
+
+```js try
+function makePriceFormatter(currency) {
+  return function (amount) {
+    return currency + amount.toFixed(2);
+  };
+}
+
+const usd = makePriceFormatter('$');
+const eur = makePriceFormatter('€');
+console.log(usd(4.5));
+console.log(eur(12));
+```
+
+`usd` and `eur` are the same code with different backpacks (`'$'` vs `'€'`).
+
+**2 · Callbacks** — every time you write `setTimeout(() => …)` or `button.addEventListener('click', () => …)`, the arrow function remembers the variables around it:
+
+```js try
+function remindLater(name, ms) {
+  setTimeout(() => {
+    console.log('Hey ' + name + ', it has been ' + ms + 'ms!');
+  }, ms);
+}
+
+remindLater('Ada', 200);
+remindLater('Grace', 100);
+```
+
+`remindLater` returned long before the messages appeared. The arrow functions kept `name` and `ms` in their backpacks until the timers fired.
+
+**3 · React hooks** — every event handler you write inside a component closes over that render's props and state. You'll see the good *and* bad sides of that in the React track.
+
+**4 · Wrappers around other functions** — `once`, `memoize`, `debounce`, `throttle`. All of them are "a function that holds a bit of state in its backpack and then calls your function". Exactly what the exercises below are about.
+
+## Common mistakes
+
+### Mistake 1 — the `var` loop trap
+
+```js try predict
+const fns = [];
 for (var i = 0; i < 3; i++) {
-  fns.push(() => i);
+  fns.push(() => console.log(i));
 }
-fns.map((f) => f()); // [3, 3, 3]  — not [0, 1, 2]
+fns.forEach((f) => f());
 ```
 
-`var` is **function-scoped**, so there is exactly one `i` shared by all three arrows, and it is `3` by the time they run. `let` in a `for` header is special-cased: the engine makes a **new binding per iteration**, so each arrow captures its own `i`.
+You'd expect `0 1 2`. You get `3 3 3`. Why?
 
-Pre-ES6 fix was an IIFE that copied the value into a fresh scope: `(function (j) { fns.push(() => j); })(i)`. Know it — interviewers still ask.
+- `var` creates **one** variable `i` for the *whole loop*.
+- The three arrow functions are created during the loop, but **not run** until after it.
+- By the time they run, the loop has finished and `i` is `3`. All three look at that **same** variable.
 
-## Stale closures (a preview of React)
+![With var, three callbacks share one variable that ends at 3. With let, each loop turn gets its own variable.](fig:var-loop-trap "With `var` (left) there is one shared box. With `let` (right) every turn of the loop gets a fresh box, so each callback keeps its own number.")
 
-A closure captures the variable's *binding*, but if the thing you captured is an old *value* (say, a number you destructured), it can go stale:
+**Fix:** use `let` instead. A `let` in a `for` loop creates a **new variable on every turn**, so each arrow function gets its own backpack:
+
+```js try
+const fns = [];
+for (let i = 0; i < 3; i++) {
+  fns.push(() => console.log(i));
+}
+fns.forEach((f) => f());
+```
+
+> **Good to know** Before `let` existed, people fixed this with an "IIFE" — a function that is created and called on the spot to make a fresh scope: `(function (j) { fns.push(() => j); })(i)`. Old code is full of it, and interviewers still ask about it.
+
+### Mistake 2 — capturing a *value* that later goes stale
+
+A closure keeps a reference to the **variable**. But if you copy the value out first, your copy won't update:
+
+```js try predict
+function makeLogger(user) {
+  const name = user.name;            // copy of the value, taken now
+  return () => console.log(name);
+}
+
+const user = { name: 'Ada' };
+const log = makeLogger(user);
+user.name = 'Grace';
+log();
+```
+
+It prints `Ada`, not `Grace` — `name` is a snapshot. If you had written `console.log(user.name)` inside the returned function, you'd see the change, because then it reads `user` (the variable) each time.
+
+This exact bug — "my callback is using old data" — is the most common React hooks bug. Remember it; we meet it again in the React track.
+
+### Mistake 3 — forgetting that a backpack keeps things alive
+
+A closure keeps everything it references from being cleaned up. If a long-lived callback captures a huge array you no longer need, that memory can't be freed. It's rarely a problem — but if you attach listeners that live forever, clean them up.
+
+## Quick check
+
+Answer these without running any code — then read the explanation for each.
+
+```check
+Q: What does a closure "remember"?
+A) A copy of each variable's value from when the function was created
+B) Only variables declared with `const`
+C) The variables themselves, from the place where the function was created *
+D) Everything that was printed to the console
+Why: The backpack holds **references to the variables**, not frozen copies. That's why `count` could keep growing between calls.
+---
+Q: What do the three lines print?
+Code:
+  function makeCounter() {
+    let n = 0;
+    return () => ++n;
+  }
+  const a = makeCounter();
+  const b = makeCounter();
+  a(); a();
+  console.log(a(), b());
+A) 3 3
+B) 3 1 *
+C) 1 1
+D) 2 1
+Why: Each `makeCounter()` call creates its own `n`. `a` was called three times (→ 3), `b` only once (→ 1).
+---
+Q: After `makeCounter()` has returned, what happens to its variable `count`?
+A) It stays alive as long as the returned function can still reach it *
+B) It is deleted immediately, so the returned function breaks
+C) It becomes a global variable
+D) It resets to 0 on every call
+Why: JavaScript only cleans up variables nothing can reach any more. The returned function still reaches `count`, so it is kept.
+---
+Q: With `var`, why do all callbacks in the loop see the same number?
+A) `var` is slower than `let`
+B) Arrow functions copy values
+C) `setTimeout` changes the variable
+D) `var` creates one variable for the whole loop, shared by all callbacks *
+Why: `var` is function-scoped: one `i` for the entire loop. `let` makes a fresh `i` per turn.
+```
+
+## Recap
+
+- **Scope** = which variables a line of code can see. Lookup goes from the innermost box **outward**.
+- A **closure** is a function plus the variables from where it was *created* (its backpack). It works even after the outer function has finished.
+- The backpack holds the **variable**, not a copy. Changes made by one call are seen by the next.
+- Each call of the outer function makes a **new** backpack. Functions created in the *same* call share one.
+- Use closures for **private state**, **factories** and **wrappers** (`once`, `memoize`, `debounce`).
+- Traps: `var` in loops (use `let`) and copying a value out of an object (it goes stale).
+
+## Before you start the exercises
+
+The exercises go from a guided warm-up to real interview problems. Here is which part of this lesson each one needs:
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: greeting maker | "Walking through a closure" and the factory example |
+| Counter factory | "Every call gets its own backpack" |
+| `once()` | Wrappers: a function that keeps a flag in its backpack, then calls yours |
+| The loop trap | "Mistake 1 — the `var` loop trap" |
+| A tiny store | Shared private state (`createWallet`) + holding a list of listeners in the backpack |
+| `memoize()` | Wrappers again — a backpack that holds a cache (a `Map`) |
+
+Stuck on any of them? Each exercise has a **worked example** with a solved, annotated problem of the same shape, a plain-English list of **what the tests check**, and gentle **nudges** before the hints.
+
+%% exercise closures-guided-greeter | Guided: greeting maker | 1 | js | js | makeGreeter | 4 | guided
+Build `makeGreeter(greeting)`. It returns a function that takes a `name` and gives back `"<greeting>, <name>!"`.
 
 ```js
-function makeLogger(user) {
-  const { name } = user;          // snapshot of the value right now
-  return () => console.log(name); // will always print the old name
+const hello = makeGreeter('Hello');
+const yo = makeGreeter('Yo');
+hello('Ada'); // "Hello, Ada!"
+yo('Grace');  // "Yo, Grace!"
+```
+
+The skeleton is already started for you — follow the numbered steps in the comments. This is the same shape as the counter you stepped through in the lesson: an outer function holds a variable, and the function it returns uses it.
+
+%% worked
+**A similar problem, solved: `makeAdder(n)`** — returns a function that adds `n` to whatever it is given.
+
+```js
+function makeAdder(n) {          // ① n is the outer variable (it goes in the backpack)
+  return function (x) {          // ② the returned function takes its own input, x
+    return x + n;                // ③ it uses BOTH: x (its own) and n (from the backpack)
+  };
+}
+
+const add5 = makeAdder(5);
+add5(10); // 15
+```
+
+① `n` arrives as a parameter of the outer function — parameters live in the outer scope just like `let` variables.
+② The inner function is created *inside* `makeAdder`, so it can see `n`.
+③ When `add5(10)` runs, `x` is `10` and `n` is `5` (from the backpack), so the result is `15`.
+
+Your task has exactly the same structure; the only difference is that you build a string instead of adding numbers.
+
+%% explain
+- **Each greeter remembers its own greeting** — `hello` and `yo` must not affect each other (that's the "own backpack" rule).
+- **The greeting is fixed when you create the greeter**, even if the variable you passed in changes later.
+- **The output format is exact**: a comma and space after the greeting, and an exclamation mark at the end.
+
+%% nudge
+- Which variable does the *inner* function need that it doesn't get as a parameter?
+- A template string `` `${a}, ${b}!` `` is the tidiest way to glue the pieces together.
+
+%% starter
+```js
+export function makeGreeter(greeting) {
+  // Step 1 — return a new function. It takes one parameter: name.
+  return function (name) {
+    // Step 2 — build the text "<greeting>, <name>!" using BOTH variables.
+    //          (greeting comes from the backpack, name is this function's own parameter)
+    // Step 3 — return that text.
+  };
 }
 ```
 
-React's `useEffect` and `useCallback` bugs are almost all this. Keep it in mind — we come back to it in the React track.
+%% tests
+```js
+describe('makeGreeter', () => {
+  it('returns a function', () => {
+    expect(typeof makeGreeter('Hello')).toBe('function');
+  });
 
-## Memory
+  it('greets by name', () => {
+    expect(makeGreeter('Hello')('Ada')).toBe('Hello, Ada!');
+  });
 
-A closure keeps its *entire* enclosing environment reachable (engines optimise this, but don't rely on it). Holding a long-lived callback that closes over a huge array is a classic leak. Null things out, or don't capture them.
+  it('every greeter remembers its own greeting', () => {
+    const hello = makeGreeter('Hello');
+    const yo = makeGreeter('Yo');
+    expect(yo('Grace')).toBe('Yo, Grace!');
+    expect(hello('Linus')).toBe('Hello, Linus!');
+  });
 
-## Checklist before you continue
+  it('keeps the greeting it was created with', () => {
+    let word = 'Hi';
+    const greet = makeGreeter(word);
+    word = 'Bye';
+    expect(greet('Sam')).toBe('Hi, Sam!');
+  });
+});
+```
 
-- Can you say *why* `a()` and `b()` above don't interfere?
-- Can you explain `[3, 3, 3]` without using the word "hoisting"?
-- What's captured: the value or the variable?
+%% hints
+- Inside the inner function you can use both `greeting` and `name`.
+- Return a string: `` `${greeting}, ${name}!` ``.
+
+%% solution
+```js
+export function makeGreeter(greeting) {
+  return function (name) {
+    return `${greeting}, ${name}!`;
+  };
+}
+```
 
 %% exercise closures-counter | Counter factory | 1 | js | js | makeCounter | 4
 Write `makeCounter()`. Each call returns a **new, independent** function. Calling that function returns `1`, then `2`, then `3`, and so on.
@@ -128,6 +468,36 @@ describe('makeCounter', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `makeStepper(step)`** — returns a function that counts up by `step` each call, starting from 0.
+
+```js
+function makeStepper(step) {
+  let total = 0;            // ① private state: lives in makeStepper, outside the returned function
+  return () => {
+    total += step;          // ② the returned function reads AND updates it
+    return total;
+  };
+}
+
+const byTwo = makeStepper(2);
+byTwo(); // 2
+byTwo(); // 4
+const byTen = makeStepper(10);
+byTen(); // 10   ← a separate backpack
+```
+
+The recipe: **(1)** declare the variable in the outer function, **(2)** return a function that changes it, **(3)** call the outer function once per independent counter.
+
+%% explain
+- **Counts 1, 2, 3** — the first call returns `1`, not `0`.
+- **Independent counters** — calling `a()` must never change what `b()` returns. That proves the state is per-call, not shared.
+- **No module-level variable** — if you stored `count` outside `makeCounter`, a new counter would continue from where the old one stopped. The third test catches that.
+
+%% nudge
+- Where should `count` be declared so each `makeCounter()` call gets a fresh one?
+- What does `++count` return — the old value or the new one?
 
 %% hints
 - The state must live *inside* `makeCounter`, but outside the function you return.
@@ -204,6 +574,38 @@ describe('once', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `countCalls(fn)`** — wraps `fn` and keeps track of how many times it was called, while still behaving like `fn`.
+
+```js
+function countCalls(fn) {
+  let calls = 0;                       // ① state in the backpack
+  function wrapper(...args) {          // ② ...args collects every argument into an array
+    calls += 1;
+    return fn.apply(this, args);       // ③ forward the arguments AND `this` to the real function
+  }
+  wrapper.getCalls = () => calls;      // ④ functions are objects, so you can attach extras
+  return wrapper;
+}
+
+const add = countCalls((a, b) => a + b);
+add(1, 2);        // 3
+add(3, 4);        // 7
+add.getCalls();   // 2
+```
+
+For `once`, swap the counter for **two** variables: a flag `called` and the stored `result`. On the first call run `fn`, store its result, flip the flag. On later calls skip straight to returning the stored result.
+
+%% explain
+- **Only runs once** — `fn` is called on the first call and never again (tests count calls with a mock).
+- **Returns the first result every time** — later calls return the *same* value even if you pass different arguments.
+- **Forwards arguments and `this`** — on the first call `fn` must receive exactly what the wrapper received.
+- **Remembers "falsy" results too** — if `fn` returned `0` or `undefined`, it still must not run again. (Hint: don't use `if (result)` as your check; use a separate flag.)
+
+%% nudge
+- What two things does the wrapper need to remember between calls?
+- Why is `if (result)` a risky way to detect "already ran"?
+
 %% hints
 - You need two pieces of closed-over state: *has it run?* and *what did it return?*
 - Checking `result === undefined` is a bug — a function may legitimately return `undefined`. Use a boolean flag.
@@ -265,6 +667,37 @@ describe('makeThunks', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `makeLabels(names)`** — should return functions that each return their own name, but the loop below is broken.
+
+```js
+// Broken: every function returns the LAST name
+var out = [];
+for (var k = 0; k < names.length; k++) {
+  out.push(() => names[k]);     // `k` is shared — it ends as names.length
+}
+
+// Fix 1 — the one-word fix: let gives every turn its own `k`
+for (let k = 0; k < names.length; k++) {
+  out.push(() => names[k]);
+}
+
+// Fix 2 — no loop variable at all: each callback gets its own copy
+names.forEach((name) => out.push(() => name));
+```
+
+Both fixes give every function its own backpack. Your exercise: apply Fix 1 (or the older "IIFE" trick if you feel brave).
+
+%% explain
+- **Right length** — you must still return `n` functions.
+- **Each function returns its own index** — `[0, 1, 2]`, not `[3, 3, 3]`.
+- **Stable later** — calling the functions long after the loop has finished still gives the right number.
+- **`n = 0`** — an empty array, no crash.
+
+%% nudge
+- How many `i` variables does the `var` loop create? How many would `let` create?
+- You only need to change **one word** in the starter.
 
 %% hints
 - There is only one `i`, shared by every function. The value it holds when they finally run is `n`.
@@ -387,6 +820,45 @@ describe('createStore', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `createToggle()`** — a little on/off switch that tells listeners when it flips. It has the same three ingredients as the store: *private state*, *methods that change it*, and *a list of listeners*.
+
+```js
+function createToggle() {
+  let on = false;                 // ① private state
+  const listeners = [];           // ② a list of functions to notify
+
+  return {
+    get: () => on,
+    flip() {
+      on = !on;                   // ③ change the state first…
+      listeners.forEach((l) => l(on));   // ④ …then tell everyone
+    },
+    subscribe(listener) {
+      listeners.push(listener);
+      return () => {              // ⑤ return an "unsubscribe" function (another closure!)
+        const i = listeners.indexOf(listener);
+        if (i !== -1) listeners.splice(i, 1);
+      };
+    },
+  };
+}
+```
+
+What changes for the store: the state is an object that you **replace** (never edit in place), and the listener also receives the *previous* state. Watch out for ⑤: removing items from an array **while looping over it** can skip listeners — loop over a *copy* (`[...listeners]`).
+
+%% explain
+- **`getState`** returns the current state; **`setState`** merges a patch (object or function) into it.
+- **Never mutate** — after `setState`, the old state object must be unchanged, and the new one must be a *different* object.
+- **Listeners get `(state, prevState)`** and run after the change, in the order they subscribed.
+- **Unsubscribe works and is safe to call twice.**
+- **A listener may unsubscribe itself while being notified** without causing other listeners to be skipped.
+
+%% nudge
+- Keep `state` and `listeners` as variables in `createStore`'s scope — the returned methods close over them.
+- To avoid mutation: `state = { ...state, ...patch }` creates a **new** object.
+- If you loop over `listeners` directly and one removes itself mid-loop, what happens to the next index?
+
 %% hints
 - State and the listener set are the two closed-over variables. No classes needed.
 - Store listeners in a `Set` (or array) and iterate over a **copy** when notifying: `[...listeners].forEach(...)`.
@@ -505,6 +977,38 @@ describe('memoize', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `cacheLast(fn)`** — remembers only the most recent call, so calling twice with the same argument skips the work.
+
+```js
+function cacheLast(fn) {
+  let hasValue = false;     // ① did we store anything yet? (don't trust the value itself —
+  let lastArg;              //    `undefined` could be a real result)
+  let lastResult;
+  return function (arg) {
+    if (hasValue && arg === lastArg) return lastResult;   // ② cache hit
+    lastResult = fn(arg);                                 // ③ cache miss: do the work…
+    lastArg = arg;                                        //    …and remember it
+    hasValue = true;
+    return lastResult;
+  };
+}
+```
+
+`memoize` is the grown-up version: instead of three variables, keep a **`Map`** in the backpack (key → result), and ask `cache.has(key)` rather than checking the value — for the same reason as ①. Also notice the order in ③: we only store *after* `fn` succeeds, so an error caches nothing.
+
+%% explain
+- **Same arguments → same result, without calling `fn` again** (tests count calls).
+- **Different arguments → `fn` runs again.**
+- **A custom `resolver` decides the cache key** when given; otherwise the key is `JSON.stringify(args)`.
+- **Falsy results are cached too** — `0`, `false`, `null`, `undefined` are valid results, so use `Map.has`, not truthiness.
+- **Errors aren't cached** — if `fn` throws, the next call tries again.
+- **`.clear()`** empties the cache. **`this`** is forwarded to `fn`.
+
+%% nudge
+- What data structure lets you ask "have I seen this key before?" — and how do you ask it without trusting the stored value?
+- In what order must you call `fn` and store the result so a throw doesn't leave a bad entry?
 
 %% hints
 - A `Map` keyed by the computed key. Use `cache.has(key)` — *not* `cache.get(key) !== undefined`.

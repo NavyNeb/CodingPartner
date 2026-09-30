@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { findLesson, tracks } from '../content';
 import { DEFAULT_MINUTES, lessonStats } from '../lib/curriculum';
 import { headingsOf } from '../lib/markdown';
+import { checkKey, findBlocks } from '../lib/blocks';
 import { useProgress } from '../store/progress';
 import { Inline, Pips, Prose, SiteHeader, SolvedMark } from '../components/bits';
 import { Icon } from '../components/Icon';
@@ -19,6 +20,7 @@ function LessonView({ found }: { found: NonNullable<ReturnType<typeof findLesson
   const { track, lesson, index } = found;
   const p = useProgress();
   const heads = useMemo(() => headingsOf(lesson.theory), [lesson.theory]);
+  const blocks = useMemo(() => { try { return findBlocks(lesson.theory); } catch { return null; } }, [lesson.theory]);
   const [active, setActive] = useState<string>('');
   const st = lessonStats(lesson.id, p);
   const next = track.lessons[index + 1];
@@ -59,6 +61,15 @@ function LessonView({ found }: { found: NonNullable<ReturnType<typeof findLesson
               {st.solved ? 'Continue practising' : 'Start practising'} <Icon name="arrowRight" size={14} />
             </Link>
           </div>
+
+          {blocks && (blocks.tries.length > 0 || blocks.checks.length > 0) && (
+            <nav className="rail" aria-label="Lesson steps">
+              <a href="/" className="done" onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>1 · Read</a>
+              {blocks.tries.length > 0 && <a href="/" onClick={(e) => { e.preventDefault(); document.querySelector('.snippet')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>2 · Try ({blocks.tries.length})</a>}
+              {blocks.checks.length > 0 && <a href="/" className={blocks.checkBodies.every((b) => p.checks[checkKey(b)]) ? 'done' : ''} onClick={(e) => { e.preventDefault(); document.querySelector('.qcheck')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>3 · Check{blocks.checkBodies.every((b) => p.checks[checkKey(b)]) ? ' ✓' : ''}</a>}
+              <a href="/" className={st.solved === st.total ? 'done' : ''} onClick={(e) => { e.preventDefault(); document.getElementById('practice')?.scrollIntoView({ behavior: 'smooth' }); }}>4 · Practice ({st.solved}/{st.total})</a>
+            </nav>
+          )}
 
           <Prose md={lesson.theory} />
 

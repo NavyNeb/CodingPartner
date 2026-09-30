@@ -135,8 +135,15 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
                 {activeTab === 'task' && (
                   <article>
                     <p className="eyebrow">Exercise {number} · {DIFFICULTY_LABEL[exercise.difficulty]} · ~{exercise.minutes ?? DEFAULT_MINUTES[exercise.difficulty]} min · {exercise.kind === 'react' ? 'React' : exercise.kind === 'types' ? 'Types' : exercise.lang === 'ts' ? 'TypeScript' : 'JavaScript'}</p>
-                    <h1 className="ex-title">{exercise.title}</h1>
+                    <h1 className="ex-title">{exercise.title}{exercise.guided && <span className="guided-chip">Guided</span>}</h1>
+                    {exercise.guided && <p className="note">Guided exercise: the skeleton is filled in and the numbered steps in the comments walk you through it. Complete them one at a time, running the tests as you go.</p>}
                     <Prose md={exercise.prompt} />
+                    {exercise.worked && (
+                      <details className="worked">
+                        <summary><Icon name="book" size={14} /> See a worked example first</summary>
+                        <Prose md={exercise.worked} />
+                      </details>
+                    )}
                     {exercise.kind === 'types' && <p className="note">Your types are checked by the real TypeScript compiler in <code>strict</code> mode. No errors means every case passes.</p>}
                   </article>
                 )}
@@ -151,6 +158,12 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
                 {activeTab === 'tests' && (
                   <article>
                     <p className="eyebrow">Test source</p>
+                    {exercise.explain && (
+                      <div className="explain">
+                        <p className="eyebrow">What the tests check — in plain English</p>
+                        <Prose md={exercise.explain} />
+                      </div>
+                    )}
                     <p className="muted">This is exactly what runs against your code. Read it like a spec.</p>
                     <div dangerouslySetInnerHTML={{ __html: codeBlock(exercise.tests, exercise.kind === 'react' ? 'tsx' : exercise.kind === 'types' ? 'ts' : 'js') }} />
                   </article>
@@ -216,6 +229,12 @@ function Hints({ exercise, revealed }: { exercise: Exercise; revealed: number })
     <article>
       <p className="eyebrow">Hints</p>
       <p className="muted">Struggle first — a hint you earn sticks. They get more specific as you go.</p>
+      {exercise.nudge && (
+        <div className="nudge">
+          <p className="eyebrow">Stuck? Think about…</p>
+          <Prose md={exercise.nudge} className="tight" />
+        </div>
+      )}
       <ol className="hint-list">
         {exercise.hints.slice(0, revealed).map((h, i) => (
           <li key={i}><span className="hint-n">{i + 1}</span><Prose md={h} className="tight" /></li>
