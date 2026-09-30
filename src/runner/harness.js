@@ -648,8 +648,42 @@
     var React = g.React, ReactDOM = g.ReactDOM;
     if (!React || !ReactDOM) throw new Error('React runtime is missing in the sandbox');
     g.IS_REACT_ACT_ENVIRONMENT = true;
-    var act = React.act;
     var doc = g.document;
+
+    /* Mirrors Testing Library: the act-environment flag is true only while inside act(), and false while an async
+       helper (userEvent, waitFor) is waiting — so updates that land after an `await` don't spam act() warnings. */
+    function act(cb) {
+      var prev = g.IS_REACT_ACT_ENVIRONMENT;
+      g.IS_REACT_ACT_ENVIRONMENT = true;
+      var isAsync = false;
+      var wrapped = function () {
+        var out = cb();
+        if (out && typeof out.then === 'function') isAsync = true;
+        return out;
+      };
+      var result;
+      try { result = React.act(wrapped); }
+      catch (e) { g.IS_REACT_ACT_ENVIRONMENT = prev; throw e; }
+      if (!isAsync) { g.IS_REACT_ACT_ENVIRONMENT = prev; return undefined; }
+      // React's act() thenable does not return a promise from .then, so wrap it in a real one.
+      return new Promise(function (resolve, reject) {
+        result.then(
+          function (v) { g.IS_REACT_ACT_ENVIRONMENT = prev; resolve(v); },
+          function (e) { g.IS_REACT_ACT_ENVIRONMENT = prev; reject(e); }
+        );
+      });
+    }
+    function untilIdle(fn) {
+      return async function () {
+        var prev = g.IS_REACT_ACT_ENVIRONMENT;
+        g.IS_REACT_ACT_ENVIRONMENT = false;
+        try {
+          var r = await fn.apply(this, arguments);
+          await sleep(0);
+          return r;
+        } finally { g.IS_REACT_ACT_ENVIRONMENT = prev; }
+      };
+    }
 
     var ROLE_BY_TAG = { button: 'button', a: 'link', h1: 'heading', h2: 'heading', h3: 'heading', h4: 'heading', h5: 'heading', h6: 'heading', ul: 'list', ol: 'list', li: 'listitem', nav: 'navigation', main: 'main', img: 'img', select: 'combobox', textarea: 'textbox', table: 'table', tr: 'row', td: 'cell', th: 'columnheader', option: 'option', dialog: 'dialog', article: 'article', aside: 'complementary', form: 'form', progress: 'progressbar', header: 'banner', footer: 'contentinfo', section: 'region', p: 'paragraph', label: null };
     var ROLE_BY_INPUT = { text: 'textbox', email: 'textbox', search: 'searchbox', tel: 'textbox', url: 'textbox', number: 'spinbutton', checkbox: 'checkbox', radio: 'radio', range: 'slider', submit: 'button', button: 'button', reset: 'button', image: 'button', '': 'textbox' };
@@ -785,16 +819,19 @@
       var timeout = opts.timeout === undefined ? 1000 : opts.timeout;
       var interval = opts.interval === undefined ? 25 : opts.interval;
       var start = realDateNow(), elapsedFake = 0, lastErr;
-      for (;;) {
-        try { return await cb(); } catch (e) { lastErr = e; }
-        var over = fake.active ? elapsedFake >= timeout : realDateNow() - start >= timeout;
-        if (over) break;
-        if (fake.active) { await act(async function () { await advanceAsync(interval); }); elapsedFake += interval; }
-        else await act(async function () { await sleep(interval); });
-      }
+      var prevEnv = g.IS_REACT_ACT_ENVIRONMENT;
+      g.IS_REACT_ACT_ENVIRONMENT = false;
+      try {
+        for (;;) {
+          try { return await cb(); } catch (e) { lastErr = e; }
+          var over = fake.active ? elapsedFake >= timeout : realDateNow() - start >= timeout;
+          if (over) break;
+          if (fake.active) { await act(async function () { await advanceAsync(interval); }); elapsedFake += interval; }
+          else await sleep(interval);
+        }
+      } finally { g.IS_REACT_ACT_ENVIRONMENT = prevEnv; }
       var msg = lastErr && lastErr.message ? lastErr.message : String(lastErr);
-      var err = new Error('waitFor timed out after ' + timeout + 'ms.\n' + msg);
-      throw err;
+      throw new Error('waitFor timed out after ' + timeout + 'ms.\n' + msg);
     }
 
     /* events */
@@ -902,6 +939,7 @@
         });
       },
     };
+    Object.keys(userEvent).forEach(function (k) { userEvent[k] = untilIdle(userEvent[k]); });
     async function typeToken(el, token) {
       var special = /^\{(.+)\}$/.exec(token);
       var active = doc.activeElement && doc.activeElement !== doc.body ? doc.activeElement : el;

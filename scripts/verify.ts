@@ -40,6 +40,7 @@ async function runJs(ex: Exercise, code: string): Promise<Result> {
 async function runReact(ex: Exercise, code: string): Promise<Result> {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
   const w = dom.window as any;
+  w.MessageChannel = MessageChannel; // jsdom lacks it; browsers have it and React's scheduler + async act need it
   w.eval(reactSrc);
   w.eval(reactDomSrc);
   w.eval(harnessSrc);
