@@ -1111,6 +1111,94 @@
     g.ReactDOM.createRoot(el).render(React.createElement(Boundary, null, React.createElement(Component)));
   }
 
+
+  /* ───────────── production-scenario test helpers ───────────── */
+
+  /** A controllable WebSocket look-alike. Code under test sees the normal API; tests drive it with open()/receive()/drop(). */
+  function createFakeSocket(url) {
+    var handlers = { open: [], message: [], close: [], error: [] };
+    var s = { url: url, readyState: 0, sent: [], onopen: null, onmessage: null, onclose: null, onerror: null };
+    function emit(type, ev) {
+      ev.type = type; ev.target = s;
+      var on = s['on' + type];
+      if (typeof on === 'function') on.call(s, ev);
+      handlers[type].slice().forEach(function (f) { f.call(s, ev); });
+    }
+    s.addEventListener = function (t, f) { if (handlers[t]) handlers[t].push(f); };
+    s.removeEventListener = function (t, f) { if (handlers[t]) handlers[t] = handlers[t].filter(function (x) { return x !== f; }); };
+    s.send = function (d) {
+      if (s.readyState === 0) throw new Error('InvalidStateError: socket is still CONNECTING');
+      if (s.readyState === 1) s.sent.push(d);
+    };
+    s.close = function (code) {
+      if (s.readyState === 3) return;
+      s.readyState = 3;
+      emit('close', { code: code || 1000, wasClean: true });
+    };
+    /* test controls */
+    s.open = function () { s.readyState = 1; emit('open', {}); };
+    s.receive = function (data) { emit('message', { data: typeof data === 'string' ? data : JSON.stringify(data) }); };
+    s.drop = function (code) { s.readyState = 3; emit('close', { code: code || 1006, wasClean: false }); };
+    s.fail = function () { emit('error', {}); };
+    s.listenerCount = function () {
+      var n = 0;
+      Object.keys(handlers).forEach(function (k) { n += handlers[k].length + (typeof s['on' + k] === 'function' ? 1 : 0); });
+      return n;
+    };
+    return s;
+  }
+
+  /** BroadcastChannel look-alike: messages reach every OTHER channel with the same name (async, like the real one). */
+  function createFakeChannelHub() {
+    var channels = [];
+    return {
+      channel: function (name) {
+        var listeners = [];
+        var ch = { name: name, closed: false, onmessage: null };
+        ch.postMessage = function (data) {
+          if (ch.closed) throw new Error('InvalidStateError: channel is closed');
+          var copy = typeof structuredClone === 'function' ? structuredClone(data) : JSON.parse(JSON.stringify(data));
+          channels.forEach(function (other) {
+            if (other === ch || other.closed || other.name !== name) return;
+            queueMicrotask(function () { if (!other.closed) other._deliver({ data: copy }); });
+          });
+        };
+        ch._deliver = function (ev) {
+          if (typeof ch.onmessage === 'function') ch.onmessage(ev);
+          listeners.slice().forEach(function (f) { f(ev); });
+        };
+        ch.addEventListener = function (t, f) { if (t === 'message') listeners.push(f); };
+        ch.removeEventListener = function (t, f) { listeners = listeners.filter(function (x) { return x !== f; }); };
+        ch.close = function () { ch.closed = true; };
+        channels.push(ch);
+        return ch;
+      },
+      open: function () { return channels.filter(function (c) { return !c.closed; }).length; },
+    };
+  }
+
+  /** Two entangled MessagePort look-alikes (like `new MessageChannel()`), e.g. to wire a worker client to a worker server. */
+  function createFakePorts() {
+    function port() {
+      var p = { onmessage: null, other: null, closed: false, posted: [] };
+      p.postMessage = function (data) {
+        if (p.closed) return;
+        p.posted.push(data);
+        var copy = typeof structuredClone === 'function' ? structuredClone(data) : JSON.parse(JSON.stringify(data));
+        queueMicrotask(function () {
+          if (p.other && !p.other.closed && typeof p.other.onmessage === 'function') p.other.onmessage({ data: copy });
+        });
+      };
+      p.close = function () { p.closed = true; };
+      return p;
+    }
+    var a = port(), b = port();
+    a.other = b; b.other = a;
+    return [a, b];
+  }
+
+  async function flushPromises() { for (var i = 0; i < 12; i++) await Promise.resolve(); }
+
   /* ───────────── run ───────────── */
 
   function evalModule(code, requireFn, label) {
@@ -1164,6 +1252,8 @@
       var scope = Object.assign({
         describe: registry.describe, it: registry.it, test: registry.test, expect: expect, jest: jest,
         beforeEach: registry.beforeEach, afterEach: registry.afterEach,
+        createFakeSocket: createFakeSocket, createFakeChannelHub: createFakeChannelHub, createFakePorts: createFakePorts,
+        flushPromises: flushPromises,
       }, kit || {}, userExports);
       delete scope.default;
       delete scope.__esModule;

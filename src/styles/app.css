@@ -205,6 +205,16 @@ kbd {
 }
 .prose blockquote { margin: 1.4em 0; padding: 4px 0 4px 20px; border-left: 3px solid var(--accent); color: var(--muted); font-family: var(--font-display); font-size: 1.12em; line-height: 1.55; }
 .prose blockquote p { margin: 0.4em 0; }
+.prose blockquote.incident {
+  font-family: var(--font-body); font-size: 0.95em; line-height: 1.65; color: var(--ink);
+  background: var(--fail-soft); border: 1px solid color-mix(in srgb, var(--fail) 30%, transparent);
+  border-left: 4px solid var(--fail); border-radius: 6px; padding: 14px 18px; margin: 1.6em 0;
+}
+.prose blockquote.incident p { margin: 0.55em 0; }
+.prose blockquote.incident > p:first-child > strong:first-child {
+  display: block; margin-bottom: 4px; font: 600 11.5px var(--font-mono); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--fail);
+}
 .prose table { border-collapse: collapse; margin: 1.2em 0; font-size: 14.5px; width: 100%; }
 .prose th, .prose td { border: 1px solid var(--line); padding: 7px 12px; text-align: left; }
 .prose th { background: var(--surface-2); }

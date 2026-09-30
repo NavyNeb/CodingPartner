@@ -4,7 +4,7 @@
 in interviews, then live coding against real tests — from warm-ups to senior-level problems. Built for getting your
 fundamentals back after leaning on AI.
 
-- **108 exercises** in **21 lessons**, four difficulty tiers (Warm-up → Core → Hard → Interview)
+- **129 exercises** in **28 lessons**, four difficulty tiers (Warm-up → Core → Hard → Interview)
 - **A real editor** (CodeMirror 6) with `Ctrl/⌘ + Enter` to run, autosaved drafts, and optional autocomplete
 - **Real tests**, run in your browser — no server, nothing leaves your machine
 - **Interview mode**: per-exercise countdown, no hints, no solution, no autocomplete
@@ -32,9 +32,10 @@ hash routing means no rewrites are needed. Or from a terminal: `npx vercel --pro
 | **JavaScript, properly** | closures · `this` & prototypes · arrays · objects & copying · promises · async patterns · event loop & timing · iterators & generators · functional patterns | 48 |
 | **TypeScript, for real** | generics & narrowing · mapped/conditional/template types · typing real code | 13 |
 | **React, under the hood** | rendering · state & forms · effects · custom hooks · performance · architecture · composition & a11y | 32 |
+| **Production scenarios** | case studies from a live-betting platform: update firehose · 20 000-event screens · reconnects & sequence gaps · stale prices & idempotent bets · memory leaks · Web Worker RPC · multi-tab sync & leader election | 21 |
 | **Interview gauntlet** | data structures & algorithms · frontend classics | 15 |
 
-Highlights: build `bind`, `new` and `instanceof` from scratch · a spec-shaped `Promise` · debounce/throttle with leading/trailing/cancel/flush ·
+Highlights: **production incident case studies** (each starts with the symptom and metrics, then you build the fix against synthetic sockets, clocks, tabs and worker ports) · build `bind`, `new` and `instanceof` from scratch · a spec-shaped `Promise` · debounce/throttle with leading/trailing/cancel/flush ·
 an `Observable` · LRU cache and trie · a virtual DOM → HTML renderer · `DeepReadonly`, `UnionToIntersection` and dot-path types ·
 accessible tabs, modal (portal + focus trap) and combobox · a virtualised list · race-condition-safe data fetching.
 
@@ -59,6 +60,12 @@ The harness is one plain-JS file (`src/runner/harness.js`) shared by the browser
 
 using Node `vm` (JS), jsdom (React) and the TypeScript compiler (types). All exercises were additionally executed through
 the built app in headless Chromium.
+
+### Production-scenario test helpers
+
+Exercises in the `prod` track get synthetic infrastructure in their test scope: `createFakeSocket(url)` (a controllable
+WebSocket: `.open() .receive() .drop() .listenerCount()`), `createFakeChannelHub()` (BroadcastChannel across "tabs"),
+`createFakePorts()` (entangled MessagePorts for worker RPC) and `flushPromises()` — combined with `jest.useFakeTimers()`.
 
 ## Adding content
 

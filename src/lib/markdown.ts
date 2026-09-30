@@ -34,6 +34,11 @@ const marked = new Marked({
       const raw = tokens.map((t) => t.raw).join('');
       return `<h${depth} id="${slug(raw)}">${inner}</h${depth}>\n`;
     },
+    blockquote({ tokens }) {
+      const inner = this.parser.parse(tokens);
+      const isIncident = /^\*\*INCIDENT/.test(tokens[0]?.raw ?? '') || /^<p><strong>INCIDENT/.test(inner);
+      return `<blockquote${isIncident ? ' class="incident"' : ''}>${inner}</blockquote>\n`;
+    },
     link({ href, tokens }) {
       const inner = this.parser.parseInline(tokens);
       return `<a href="${href}" target="_blank" rel="noreferrer noopener">${inner}</a>`;

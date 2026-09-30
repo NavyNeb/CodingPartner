@@ -17,6 +17,11 @@ export const trackMeta: TrackMeta[] = [
     blurb: 'Components, state, effects, custom hooks and architecture patterns — tested through the DOM, the way you would in a real codebase.',
   },
   {
+    id: 'prod',
+    title: 'Production scenarios',
+    blurb: 'Real incidents from real systems — live odds feeds, 20 000-row screens, flaky sockets, leaky tabs — and the patterns that fix them. Each case study starts with the symptom, then you build the fix against a stress harness.',
+  },
+  {
     id: 'interview',
     title: 'Interview gauntlet',
     blurb: 'Senior-level problems in the shapes that come up on live-coding rounds. Timed mode recommended.',
