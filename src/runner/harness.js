@@ -895,7 +895,9 @@
     var userEvent = {
       async click(el) {
         if (isDisabled(el)) return;
-        fireEvent.pointerDown(el); fireEvent.mouseDown(el); focusEl(el);
+        fireEvent.pointerDown(el);
+        var focusAllowed = fireEvent.mouseDown(el) !== false; // preventDefault() on mousedown keeps focus where it is
+        if (focusAllowed) focusEl(el);
         fireEvent.pointerUp(el); fireEvent.mouseUp(el);
         act(function () { el.click(); });
       },

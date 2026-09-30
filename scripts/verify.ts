@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 import { readdirSync } from 'node:fs';
 import { buildTracks } from '../src/content/parse';
 import { trackMeta } from '../src/content/tracks';
@@ -38,7 +38,7 @@ async function runJs(ex: Exercise, code: string): Promise<Result> {
 }
 
 async function runReact(ex: Exercise, code: string): Promise<Result> {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/' });
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only', pretendToBeVisual: true, url: 'http://localhost/', virtualConsole: new VirtualConsole() });
   const w = dom.window as any;
   w.MessageChannel = MessageChannel; // jsdom lacks it; browsers have it and React's scheduler + async act need it
   w.eval(reactSrc);
