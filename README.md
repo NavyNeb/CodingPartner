@@ -20,6 +20,11 @@ npm run build      # static site in dist/ (hash routing — host it anywhere)
 npm run verify     # run every reference solution & starter through the real harness
 ```
 
+## Deploy (Vercel)
+
+Import the repo at [vercel.com/new](https://vercel.com/new) — `vercel.json` already sets the Vite build and `dist/` output, and
+hash routing means no rewrites are needed. Or from a terminal: `npx vercel --prod`.
+
 ## What's inside
 
 | Track | Lessons | Exercises |
