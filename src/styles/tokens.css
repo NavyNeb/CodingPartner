@@ -1,0 +1,74 @@
+/* Whetstone design tokens.
+   Palette: warm paper + ink, one ember accent. Light is "paper", dark is "ink". */
+:root {
+  --font-display: 'Newsreader Variable', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --paper: #f5f0e6;
+  --surface: #fbf8f1;
+  --surface-2: #efe8da;
+  --editor-bg: #fdfbf6;
+  --editor-line: #f3eee2;
+  --ink: #1e1b16;
+  --muted: #655d51;
+  --faint: #a39a8b;
+  --line: #ded5c3;
+  --line-strong: #c9bea8;
+  --accent: #d2431a;
+  --accent-ink: #ffffff;
+  --accent-soft: #f6dccf;
+  --pass: #34754a;
+  --pass-soft: #dcebdd;
+  --fail: #b3321f;
+  --fail-soft: #f6dfd9;
+  --warn: #93650f;
+  --selection: #ecd7b9;
+  --shadow-pop: 0 8px 30px rgba(50, 35, 10, 0.14);
+
+  --syn-keyword: #b3321f;
+  --syn-string: #35703f;
+  --syn-number: #8a5a0b;
+  --syn-fn: #1f5f8b;
+  --syn-type: #7a3d8c;
+  --syn-prop: #2a4d69;
+  --syn-comment: #9a917f;
+  --syn-punct: #6b6355;
+
+  --radius: 6px;
+  --header-h: 60px;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --paper: #151311;
+  --surface: #1c1916;
+  --surface-2: #26221d;
+  --editor-bg: #181512;
+  --editor-line: #211d19;
+  --ink: #efe8da;
+  --muted: #a1988a;
+  --faint: #6b6459;
+  --line: #322d26;
+  --line-strong: #463f35;
+  --accent: #f2643a;
+  --accent-ink: #1a0d07;
+  --accent-soft: #3a2118;
+  --pass: #6fbb87;
+  --pass-soft: #1c2e22;
+  --fail: #ee7a67;
+  --fail-soft: #3a1f1a;
+  --warn: #dba64b;
+  --selection: #40352a;
+  --shadow-pop: 0 10px 34px rgba(0, 0, 0, 0.55);
+
+  --syn-keyword: #f0806b;
+  --syn-string: #9bcc85;
+  --syn-number: #e0b062;
+  --syn-fn: #7fb8e0;
+  --syn-type: #c79be0;
+  --syn-prop: #a9c7e0;
+  --syn-comment: #746c5f;
+  --syn-punct: #9a9184;
+  color-scheme: dark;
+}
