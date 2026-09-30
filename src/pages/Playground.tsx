@@ -4,6 +4,7 @@ import { Split } from '../components/Split';
 import { Icon } from '../components/Icon';
 import { Logo, ThemeToggle } from '../components/bits';
 import { Link } from 'react-router-dom';
+import { useAssist } from '../lib/useAssist';
 import { mountPreview, runScratch, type LogLine, type PreviewHandle, type ScratchHandle } from '../runner/execute';
 
 type Mode = 'script' | 'react';
@@ -58,6 +59,7 @@ export default function Playground() {
   const handle = useRef<ScratchHandle | PreviewHandle | null>(null);
   const token = useRef(0);
   const code = codes[mode];
+  const [assist, setAssist] = useAssist();
 
   useEffect(() => { store('whetstone:pg:mode', mode); }, [mode]);
   useEffect(() => { const t = setTimeout(() => store(`whetstone:pg:${mode}`, code), 400); return () => clearTimeout(t); }, [mode, code]);
@@ -119,10 +121,11 @@ export default function Playground() {
               <div className="editor-bar">
                 <span className="file-name">{mode === 'script' ? 'scratch.ts' : 'App.tsx'}</span>
                 <span className="grow" />
+                <button className={`chip-btn${assist ? ' on' : ''}`} onClick={() => setAssist(!assist)} aria-pressed={assist} title="Toggle editor autocomplete">Autocomplete</button>
                 <button className="btn ghost" onClick={() => { setCodes((c) => ({ ...c, [mode]: SAMPLES[mode] })); }}><Icon name="reset" size={14} /> Sample</button>
                 <button className="btn primary" onClick={() => void run()} disabled={running}><Icon name="play" size={12} /> Run <kbd>⌘↵</kbd></button>
               </div>
-              <CodeEditor key={mode} value={code} onChange={(v) => setCodes((c) => ({ ...c, [mode]: v }))} onRun={() => void run()} lang={mode === 'react' ? 'tsx' : 'ts'} label="Playground editor" />
+              <CodeEditor key={mode} value={code} onChange={(v) => setCodes((c) => ({ ...c, [mode]: v }))} onRun={() => void run()} lang={mode === 'react' ? 'tsx' : 'ts'} label="Playground editor" assist={assist} />
             </div>
           }
           second={

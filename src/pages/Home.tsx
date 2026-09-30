@@ -22,7 +22,7 @@ export default function Home() {
             <h1 className="display">Get sharp <em>again.</em></h1>
             <p className="lede">
               A practice-first gym for the language you use every day. A short lesson on the idea, then real code against real tests —
-              from warm-ups to the problems that decide senior interviews. No autocomplete crutches on the answers.
+              from warm-ups to the problems that decide senior interviews. Nothing writes the answer for you.
             </p>
             <div className="hero-actions">
               {resume ? (

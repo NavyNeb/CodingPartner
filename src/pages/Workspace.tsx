@@ -11,6 +11,7 @@ import { Split } from '../components/Split';
 import { ResultsPanel } from '../components/Results';
 import { Icon } from '../components/Icon';
 import { Logo, Pips, Prose, ThemeToggle } from '../components/bits';
+import { useAssist } from '../lib/useAssist';
 import { NotFound } from './NotFound';
 
 type LeftTab = 'task' | 'lesson' | 'hints' | 'tests' | 'solution';
@@ -32,9 +33,11 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
   const [running, setRunning] = useState(false);
   const [tab, setTab] = useState<LeftTab>('task');
   const [confirmReset, setConfirmReset] = useState(false);
+  const [assistPref, setAssistPref] = useAssist();
   const runId = useRef(0);
   const solved = p.solved[exercise.id];
   const timed = p.timed;
+  const assist = assistPref && !timed;
   const prev = prevBefore(lessonId, exercise.id);
   const next = nextAfter(lessonId, exercise.id);
   const number = (findLesson(lessonId)?.lesson.exercises.findIndex((e) => e.id === exercise.id) ?? 0) + 1;
@@ -164,6 +167,15 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
                   <div className="editor-bar">
                     <span className="file-name">{exercise.kind === 'types' ? 'types.ts' : exercise.lang === 'tsx' ? 'solution.tsx' : exercise.lang === 'ts' ? 'solution.ts' : 'solution.js'}</span>
                     <span className="grow" />
+                    <button
+                      className={`chip-btn${assist ? ' on' : ''}`}
+                      onClick={() => setAssistPref(!assistPref)}
+                      aria-pressed={assist}
+                      disabled={timed}
+                      title={timed ? 'Autocomplete is off in interview mode' : 'Toggle editor autocomplete'}
+                    >
+                      Autocomplete
+                    </button>
                     <button className={`btn ghost${confirmReset ? ' danger' : ''}`} onClick={reset}>
                       <Icon name="reset" size={14} /> {confirmReset ? 'Click again to reset' : 'Reset'}
                     </button>
@@ -171,7 +183,7 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
                       <Icon name="play" size={12} /> {running ? 'Running…' : 'Run tests'} <kbd>⌘↵</kbd>
                     </button>
                   </div>
-                  <CodeEditor ref={editor} value={code} onChange={setCode} onRun={() => void run()} lang={exercise.lang} errorLines={errorLines} label="Code editor" />
+                  <CodeEditor ref={editor} value={code} onChange={setCode} onRun={() => void run()} lang={exercise.lang} errorLines={errorLines} label="Code editor" assist={assist} />
                 </div>
               }
               second={

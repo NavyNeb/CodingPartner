@@ -76,11 +76,15 @@
       if (d.start === undefined) return;
       var l = main.getLineAndCharacterOfPosition(d.start).line + 1;
       var msg = flat(ts, d);
+      var srcLines = source.split('\n');
+      var lineText = (srcLines[l - 1] || '').trim();
+      // an unused @ts-expect-error is reported on the comment; the interesting code is the next line
+      if (/^\/\/\s*@ts-expect-error/.test(lineText) && srcLines[l]) lineText = srcLines[l].trim();
       if (l <= PRELUDE_LINES) return;
       if (l <= PRELUDE_LINES + userLines) { diagnostics.push({ line: l - PRELUDE_LINES, message: msg }); return; }
       if (l >= preStart && l <= preEnd) { diagnostics.push({ line: 0, message: 'Exercise setup error (or your types do not fit the setup): ' + msg }); return; }
       for (var i = 0; i < ranges.length; i++) {
-        if (l >= ranges[i][0] && l <= ranges[i][1]) { caseErrors[i].push(msg); break; }
+        if (l >= ranges[i][0] && l <= ranges[i][1]) { caseErrors[i].push(msg + (lineText ? '\n\n› ' + lineText : '')); break; }
       }
     });
 

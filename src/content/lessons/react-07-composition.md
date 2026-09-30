@@ -1,7 +1,7 @@
 ---
 id: react-composition
 track: react
-title: Composition & accessibility: compound components, portals, comboboxes
+title: Composition & accessibility
 summary: Designing component APIs that compose, managing focus and keyboard, and shipping widgets a screen reader can use.
 ---
 

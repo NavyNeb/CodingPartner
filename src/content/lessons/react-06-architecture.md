@@ -1,7 +1,7 @@
 ---
 id: react-architecture
 track: react
-title: State architecture: context, reducers & error boundaries
+title: State architecture
 summary: Sharing state without prop drilling, modelling complex updates, controlled vs uncontrolled APIs, and failing gracefully.
 ---
 

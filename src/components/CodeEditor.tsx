@@ -1,9 +1,15 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
-import { basicSetup } from 'codemirror';
-import { EditorState, StateEffect, StateField, Prec } from '@codemirror/state';
-import { Decoration, EditorView, keymap } from '@codemirror/view';
-import { indentWithTab } from '@codemirror/commands';
-import { indentUnit, HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { Compartment, EditorState, StateEffect, StateField, Prec } from '@codemirror/state';
+import {
+  Decoration, EditorView, drawSelection, dropCursor, highlightActiveLine, highlightActiveLineGutter,
+  highlightSpecialChars, keymap, lineNumbers, rectangularSelection,
+} from '@codemirror/view';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import {
+  HighlightStyle, bracketMatching, foldGutter, foldKeymap, indentOnInput, indentUnit, syntaxHighlighting,
+} from '@codemirror/language';
+import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { javascript } from '@codemirror/lang-javascript';
 import { tags as t } from '@lezer/highlight';
 import type { Lang } from '../content/types';
@@ -21,6 +27,8 @@ interface Props {
   readOnly?: boolean;
   errorLines?: number[];
   label: string;
+  /** Keyword/identifier autocomplete. Off = whiteboard mode. */
+  assist?: boolean;
 }
 
 const setErrors = StateEffect.define<number[]>();
@@ -71,9 +79,12 @@ const highlight = HighlightStyle.define([
   { tag: t.invalid, color: 'var(--fail)' },
 ]);
 
-export const CodeEditor = forwardRef<EditorHandle, Props>(function CodeEditor({ value, onChange, onRun, lang, readOnly, errorLines, label }, ref) {
+export const CodeEditor = forwardRef<EditorHandle, Props>(function CodeEditor({ value, onChange, onRun, lang, readOnly, errorLines, label, assist = true }, ref) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const assistSlot = useRef(new Compartment());
+  const assistRef = useRef(assist);
+  assistRef.current = assist;
   const cb = useRef({ onChange, onRun });
   cb.current = { onChange, onRun };
 
@@ -94,8 +105,22 @@ export const CodeEditor = forwardRef<EditorHandle, Props>(function CodeEditor({ 
       doc: value,
       extensions: [
         Prec.highest(keymap.of([{ key: 'Mod-Enter', run: () => { cb.current.onRun?.(); return true; } }])),
-        basicSetup,
-        keymap.of([indentWithTab]),
+        lineNumbers(),
+        highlightActiveLineGutter(),
+        highlightSpecialChars(),
+        history(),
+        foldGutter(),
+        drawSelection(),
+        dropCursor(),
+        EditorState.allowMultipleSelections.of(true),
+        indentOnInput(),
+        bracketMatching(),
+        closeBrackets(),
+        rectangularSelection(),
+        highlightActiveLine(),
+        highlightSelectionMatches(),
+        assistSlot.current.of(assistRef.current ? autocompletion() : []),
+        keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...foldKeymap, ...completionKeymap, indentWithTab]),
         indentUnit.of('  '),
         EditorState.tabSize.of(2),
         javascript({ typescript: lang !== 'js', jsx: lang !== 'ts' }),
@@ -122,6 +147,10 @@ export const CodeEditor = forwardRef<EditorHandle, Props>(function CodeEditor({ 
   useEffect(() => {
     view.current?.dispatch({ effects: setErrors.of(errorLines ?? []) });
   }, [errorLines]);
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: assistSlot.current.reconfigure(assist ? autocompletion() : []) });
+  }, [assist]);
 
   return <div className="editor" ref={host} />;
 });

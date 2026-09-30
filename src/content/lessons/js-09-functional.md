@@ -1,7 +1,7 @@
 ---
 id: functional
 track: js
-title: Functional patterns: composition, currying & streams
+title: Functional patterns
 summary: Functions as values — compose them, partially apply them, and build a tiny reactive stream.
 ---
 

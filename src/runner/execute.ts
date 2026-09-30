@@ -135,7 +135,7 @@ window.addEventListener('message', async function (e) {
 
 export function offscreenIframe(): HTMLIFrameElement {
   const f = document.createElement('iframe');
-  f.setAttribute('sandbox', 'allow-scripts');
+  f.setAttribute('sandbox', 'allow-scripts allow-forms');
   f.setAttribute('aria-hidden', 'true');
   f.tabIndex = -1;
   f.style.cssText = 'position:fixed;top:0;left:-9999px;width:900px;height:700px;border:0;opacity:0;pointer-events:none';
@@ -199,7 +199,7 @@ export async function mountPreview(code: string, host: HTMLElement, onLog: (l: L
   const html = await buildSandboxHtml(tail);
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   const frame = document.createElement('iframe');
-  frame.setAttribute('sandbox', 'allow-scripts');
+  frame.setAttribute('sandbox', 'allow-scripts allow-forms');
   frame.title = 'Live preview';
   frame.className = 'preview-frame';
   const onMsg = (e: MessageEvent) => { if (e.source === frame.contentWindow && e.data?.type === 'log') onLog({ level: e.data.level, text: e.data.text }); };

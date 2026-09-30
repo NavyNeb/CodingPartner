@@ -238,7 +238,7 @@ pre.code[data-lang]::after {
 .ws-sep { width: 1px; height: 20px; background: var(--line-strong); flex: none; }
 .ws-bar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .crumbs { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); font-size: 13.5px; }
-.crumbs a { text-decoration: none; white-space: nowrap; } .crumbs a:hover { color: var(--ink); }
+.crumbs a { text-decoration: none; white-space: nowrap; max-width: 30ch; overflow: hidden; text-overflow: ellipsis; } .crumbs a:hover { color: var(--ink); }
 .crumbs span { color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .timer { font-family: var(--font-mono); font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-variant-numeric: tabular-nums; }
 .timer.low { color: var(--warn); border-color: var(--warn); }
@@ -352,12 +352,17 @@ pre.code[data-lang]::after {
   .site-nav { display: none; }
   .ex-row { grid-template-columns: 26px 1fr auto 22px; }
   .ex-row .pips-label, .ex-time { display: none; }
-  .split-row { flex-direction: column; overflow: auto; }
-  .split-row > .split-first { flex: 0 0 48%; }
+  .ws-main { overflow-y: auto; }
+  .split-row { flex-direction: column; height: auto; min-height: 100%; }
+  .split-row > .split-first { flex: none; height: auto; max-height: 55vh; min-height: 260px; }
+  .split-row > .split-first .left-panel { height: auto; max-height: 55vh; }
   .split-row > .split-handle { display: none; }
-  .split-row > .split-second { flex: 1 0 72%; }
+  .split-row > .split-second { flex: none; height: calc(100dvh - 50px); }
   .left-body { padding: 18px; }
-  .crumbs a, .ws-bar .pips { display: none; }
+  .crumbs a, .crumbs svg, .ws-bar .pips { display: none; }
+  .editor-bar { padding: 0 8px; gap: 4px; }
+  .editor-bar .file-name, .btn kbd { display: none; }
+  .ws-bar-right .chip-btn { padding: 0 8px; }
   .ws-bar .logo span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }

@@ -93,7 +93,7 @@ function LessonView({ found }: { found: NonNullable<ReturnType<typeof findLesson
           <p className="eyebrow">On this page</p>
           <ul>
             {heads.map((h) => (
-              <li key={h.id}><a href={`/${h.id}`} className={active === h.id ? 'active' : ''} onClick={(e) => { e.preventDefault(); document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' }); }}>{h.text}</a></li>
+              <li key={h.id}><a href={`/${h.id}`} className={active === h.id ? 'active' : ''} onClick={(e) => { e.preventDefault(); document.getElementById(h.id)?.scrollIntoView({ behavior: 'smooth' }); }}><Inline md={h.text} /></a></li>
             ))}
             <li><a href="/" className={active === 'practice' ? 'active' : ''} onClick={(e) => { e.preventDefault(); document.getElementById('practice')?.scrollIntoView({ behavior: 'smooth' }); }}>Practice ({st.solved}/{st.total})</a></li>
           </ul>
