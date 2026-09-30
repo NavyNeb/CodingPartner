@@ -9,7 +9,7 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 let uid = 0;
 
 interface TextOpts { tone?: Tone; size?: number; anchor?: 'start' | 'middle' | 'end'; bold?: boolean; mono?: boolean; italic?: boolean }
-interface BoxOpts { tone?: Tone; label?: string; sub?: string; dashed?: boolean; r?: number; mono?: boolean; solid?: boolean; id?: string }
+interface BoxOpts { tone?: Tone; size?: number; label?: string; sub?: string; dashed?: boolean; r?: number; mono?: boolean; solid?: boolean; id?: string }
 interface LineOpts { tone?: Tone; dashed?: boolean; arrow?: boolean; width?: number }
 
 export class Fig {
@@ -26,10 +26,10 @@ export class Fig {
     const cls = `f-box t-${tone}${o.dashed ? ' dashed' : ''}${o.solid ? ' solid' : ''}`;
     this.parts.push(`<rect${o.id ? ` id="${this.id}-${o.id}"` : ''} class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${o.r ?? 8}"/>`);
     if (o.label && o.sub) {
-      this.text(x + w / 2, y + h / 2 - 4, o.label, { anchor: 'middle', bold: true, tone: o.solid ? 'ink' : tone, mono: o.mono });
+      this.text(x + w / 2, y + h / 2 - 4, o.label, { anchor: 'middle', bold: true, tone: o.solid ? 'ink' : tone, mono: o.mono, size: o.size });
       this.text(x + w / 2, y + h / 2 + 14, o.sub, { anchor: 'middle', size: 12, tone: 'muted', mono: o.mono });
     } else if (o.label) {
-      this.text(x + w / 2, y + h / 2 + 5, o.label, { anchor: 'middle', tone: o.solid ? 'ink' : tone, bold: true, mono: o.mono });
+      this.text(x + w / 2, y + h / 2 + 5, o.label, { anchor: 'middle', tone: o.solid ? 'ink' : tone, bold: true, mono: o.mono, size: o.size });
     }
     return this;
   }

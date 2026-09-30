@@ -2,68 +2,314 @@
 id: arrays
 track: js
 title: Arrays, iteration & immutable updates
-summary: The higher-order toolkit, stable sorting, and the copy-don't-mutate habits React depends on.
+summary: The array toolkit (map, filter, reduce, sort) explained from scratch — plus why you copy instead of change, the habit React depends on.
 ---
 
-Most day-to-day JavaScript is "take a list, produce another list". Being fluent means knowing which method to reach for **and** what it costs.
+## The idea in one sentence
 
-## Pick the method by the *shape of the result*
+Most everyday JavaScript is **"take a list, get another list (or one value) out of it"** — and arrays come with a method for each shape of answer.
 
-| You want | Reach for |
+> **Analogy** Think of a production line. `map` is a machine that changes every item that passes (paint it red). `filter` is a quality gate that lets only some items through. `reduce` is the packing station that squeezes everything into a single box. None of them touch the original pile — they hand you a *new* one.
+
+![map keeps the length, filter keeps fewer, reduce makes one value](fig:array-toolkit "map transforms every item. filter keeps the items that pass a test. reduce folds everything into a single value.")
+
+## Pick the method by the shape of the result
+
+| You want | Use |
 | --- | --- |
-| Same length, each item transformed | `map` |
-| Fewer items | `filter` |
-| One value (sum, object, Map…) | `reduce` |
-| Flatten one level after mapping | `flatMap` |
-| Does *any* / *every* item match? | `some` / `every` (they **short-circuit**) |
-| First match, or its index | `find` / `findIndex` (`findLast`, `at(-1)`) |
-| Side effects only | `for…of` or `forEach` |
+| Same number of items, each one changed | `map` |
+| Fewer items (only some) | `filter` |
+| One value (a sum, an object, a Map…) | `reduce` |
+| Map, then flatten one level | `flatMap` |
+| "Does any / every item match?" | `some` / `every` (they stop early) |
+| The first match (or its position) | `find` / `findIndex` |
+| Just do something for each item | `for…of` (or `forEach`) |
 
-`reduce` can do all of the above, which is exactly why you shouldn't default to it: `map`/`filter` say *what* you're doing in the name.
+Each one takes a **callback**: a small function that JavaScript calls for every item. Try them:
 
-```js
-const totals = orders.reduce((acc, o) => {
-  acc[o.customer] = (acc[o.customer] ?? 0) + o.amount;
-  return acc;
+```js try
+const prices = [12, 5, 30, 8];
+
+console.log(prices.map((p) => p * 2));         // every price doubled
+console.log(prices.filter((p) => p > 10));     // only prices above 10
+console.log(prices.reduce((sum, p) => sum + p, 0)); // the total
+console.log(prices.find((p) => p < 10));       // the first price under 10
+console.log(prices.some((p) => p > 25), prices.every((p) => p > 25));
+```
+
+### `reduce`, slowly
+
+`reduce` is the one people find scary, so let's watch it work. It keeps a running result (the **accumulator**, usually called `acc`), and your callback says how to combine it with the next item.
+
+```stepper reduce adds up a list
+code:
+  const total = [10, 20, 5].reduce((acc, n) => {
+    return acc + n;
+  }, 0);
+---
+line: 3
+say: The `0` at the end is the **starting value** of `acc`. Nothing has been added yet.
+acc (running result): 0
+n (current item):
+---
+line: 1-2
+say: First item: `n` is `10`. The callback returns `acc + n = 0 + 10`. Whatever it returns becomes the **next** `acc`.
+acc (running result): 10
+n (current item): 10
+---
+line: 1-2
+say: Second item: `n` is `20`. `acc` is now `10`, so the callback returns `10 + 20`.
+acc (running result): 30
+n (current item): 20
+---
+line: 1-2
+say: Third item: `n` is `5`. `30 + 5 = 35`.
+acc (running result): 35
+n (current item): 5
+---
+line: 1
+say: No items left. The final `acc` is what `reduce` returns, so `total` is `35`.
+acc (running result): 35 (final)
+n (current item):
+```
+
+`reduce` can build anything — not just numbers. Here it counts how many orders each customer placed:
+
+```js try
+const orders = ['ada', 'grace', 'ada', 'linus', 'ada'];
+
+const counts = orders.reduce((acc, name) => {
+  acc[name] = (acc[name] ?? 0) + 1;   // "?? 0" means: start at 0 the first time we see a name
+  return acc;                          // ← don't forget this line!
 }, {});
+
+console.log(counts);
 ```
 
-Two `reduce` traps: **forgetting the initial value** (the first element becomes the accumulator — and an empty array throws), and **forgetting to return** the accumulator.
+Two classic `reduce` mistakes: **forgetting the starting value** (the first item becomes `acc`, and an empty array throws an error) and **forgetting to `return acc`** (the next round gets `undefined`).
 
-## Callback signature
+### The callback receives more than the item
 
-`(value, index, array)` — so `['1', '2', '3'].map(parseInt)` gives `[1, NaN, NaN]`, because `parseInt` receives the index as its radix. Wrap it: `.map((s) => parseInt(s, 10))`.
+Callbacks get `(value, index, array)`. That can bite you:
 
-## Mutating vs. copying
+```js try predict
+console.log(['1', '2', '3'].map(parseInt));
+```
 
-| Mutates in place | Returns a new array |
+`parseInt(string, radix)` takes a second argument, and `map` helpfully passes the **index** there: `parseInt('2', 1)` is `NaN`. Wrap it so you control the arguments: `.map((s) => parseInt(s, 10))`.
+
+## Changing vs copying
+
+Some array methods **change the array itself** ("mutate"), others **return a new one**:
+
+| Changes the original | Returns a new array |
 | --- | --- |
-| `push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill` | `map`, `filter`, `slice`, `concat`, `flat`, spread, `toSorted`, `toReversed`, `toSpliced`, `with` |
+| `push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `fill` | `map`, `filter`, `slice`, `concat`, `flat`, spread `[...a]`, `toSorted`, `toReversed`, `toSpliced`, `with` |
 
-In React state, Redux, memoized selectors — anywhere identity means "changed" — **never mutate; produce a new array**. The immutable equivalents:
+```js try predict
+const a = [1, 2, 3];
+const b = a;          // NOT a copy: both names point at the same array
+b.push(4);
+console.log(a);
 
-```js
-const add    = [...items, item];
-const remove = items.filter((x) => x.id !== id);
-const update = items.map((x) => (x.id === id ? { ...x, done: true } : x));
-const insert = [...items.slice(0, i), item, ...items.slice(i)];
+const c = [...a];     // a real (shallow) copy
+c.push(5);
+console.log(a, c);
 ```
 
-Note these are **shallow**: the array is new, but the objects inside are the same references unless you replaced them.
-
-## `sort` gotchas
-
-- Without a comparator it sorts **as strings**: `[10, 9, 1].sort()` → `[1, 10, 9]`.
-- The comparator must return a number: negative → `a` first. `(a, b) => a - b` for numbers; `a.localeCompare(b)` for text. Never return a boolean.
-- It sorts **in place** (use `toSorted` or copy first) and, since ES2019, is **stable**: equal items keep their relative order. That's what makes multi-key sorting by "sort by the minor key, then the major key" work.
-
-## Complexity in one glance
-
-`includes`/`indexOf`/`find` are O(n). Inside a loop that's O(n²). Turn the inner lookup into a `Set`/`Map` (O(1)) and the whole thing drops to O(n) — the single most common interview optimisation.
+Why care? In React, Redux, and anywhere else that decides "did it change?" by comparing **identity** (`===`), you must **never mutate — always build a new array**. The four everyday moves:
 
 ```js
+const add    = [...items, item];                                        // add to the end
+const remove = items.filter((x) => x.id !== id);                        // remove one
+const update = items.map((x) => (x.id === id ? { ...x, done: true } : x)); // change one
+const insert = [...items.slice(0, i), item, ...items.slice(i)];        // insert at position i
+```
+
+### But the copy is *shallow*
+
+`[...items]` makes a **new array**, but the objects **inside** are still the very same objects:
+
+![Copying with spread creates a new array that still points at the same objects](fig:shallow-copy "Two arrays, one set of objects. Changing an object through either array changes it for both.")
+
+That's why the `update` line above builds a **new object** (`{ ...x, done: true }`) instead of writing `x.done = true`.
+
+## Sorting: three gotchas
+
+```js try predict
+console.log([10, 9, 1].sort());
+console.log([10, 9, 1].sort((a, b) => a - b));
+```
+
+![Default sort compares as text and gives 1,10,9; a comparator gives 1,9,10](fig:sort-default "Without a comparator, `sort` turns numbers into text first.")
+
+1. **No comparator = sorted as text.** Always pass one for numbers: `(a, b) => a - b`. For text use `a.localeCompare(b)`.
+2. The comparator must return a **number** (negative = `a` first, positive = `b` first, `0` = equal). Never return `true`/`false`.
+3. `sort` **changes the array in place**. Copy first (`[...arr].sort(...)`) or use `toSorted(...)`. Since ES2019 it is **stable**: items that compare equal keep their original order — that's what makes "sort by several columns" work.
+
+## Speed: `includes` inside a loop is a trap
+
+`includes`, `indexOf` and `find` look at items one by one — **O(n)**. Put one inside a loop over *n* items and you get O(n²): 10,000 items means up to 100,000,000 checks. A `Set` or `Map` answers "have I seen this?" in one step (**O(1)**), so the loop becomes O(n):
+
+```js try
+const items = ['a', 'b', 'a', 'c', 'b'];
+
 const seen = new Set();
-const dupes = items.filter((x) => (seen.has(x) ? true : (seen.add(x), false)));
+const duplicates = items.filter((x) => {
+  if (seen.has(x)) return true;   // seen before → keep it in the "duplicates" list
+  seen.add(x);
+  return false;
+});
+
+console.log(duplicates);
+```
+
+This "swap the inner loop for a Set/Map" move is the most common interview optimisation.
+
+## Quick check
+
+```check
+Q: You have a list of users and want only the admins. Which method?
+A) `map`
+B) `reduce` (nothing else can do it)
+C) `filter` *
+D) `find`
+Why: You want fewer items, possibly several, so `filter`. `find` returns only the first match and `map` keeps the same length.
+---
+Q: What does `['10', '10', '10'].map(parseInt)` return?
+A) `[10, NaN, 2]` *
+B) `[10, 10, 10]`
+C) `[NaN, NaN, NaN]`
+D) It throws an error
+Why: `map` passes `(value, index)`, so the calls are `parseInt('10', 0)`, `parseInt('10', 1)`, `parseInt('10', 2)`, which give 10, NaN and 2.
+---
+Q: `const copy = [...todos]; copy[0].done = true;` — what happens to `todos[0].done`?
+A) Nothing; the copy is independent
+B) It throws because the array is frozen
+C) It becomes `undefined`
+D) It becomes `true` too, because both arrays share the same object *
+Why: Spread is a shallow copy: the array is new, the objects inside are the same references.
+---
+Q: What is `[1, 10, 2].sort()`?
+A) `[1, 2, 10]`
+B) `[1, 10, 2]` *
+C) `[10, 2, 1]`
+D) `[2, 10, 1]`
+Why: With no comparator, numbers are compared as text: "1" < "10" < "2".
+---
+Q: What happens with `[].reduce((a, b) => a + b)` (no starting value)?
+A) It returns `0`
+B) It returns `undefined`
+C) It throws a `TypeError` *
+D) It returns `[]`
+Why: With no starting value, `reduce` uses the first item as the start. An empty array has none, so it throws. Pass a start value (`, 0`) to be safe.
+```
+
+## Recap
+
+- Pick the method by the **shape of the answer**: `map` (same length), `filter` (fewer), `reduce` (one value), `find`/`some`/`every` (questions).
+- `reduce` = a running **accumulator**; always give it a starting value and always `return` it.
+- Callbacks get `(value, index, array)` — mind `parseInt`.
+- `push/pop/splice/sort/reverse` **change** the array; `map/filter/slice/spread/toSorted` **return new** ones. In React-style code, never mutate.
+- Copies are **shallow**: to change an item, replace it with a new object.
+- `sort()` without a comparator sorts as **text**; comparator returns a **number**; `sort` mutates; it's stable.
+- `includes` in a loop is O(n²); use a `Set`/`Map` to make it O(n).
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: double the evens | `filter` then `map` |
+| `chunk` & `zip` | A `for` loop with a step; `Math.min` for the shortest length |
+| Immutable list updates | "Changing vs copying": `slice`, spread, `filter`, `map` |
+| `map`, `filter`, `reduce` from scratch | The callback signature `(value, index, array)` and how `reduce` and its start value work |
+| `groupBy` & `countBy` | `reduce` building an object |
+| `flatten` with depth | Arrays inside arrays; a loop with a "to do" list instead of recursion |
+| Multi-key `sortBy` | Sorting: comparators, stability, copying before sorting |
+
+%% exercise arrays-guided-double-evens | Guided: double the evens | 1 | js | js | doubleEvens | 5 | guided
+Write `doubleEvens(nums)`. It returns a **new** array containing only the even numbers from `nums`, each one doubled.
+
+```js
+doubleEvens([1, 2, 3, 4]); // [4, 8]   (2 and 4 are even → 4 and 8)
+doubleEvens([1, 3]);       // []
+```
+
+The skeleton walks you through it: first `filter`, then `map`.
+
+%% worked
+**A similar problem, solved: `squaresOfOdds(nums)`** — the squares of the odd numbers.
+
+```js
+function squaresOfOdds(nums) {
+  return nums
+    .filter((n) => n % 2 !== 0)   // ① keep only the ones that pass the test (fewer items)
+    .map((n) => n * n);           // ② change each remaining item (same length as step ①)
+}
+
+squaresOfOdds([1, 2, 3, 4, 5]); // [1, 9, 25]
+```
+
+`filter` and `map` each return a **new** array, so you can chain them like a production line, and the original `nums` is never touched. `n % 2` is the remainder after dividing by 2: `0` for even numbers, `1` for odd ones.
+
+%% explain
+- **Only evens survive**, in their original order.
+- **Each one is doubled.**
+- **Empty or all-odd input** gives `[]`.
+- **The input array is not changed** (tests compare it afterwards).
+
+%% nudge
+- Do you need to drop some items, change items, or both? In which order?
+- What is `n % 2` for an even number?
+
+%% starter
+```js
+export function doubleEvens(nums) {
+  // Step 1 — keep only the even numbers:   nums.filter((n) => n % 2 === 0)
+  // Step 2 — double each one by chaining:  .map((n) => n * 2)
+  // Step 3 — return the final array.
+  return [];
+}
+```
+
+%% tests
+```js
+describe('doubleEvens', () => {
+  it('doubles the even numbers', () => {
+    expect(doubleEvens([1, 2, 3, 4])).toEqual([4, 8]);
+  });
+
+  it('keeps the original order', () => {
+    expect(doubleEvens([6, 2, 4])).toEqual([12, 4, 8]);
+  });
+
+  it('returns an empty array when there are no evens', () => {
+    expect(doubleEvens([1, 3, 5])).toEqual([]);
+    expect(doubleEvens([])).toEqual([]);
+  });
+
+  it('handles zero and negatives', () => {
+    expect(doubleEvens([0, -2, -3])).toEqual([0, -4]);
+  });
+
+  it('does not change its input', () => {
+    const input = [1, 2, 3, 4];
+    doubleEvens(input);
+    expect(input).toEqual([1, 2, 3, 4]);
+  });
+});
+```
+
+%% hints
+- Start with `nums.filter(...)`.
+- Then chain `.map(...)` straight onto it.
+- Return the whole chain.
+
+%% solution
+```js
+export function doubleEvens(nums) {
+  return nums.filter((n) => n % 2 === 0).map((n) => n * 2);
+}
 ```
 
 %% exercise arrays-chunk-zip | chunk & zip | 1 | js | js | chunk, zip | 8
@@ -110,6 +356,44 @@ describe('zip', () => {
   it('returns [] with no arguments', () => expect(zip()).toEqual([]));
 });
 ```
+
+%% worked
+**A similar problem, solved: `pairUp(array)`** — groups items in twos: `[1,2,3,4,5]` → `[[1,2],[3,4],[5]]`.
+
+```js
+function pairUp(array) {
+  const out = [];
+  for (let i = 0; i < array.length; i += 2) {   // ① jump forward 2 at a time
+    out.push(array.slice(i, i + 2));            // ② slice never goes past the end, so the last group can be short
+  }
+  return out;                                   // ③ a new array; `array` was only read
+}
+```
+
+`chunk` is the same with `size` in place of `2` (plus a `RangeError` for `size <= 0`).
+
+For `zip`, the new idea is "as long as the **shortest** array":
+
+```js
+function zip2(a, b) {
+  const length = Math.min(a.length, b.length);  // ① the shorter one decides
+  const out = [];
+  for (let i = 0; i < length; i++) out.push([a[i], b[i]]);
+  return out;
+}
+```
+
+`zip(...arrays)` takes any number of arrays — the rest parameter `...arrays` collects them into one array, and `Math.min(...arrays.map((a) => a.length))` finds the shortest.
+
+%% explain
+- **`chunk`** splits into groups of `size`, the last group may be shorter; `size <= 0` throws a `RangeError`.
+- **`zip`** pairs items by position and stops at the **shortest** input.
+- **Empty inputs** give empty results.
+- **Inputs are never changed.**
+
+%% nudge
+- In `chunk`, how far should the loop counter jump each turn?
+- In `zip`, which array decides how many pairs there are?
 
 %% hints
 - `chunk`: loop with `i += size` and `slice(i, i + size)`.
@@ -205,6 +489,36 @@ describe('updateWhere', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `replaceAt(list, index, item)` and `swap(list, i, j)`** — both return new arrays.
+
+```js
+function replaceAt(list, index, item) {
+  return [...list.slice(0, index), item, ...list.slice(index + 1)];
+  //       ① everything before   ② the new item   ③ everything after the old one
+}
+
+function swap(list, i, j) {
+  const copy = [...list];          // ① make a copy FIRST so the original is untouched
+  [copy[i], copy[j]] = [copy[j], copy[i]];   // ② swap two items using destructuring
+  return copy;
+}
+```
+
+Notice the two styles: **build from slices** (great for insert/remove/replace) or **copy, then change the copy** (great for moves and swaps). Both leave the input alone.
+
+For `updateWhere`, use `map`: return `{ ...item, ...patch }` for matches and the **same `item`** for everything else (so unchanged items keep their identity). `moveItem` = remove the item at `from`, then insert it at `to`.
+
+%% explain
+- **New arrays every time**: the input is never mutated.
+- **`insertAt` / `removeAt`** put in or take out the right position; an out-of-range `removeAt` returns an equal copy.
+- **`moveItem`** ends with the item at index `to`.
+- **`updateWhere`** merges the patch into matching objects only; other objects are the *same references* (tests check identity with `toBe`).
+
+%% nudge
+- Which of `splice` / `slice` changes the original? Which one is safe?
+- For `updateWhere`, what should you return for items that *don't* match?
 
 %% hints
 - `slice` never mutates; `[...a.slice(0, i), item, ...a.slice(i)]`.
@@ -317,6 +631,48 @@ describe('myReduce', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `myForEach(array, fn)`** — it shows the three details the exercise needs: the callback arguments, skipping holes, and not touching the input.
+
+```js
+function myForEach(array, fn) {
+  for (let i = 0; i < array.length; i++) {
+    if (i in array) {                 // ① skip "holes" in sparse arrays like [1, , 3]
+      fn(array[i], i, array);         // ② callbacks get (value, index, array)
+    }
+  }
+}
+```
+
+For `myReduce` the new part is the **optional starting value**. You can't use `if (initial === undefined)` because `undefined` could be a real starting value. Count the arguments instead:
+
+```js
+function myReduce(array, fn, initial) {
+  let i = 0;
+  let acc;
+  if (arguments.length >= 3) {
+    acc = initial;                    // a start value was given (even if it's undefined)
+  } else {
+    while (i < array.length && !(i in array)) i++;   // find the first real item
+    if (i >= array.length) throw new TypeError('Reduce of empty array with no initial value');
+    acc = array[i++];                 // the first item becomes the accumulator
+  }
+  for (; i < array.length; i++) if (i in array) acc = fn(acc, array[i], i, array);
+  return acc;
+}
+```
+
+%% explain
+- **Callbacks get `(value, index, array)`**.
+- **`myMap` / `myFilter`** return new arrays and leave the input untouched.
+- **`myReduce` without a start value** begins with the first element; an empty array then throws a `TypeError`.
+- **Holes** in sparse arrays are skipped.
+- **No cheating**: the tests check that native `map`/`filter`/`reduce` are not called.
+
+%% nudge
+- How can you tell "no initial value passed" from "initial value is `undefined`"?
+- What does `i in array` tell you about a hole?
+
 %% hints
 - A plain `for` loop with `if (!(i in array)) continue;`.
 - `myReduce(array, fn, initial)` — `arguments.length >= 3` tells you if `initial` was passed. Arrow functions don't have `arguments`, so keep this a regular function.
@@ -410,6 +766,38 @@ describe('countBy', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `indexBy(items, key)`** — builds a lookup object from a list (`[{id:1,…}]` → `{1: {id:1,…}}`).
+
+```js
+function indexBy(items, key) {
+  const getKey = typeof key === 'function' ? key : (item) => item[key];   // ① accept a name OR a function
+  const out = Object.create(null);        // ② an object with NO prototype: keys like "constructor" are safe
+  for (const item of items) {
+    out[getKey(item)] = item;             // ③ later items with the same key overwrite earlier ones
+  }
+  return out;
+}
+```
+
+`groupBy` adds one idea: instead of overwriting, **push** into an array for that key (create it the first time):
+
+```js
+(out[k] ??= []).push(item);   // "if there's no array yet, make one, then push"
+```
+
+`countBy` is the same with `out[k] = (out[k] ?? 0) + 1`. A plain `{}` has inherited keys (`toString`, `__proto__`…), which is why the test with those key names is a trap — `Object.create(null)` or a `Map` avoids it.
+
+%% explain
+- **`groupBy`** maps each key to the array of matching items; the key is a **property name** or a **function**.
+- **`countBy`** does the same with counts.
+- **Order inside each group** matches the original order.
+- **Tricky keys** like `constructor`, `toString` and `__proto__` behave as ordinary keys.
+
+%% nudge
+- What should happen the *first* time you see a key?
+- Why might a plain `{}` misbehave with the key `"constructor"`?
+
 %% hints
 - Resolve the key function once: `const fn = typeof key === 'function' ? key : (x) => x[key]`.
 - A plain `{}` already has `constructor` on its prototype, so `acc[k] ??= []` is wrong for that key. Start from `Object.create(null)`.
@@ -499,6 +887,37 @@ describe('flatten', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `flattenAll(array)`** — flatten everything, without recursion, using a "to do" stack.
+
+```js
+function flattenAll(array) {
+  const stack = [...array];            // ① the to-do list, starting with all items
+  const out = [];
+  while (stack.length) {
+    const item = stack.pop();          // ② take the LAST item
+    if (Array.isArray(item)) {
+      stack.push(...item);             // ③ an array? put its items back on the to-do list
+    } else {
+      out.push(item);                  // ④ a plain value? it's part of the result
+    }
+  }
+  return out.reverse();                // ⑤ we took items from the end, so flip the order back
+}
+```
+
+A loop with its own stack never grows the call stack, so 10,000 levels of nesting is fine. For `depth`, keep **the level along with each item** — push pairs like `[item, depth]` — and only open an array while its remaining depth is above 0. Holes in the input are skipped automatically by `for…of` only if you check `i in array`; when spreading with `push(...item)` holes become `undefined`, so iterate with an index and `in` instead.
+
+%% explain
+- **`depth` levels** are flattened; `Infinity` flattens everything; `0` gives a shallow copy.
+- **Only real arrays** are opened (strings, objects, array-likes stay as they are).
+- **Holes are dropped**, like native `flat`.
+- **Deep nesting** (10,000 levels, `depth = Infinity`) must not overflow the call stack.
+
+%% nudge
+- What data structure can replace the call stack so you don't need recursion?
+- How do you remember how many levels you may still open for each item?
 
 %% hints
 - Recursion is the obvious version. It's fine for small depth, but 10 000 frames deep it will overflow.
@@ -590,6 +1009,41 @@ describe('sortBy', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `sortByAgeThenName(people)`** — two keys, ascending, without changing the input.
+
+```js
+function sortByAgeThenName(people) {
+  return [...people].sort((a, b) =>        // ① copy first: sort() changes the array it is called on
+    (a.age - b.age) ||                     // ② compare by age; if that's 0 (a tie) the || moves on…
+    a.name.localeCompare(b.name)           // ③ …to the second key
+  );
+}
+```
+
+The `||` trick works because a tie returns `0`, which is falsy, so the next comparison is used. For `sortBy` build the comparator from the list of keys: for each key, compute both values, return early if they differ. Two extra rules from the exercise: **descending** just flips the sign (`-compare`), and **`null`/`undefined` go last in both directions**, so handle them *before* flipping the sign.
+
+```js
+function compare(x, y) {
+  if (x == null && y == null) return 0;
+  if (x == null) return 1;      // x goes after y
+  if (y == null) return -1;
+  return typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
+}
+```
+
+%% explain
+- **New array**, input untouched.
+- **Keys**: `'age'` (ascending), `'-age'` (descending), or a function `(item) => value`.
+- **Earlier keys win**; later keys only break ties.
+- **Numbers compare numerically, strings with `localeCompare`.**
+- **`null`/`undefined` always last**, even for descending keys.
+- **Stable**: items that tie on every key keep their original order.
+
+%% nudge
+- What does a comparator return when two items tie — and how can that help you chain keys?
+- If the order is descending, should `null` still go last? Where do you apply the sign flip?
 
 %% hints
 - Normalise each key into `{ get, dir }` first: `'-age'` → `get: (x) => x.age`, `dir: -1`.

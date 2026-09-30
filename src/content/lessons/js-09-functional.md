@@ -2,58 +2,327 @@
 id: functional
 track: js
 title: Functional patterns
-summary: Functions as values — compose them, partially apply them, and build a tiny reactive stream.
+summary: Treat functions like values you can pass around and combine — pure functions, pipe, curry, selectors, and a tiny reactive stream.
 ---
 
-Functions in JavaScript are **first-class values**: you can store them, pass them, return them, and build new ones. Most "patterns" in this lesson are just that idea, used deliberately.
+## The idea in one sentence
+
+In JavaScript a function is just **a value** — you can store it, pass it, return it, and **build new functions out of old ones**.
+
+> **Analogy** Functions are **Lego bricks**. A small brick (`trim`, `toLowerCase`) isn't impressive alone, but snap a few together and you get a machine. "Functional patterns" are just the ways of snapping bricks together neatly.
+
+```js try
+const double = (n) => n * 2;
+const inc = (n) => n + 1;
+
+const tools = { double, inc };          // store functions in an object
+const apply = (fn, x) => fn(x);         // pass a function in
+const twice = (fn) => (x) => fn(fn(x)); // build and RETURN a new function
+
+console.log(tools.double(4));
+console.log(apply(inc, 4));
+console.log(twice(double)(4));
+```
+
+A function that takes or returns other functions is called a **higher-order function**. You already use them all the time: `map`, `filter`, `setTimeout`, `addEventListener`, `useCallback`…
 
 ## Pure functions
 
-A function is **pure** if its output depends only on its arguments and it causes no observable side effects. Pure code is trivially testable, cacheable (`memoize` is only *safe* for pure functions), parallelisable and easy to reason about. Real programs need effects (network, DOM, logging) — push them to the **edges** and keep the core pure. That's the whole architecture of React render functions and reducers.
+A function is **pure** if (1) its result depends **only on its arguments**, and (2) it does **nothing else** ("side effects": changing outside variables, printing, network, writing to the DOM).
 
-## Higher-order functions
+```js try predict
+let total = 0;
 
-Take or return functions. `map`, `filter`, `setTimeout`, `debounce`, `useCallback`, event handlers, and every decorator you'll write.
+const addImpure = (n) => { total += n; return total; };  // changes something outside itself
+const addPure = (sum, n) => sum + n;                     // only uses its arguments
 
-## Composition
+console.log(addImpure(5), addImpure(5));
+console.log(addPure(0, 5), addPure(0, 5));
+```
 
-```js
+The pure version always gives the same answer for the same input, so it is easy to test, safe to cache (`memoize` is only *safe* for pure functions), and easy to reason about. Real programs need effects, so the trick is to **keep the core pure and push the effects to the edges** — that's exactly how React components and reducers are designed.
+
+## Composition: snapping bricks together
+
+![An assembly line: trim, then toLowerCase, then spacesToDashes](fig:pipe-flow "Data flows through small single-purpose steps. Each takes one value and returns one value.")
+
+```js try
 const pipe = (...fns) => (x) => fns.reduce((acc, fn) => fn(acc), x);
 
 const slugify = pipe(
   (s) => s.trim(),
   (s) => s.toLowerCase(),
-  (s) => s.replace(/[^\w]+/g, '-'),
+  (s) => s.replace(/\s+/g, '-'),
 );
-slugify('  Hello, World! '); // "hello-world"
+
+console.log(slugify('  Hello World  '));
 ```
 
-`pipe` reads left-to-right (data flow), `compose` right-to-left (math order). Small named steps beat one clever function: each can be tested and reused. This works best when every step is **unary** (takes one value).
+- `pipe(f, g, h)(x)` means `h(g(f(x)))` — read left to right, like data flowing.
+- `compose(f, g, h)(x)` means `f(g(h(x)))` — right to left, like maths.
+- Small, named steps beat one clever function: each can be tested and reused. This works best when every step takes **one** value.
 
-## Currying vs. partial application
+(Look at how `pipe` is built: `reduce` threads the running value through each function. That's the accumulator idea from the arrays lesson.)
 
-- **Partial application** fixes *some* arguments now: `const add5 = add.bind(null, 5)`.
-- **Currying** turns `f(a, b, c)` into `f(a)(b)(c)` — always one argument at a time.
+## Partial application and currying
 
-```js
+Both are about giving a function *some* of its arguments now and the rest later:
+
+- **Partial application** fixes **some** arguments: `const add5 = add.bind(null, 5)`.
+- **Currying** turns `f(a, b, c)` into `f(a)(b)(c)`: **always one argument at a time**, each call returning a new function.
+
+![add(1)(2)(3): each call returns a function that remembers what it has received](fig:curry-flow "A curried function is a chain of closures. Each holds the arguments so far in its backpack.")
+
+```stepper Currying, one call at a time
+code:
+  const add = (a) => (b) => (c) => a + b + c;
+  const step1 = add(1);
+  const step2 = step1(2);
+  const result = step2(3);
+---
+line: 1
+say: `add` takes `a` and returns a function that takes `b` and returns a function that takes `c`. Nothing is added yet.
+step1 remembers:
+step2 remembers:
+result:
+---
+line: 2
+say: `add(1)` returns the inner function. It remembers `a = 1` in its backpack (a closure!).
+step1 remembers: a = 1
+---
+line: 3
+say: Calling `step1(2)` returns the next function, which now remembers `a` **and** `b`.
+step2 remembers: a = 1 | b = 2
+---
+line: 4
+say: The last call provides `c`. Now all three are known, so `a + b + c` is computed.
+result: 6
+```
+
+```js try
 const add = (a) => (b) => a + b;
-const inc = add(1);
-[1, 2, 3].map(inc); // [2, 3, 4]
+const add10 = add(10);                 // a specialised function, made by giving one argument
+
+console.log([1, 2, 3].map(add10));
 ```
 
-A general `curry(fn)` uses `fn.length` (the declared arity) to know when it has enough arguments. Caveat: default and rest parameters aren't counted in `length`.
+A general `curry(fn)` uses `fn.length` (how many parameters `fn` declares) to know when it has collected enough arguments. (Caveat: default and rest parameters don't count towards `length`.)
 
-## Point-free and its limits
+## Point-free style — and its trap
 
-`arr.map(parseInt)` is "point-free" and **wrong** (the index becomes the radix). Point-free style is only safe when the callee ignores extra arguments — otherwise write the arrow.
+"Point-free" means passing a function directly instead of wrapping it: `names.map(trim)` instead of `names.map((n) => trim(n))`. It's tidy, but **only safe when the function ignores extra arguments**. `map` passes `(value, index, array)`, so:
 
-## Selectors & memoization by identity
+```js try predict
+console.log(['10', '10', '10'].map(Number));
+console.log(['10', '10', '10'].map(parseInt));
+```
 
-State libraries derive data with *selectors*. The trick (reselect, `useMemo`): recompute only when the **inputs** changed by reference. It relies on immutability — if you mutate, the identity check lies.
+`parseInt` takes a second argument (the base) and receives the index there. When in doubt, write the arrow: `.map((s) => parseInt(s, 10))`.
+
+## Memoizing by identity: selectors
+
+State libraries derive data with **selectors** (think `reselect`, or React's `useMemo`). The trick is to recompute **only when the inputs changed** — and "changed" means *not the same reference* (`Object.is`).
+
+```js try
+function memoizeLast(fn) {
+  let lastArgs;
+  let lastResult;
+  return (...args) => {
+    const same = lastArgs && args.every((a, i) => Object.is(a, lastArgs[i]));
+    if (same) return lastResult;           // same inputs → reuse the answer
+    lastArgs = args;
+    lastResult = fn(...args);
+    return lastResult;
+  };
+}
+
+let runs = 0;
+const evens = memoizeLast((list) => { runs++; return list.filter((n) => n % 2 === 0); });
+
+const numbers = [1, 2, 3, 4];
+evens(numbers); evens(numbers);          // same array → computed once
+evens([1, 2, 3, 4]);                     // new array with the same contents → computed again!
+console.log('computed', runs, 'times');
+```
+
+This only works if you **never mutate** your data: if you `push` into `numbers` and pass the same array, the identity check says "unchanged" and you get a stale answer.
 
 ## Streams, in one page
 
-A callback answers "give me the next value once". A **promise** answers it once, later. An **observable** is a *push-based sequence over time*: many values, plus completion and error, plus **teardown** (unsubscribe). It's lazy ("cold"): nothing happens until someone subscribes, and each subscriber gets its own run. Operators (`map`, `filter`, `take`) return new observables that wrap the source — function composition again. The building blocks are exactly closures + callbacks; RxJS is a big version of the last exercise.
+- A **callback** gives you a value once, later.
+- A **promise** gives you one value, once, later.
+- An **observable** is a **sequence of values over time** (plus "completed" and "error"), and it can be **stopped** (unsubscribed). It is **lazy ("cold")**: nothing happens until you subscribe, and each subscriber gets its own run.
+
+![A marble diagram: source, map and take operators over time](fig:marble-diagram "Operators wrap a source and return a new observable. `take(2)` completes after two values and unsubscribes upstream.")
+
+```js try
+// A tiny cold "observable": a function that receives a subscriber and returns a teardown function.
+const ticker = (subscriber) => {
+  let i = 0;
+  const id = setInterval(() => subscriber.next(i++), 100);
+  return () => clearInterval(id);            // teardown: how to stop
+};
+
+const subscribe = (producer, next) => ({ unsubscribe: producer({ next }) });
+
+const sub = subscribe(ticker, (v) => console.log('tick', v));
+setTimeout(() => { sub.unsubscribe(); console.log('unsubscribed'); }, 350);
+```
+
+RxJS is a big, polished version of exactly this: closures + callbacks + a teardown function. You'll build the core of it in the last exercise.
+
+## Common mistakes
+
+1. **Mutating inside a "pure" function** (e.g. `arr.sort()` on an argument) — it is no longer pure.
+2. **Point-free with `parseInt`** and other functions that take extra optional parameters.
+3. **Currying a function with default/rest parameters** and trusting `fn.length`.
+4. **Selectors that return a new array/object every time** — they defeat the memoization downstream.
+5. **Forgetting teardown** (timers, listeners) in stream code — leaks.
+
+## Quick check
+
+```check
+Q: Which function is pure?
+A) `(n) => { counter++; return n + counter; }`
+B) `(n) => { console.log(n); return n * 2; }`
+C) `(a, b) => a + b` *
+D) `() => Date.now()`
+Why: A pure function depends only on its arguments and has no side effects. The others change or read outside state, print, or read the clock.
+---
+Q: What does `pipe(a, b, c)(x)` compute?
+A) `a(b(c(x)))`
+B) `a(x) + b(x) + c(x)`
+C) `[a(x), b(x), c(x)]`
+D) `c(b(a(x)))` *
+Why: `pipe` runs left to right: first `a`, then `b` on its result, then `c`. (`compose` is the reverse.)
+---
+Q: What is the difference between currying and partial application?
+A) Currying always takes one argument per call; partial application fixes some arguments now *
+B) They are the same thing
+C) Partial application needs classes
+D) Currying only works with numbers
+Why: `f(a, b, c)` curried becomes `f(a)(b)(c)`. Partial application (`bind`) gives some arguments now and the rest later, in any grouping.
+---
+Q: Why is `['1', '2', '3'].map(parseInt)` a bug?
+A) `parseInt` only works on numbers
+B) `map` passes the index as a second argument, which `parseInt` treats as the base *
+C) `map` can't take named functions
+D) `parseInt` returns strings
+Why: The calls are `parseInt('1', 0)`, `parseInt('2', 1)`, `parseInt('3', 2)` → `[1, NaN, NaN]`.
+---
+Q: A memoized selector recomputes every time even though the data "looks the same". What's the most likely cause?
+A) The input is a new array/object each time, so the identity check says "changed" *
+B) `Object.is` doesn't work on numbers
+C) The selector is async
+D) Selectors can't be memoized
+Why: Identity-based memoization compares references. A fresh object with equal contents is still "different".
+```
+
+## Recap
+
+- Functions are **values**: store, pass, return, build. Functions that take/return functions are **higher-order**.
+- **Pure** = same input → same output, no side effects. Keep the core pure, effects at the edges.
+- **`pipe`/`compose`** snap small one-argument functions into pipelines (left-to-right / right-to-left).
+- **Partial application** fixes some arguments now; **currying** is one argument at a time. Both are closures.
+- **Point-free** is only safe if the callee ignores extra arguments (`parseInt` isn't).
+- **Selectors** memoize by **identity** — they rely on immutability.
+- An **observable** is a lazy, cold sequence over time with error, complete and **teardown**; operators wrap a source.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: combine two functions | "Composition" — the idea of feeding one result into the next |
+| `pipe` & `compose` | The `pipe` snippet and `reduce` / `reduceRight` |
+| `curry()` | The currying stepper; `fn.length`; collecting arguments until enough |
+| `pipeAsync` | `pipe` + promises (each step may be sync or async) |
+| `createSelector` | "Memoizing by identity": `memoizeLast` and `Object.is` |
+| Build an Observable | Streams: producer, subscriber, teardown; operators wrapping a source |
+
+%% exercise fp-guided-andthen | Guided: combine two functions | 1 | js | js | andThen | 5 | guided
+Write `andThen(f, g)`. It returns a **new function** that takes a value `x`, runs `f` on it first, then runs `g` on `f`'s result, and returns that.
+
+```js
+const double = (n) => n * 2;
+const inc = (n) => n + 1;
+andThen(double, inc)(5); // inc(double(5)) → 11
+andThen(inc, double)(5); // double(inc(5)) → 12   (order matters!)
+```
+
+%% worked
+**A similar problem, solved: `both(f, g)`** — returns a function that calls `f` and `g` on the same value and returns both results in an array.
+
+```js
+function both(f, g) {
+  return function (x) {          // ① a NEW function that takes one value
+    return [f(x), g(x)];         // ② it uses f and g from the backpack (closure!)
+  };
+}
+
+both(Math.sqrt, Math.abs)(-9); // [NaN, 9]
+```
+
+You're building a function out of two other functions. `andThen` has the same shape; the only difference is how `f` and `g` are combined: instead of calling both on `x`, feed **`f`'s result into `g`**.
+
+%% explain
+- **Order**: `f` runs first, then `g` on `f`'s result — `andThen(double, inc)(5)` is `11`, not `12`.
+- **Returns a function** (and each call is independent — no shared state).
+- **Works with any values** (numbers, strings, arrays).
+
+%% nudge
+- What does the returned function receive, and what does it pass on to `g`?
+- In `g(f(x))`, which one runs first?
+
+%% starter
+```js
+export function andThen(f, g) {
+  // Step 1 — return a NEW function that takes one value, x.
+  return function (x) {
+    // Step 2 — run f on x first.
+    // Step 3 — run g on f's result, and return it.
+  };
+}
+```
+
+%% tests
+```js
+describe('andThen', () => {
+  const double = (n) => n * 2;
+  const inc = (n) => n + 1;
+
+  it('runs f first, then g on the result', () => {
+    expect(andThen(double, inc)(5)).toBe(11);
+  });
+
+  it('respects the order', () => {
+    expect(andThen(inc, double)(5)).toBe(12);
+  });
+
+  it('works on other types', () => {
+    const trim = (s) => s.trim();
+    const shout = (s) => s.toUpperCase() + '!';
+    expect(andThen(trim, shout)('  hi ')).toBe('HI!');
+  });
+
+  it('gives back a reusable function', () => {
+    const f = andThen(double, inc);
+    expect(f(1)).toBe(3);
+    expect(f(10)).toBe(21);
+  });
+});
+```
+
+%% hints
+- `return g(f(x));` inside the returned function.
+
+%% solution
+```js
+export function andThen(f, g) {
+  return function (x) {
+    return g(f(x));
+  };
+}
+```
 
 %% exercise fp-pipe-compose | pipe & compose | 2 | js | js | pipe, compose | 8
 - `pipe(f, g, h)(x)` → `h(g(f(x)))`. The **first** function may take multiple arguments; the rest get one.
@@ -110,6 +379,28 @@ describe('compose', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `sequence(...steps)`** — runs functions one after another on a running value, using `reduce`.
+
+```js
+const sequence = (...steps) => (start) =>
+  steps.reduce((value, step) => step(value), start);   // ① the accumulator IS the running value
+
+sequence((n) => n + 1, (n) => n * 10)(4); // (4 + 1) * 10 = 50
+```
+
+That is `pipe` almost exactly. Two details the exercise adds: **(1)** the *first* function may take **several** arguments — call it with all of them (`fns[0](...args)`) and feed its result through the remaining ones; **(2)** with **no** functions, return the first argument untouched (identity). `compose` is the same, but going **right to left**, where the *last* function is the one that may take multiple arguments — `reduceRight` (or reversing the list) does that.
+
+%% explain
+- **`pipe(f, g, h)(x)`** = `h(g(f(x)))`; **`compose(f, g, h)(x)`** = `f(g(h(x)))`.
+- **Multiple arguments** are allowed for the *first* function of `pipe` and the *last* of `compose`.
+- **No functions** → returns its first argument unchanged.
+- **No shared state** between calls of the resulting function.
+
+%% nudge
+- Which array method threads a value through a list of functions?
+- What should happen with zero functions?
 
 %% hints
 - `pipe`: `(...args) => rest.reduce((acc, fn) => fn(acc), first(...args))`.
@@ -193,6 +484,38 @@ describe('curry', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `collect(n, done)`** — gathers arguments over several calls until it has `n` of them, then hands them all to `done`.
+
+```js
+function collect(n, done) {
+  function gather(soFar) {                                    // ① `soFar` is the backpack of arguments so far
+    return (...more) => {
+      const all = [...soFar, ...more];                        // ② combine old and new (a NEW array — never mutate soFar!)
+      return all.length >= n ? done(...all) : gather(all);    // ③ enough? finish. Otherwise return another collector
+    };
+  }
+  return gather([]);
+}
+
+const c = collect(3, (a, b, c) => a + b + c);
+c(1)(2)(3);   // 6
+c(1, 2)(3);   // 6   — several at once also works
+```
+
+Not mutating `soFar` is what makes partial functions **reusable**: `const add1 = c(1)` can be called again and again without interfering. `curry(fn)` is this with `n = fn.length` and `done = fn`; two extras: a **zero-arity** function is called on the first invocation, and `this` from the call that completes the list is forwarded (use `fn.apply(this, all)` inside a regular `function`).
+
+%% explain
+- **Collects arguments** across calls until it has at least `fn.length`, then calls `fn` with all of them.
+- **Grouping doesn't matter**: `c(1)(2, 3)`, `c(1, 2)(3)` and `c(1, 2, 3)` are equal.
+- **Reusable partials**: `const add1 = c(1)` can be used many times independently.
+- **Zero-arity** functions run on the first call.
+- **`this`** comes from the call that completes the arguments.
+
+%% nudge
+- Where do you keep the arguments received so far, and why must each call make a *new* list?
+- How do you know you have "enough" arguments?
+
 %% hints
 - Recursive shape: `function curried(...args) { if (args.length >= fn.length) return fn.apply(this, args); return function (...more) { return curried.apply(this, [...args, ...more]); }; }`
 - Never `push` onto a shared `args` array — build a **new** array each step, that's what keeps partials reusable.
@@ -269,6 +592,34 @@ describe('pipeAsync', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `chainAsync(...steps)`** — like `sequence`, but each step may return a promise.
+
+```js
+const chainAsync = (...steps) => async (start) => {
+  let value = start;
+  for (const step of steps) {
+    value = await step(value);      // ① `await` works for plain values AND promises
+  }
+  return value;                     // ② an async function always returns a promise
+};
+```
+
+Why this is enough: `await` on a non-promise just gives the value back, so sync and async steps can be mixed. A thrown error or rejection inside the loop **exits the function**, so later steps never run, and the returned promise rejects — for free.
+
+For `pipeAsync`: the first function may take several arguments (`await fns[0](...args)`), and with no functions you resolve with the first argument.
+
+%% explain
+- **Every step receives the resolved value** of the previous one (sync or async).
+- **Returns a promise** always.
+- **First function may take several arguments.**
+- **An error or rejection stops the chain**: later steps do not run.
+- **No functions** → resolves with the first argument.
+
+%% nudge
+- Which keyword lets one code path handle both plain values and promises?
+- What happens to the remaining steps when one of them throws inside an `async` function?
 
 %% hints
 - Simplest: an `async` function with a `for…of` loop awaiting each step. It already converts sync throws into rejections.
@@ -373,6 +724,40 @@ describe('createSelector', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `memoizeLastBy(keyFn, compute)`** — keeps only the most recent result and reuses it when the *key* is identical.
+
+```js
+function memoizeLastBy(keyFn, compute) {
+  let lastKey;
+  let lastResult;
+  let hasRun = false;
+  let runs = 0;
+  const fn = (input) => {
+    const key = keyFn(input);                        // ① derive the thing we compare (a reference, not a deep value)
+    if (hasRun && Object.is(key, lastKey)) return lastResult;   // ② same key → reuse
+    hasRun = true;
+    lastKey = key;
+    runs += 1;
+    return (lastResult = compute(input));            // ③ different → recompute and remember
+  };
+  fn.runs = () => runs;                              // ④ expose a counter for tests
+  return fn;
+}
+```
+
+`createSelector` has the same skeleton with **several** keys: run every input selector with the same arguments, compare each result with the previous call's (`Object.is`, one by one), and only call `resultFn` if any changed. Remember the previous **input results** *and* the previous **output**, and count recomputations for `selector.recomputations()`.
+
+%% explain
+- **Runs every input selector** with the same arguments.
+- **If all results are `Object.is`-identical to the previous call**, the previous result is returned and `resultFn` does **not** run.
+- **Otherwise** it recomputes.
+- **`selector.recomputations()`** counts how many times `resultFn` has run.
+
+%% nudge
+- What must you store between calls to be able to compare? (Inputs *and* output.)
+- Why does `Object.is` (identity) make sense here, instead of a deep comparison?
 
 %% hints
 - Closure state: `lastInputs` (array), `lastResult`, `computations`.
@@ -596,6 +981,48 @@ describe('Observable — operators', () => {
   });
 });
 ```
+
+%% worked
+**How to approach it: grow the solution in layers.** Layer 1 is the smallest thing that works:
+
+```js
+class Observable {
+  constructor(producer) { this.producer = producer; }     // ① a producer function, NOT run yet (lazy)
+
+  subscribe(next) {
+    let closed = false;
+    const subscriber = {
+      next: (v) => { if (!closed) next(v); },              // ② ignore values after closing
+      complete: () => { closed = true; },
+      error: () => { closed = true; },
+    };
+    const teardown = this.producer(subscriber);            // ③ the producer runs when someone SUBSCRIBES (cold)
+    return {
+      unsubscribe() {
+        if (!closed) { closed = true; teardown?.(); }      // ④ stop, and run the teardown
+      },
+    };
+  }
+}
+```
+
+What the remaining layers add, in order:
+1. **Observer object / error / complete callbacks**: accept a function *or* `{ next, error, complete }`; a throw inside the producer goes to `error`.
+2. **Teardown exactly once** — including when the producer completes *synchronously* (before it has even returned its teardown): remember "already closed" and run the teardown as soon as it arrives.
+3. **Operators**: `map(fn)` returns `new Observable(sub => this.subscribe({ next: v => sub.next(fn(v)), error: sub.error, complete: sub.complete }).unsubscribe)` — a *new* observable wrapping the source, and its teardown unsubscribes from the source. `filter` and `take(n)` are variations (take calls `complete()` and unsubscribes after `n` values).
+4. **Statics**: `of(...values)` emits then completes; `interval(ms)` uses `setInterval` and its teardown calls `clearInterval`.
+
+%% explain
+- **Lazy and cold**: the producer runs on *each* subscribe.
+- **`subscribe`** takes a function or `{ next, error, complete }` and returns `{ unsubscribe() }`.
+- **After complete/error/unsubscribe**, nothing more is delivered, and the teardown runs **exactly once** (even if the producer completed synchronously).
+- **A throw in the producer** goes to `error`.
+- **Operators** `map`, `filter`, `take(n)` return new observables, unsubscribe upstream when unsubscribed, and turn throws into `error`.
+- **`Observable.of`** emits synchronously then completes; **`Observable.interval(ms)`** emits `0, 1, 2, …` and its teardown stops the timer.
+
+%% nudge
+- Who is responsible for calling the teardown when `take(2)` finishes?
+- If the producer calls `complete()` *before it returns*, how can you still run its teardown afterwards?
 
 %% hints
 - Core of `subscribe`: a `closed` flag, a `teardown` variable, and a `subscriber` object whose `next/error/complete` check `closed`.

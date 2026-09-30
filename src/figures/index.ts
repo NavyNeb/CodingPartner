@@ -1,4 +1,9 @@
 import { Fig, type Figure, type FigureBuilder } from './kit';
+import { jsFigures } from './js';
+import { tsFigures } from './ts';
+import { reactFigures } from './react';
+import { prodFigures } from './prod';
+import { interviewFigures } from './interview';
 
 /* Figure registry. Lesson Markdown references these ids: ![alt](fig:closure-backpack "Caption") */
 
@@ -309,6 +314,11 @@ const combinators: FigureBuilder = () => {
 };
 
 export const figureBuilders: Record<string, FigureBuilder> = {
+  ...jsFigures,
+  ...tsFigures,
+  ...reactFigures,
+  ...prodFigures,
+  ...interviewFigures,
   'closure-backpack': closureBackpack,
   'closure-alive': closureAlive,
   'scope-chain': scopeChain,

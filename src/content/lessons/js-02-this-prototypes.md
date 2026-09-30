@@ -2,80 +2,377 @@
 id: this-prototypes
 track: js
 title: this, prototypes & classes
-summary: How `this` is decided, what `new` really does, and why classes are prototype sugar.
+summary: How JavaScript decides what `this` means, what `new` really does, and why classes are just a friendlier way to write prototypes.
 ---
 
-## `this` is decided at the call site
+## The idea in one sentence
 
-Unlike every other variable, `this` is not looked up lexically (arrow functions excepted). It's set **when the function is called**, by the shape of the call:
+`this` is **not** a fixed property of a function — it is decided **each time the function is called**, by *how* you call it.
 
-| Call shape | `this` is… |
-| --- | --- |
-| `fn()` | `undefined` in strict mode / modules (the global object in sloppy scripts) |
-| `obj.fn()` | `obj` — whatever is left of the dot |
-| `fn.call(x)`, `fn.apply(x)`, `fn.bind(x)()` | `x` — explicit |
-| `new Fn()` | a brand-new object |
-| arrow function | whatever `this` was where the arrow was *written* |
+> **Analogy** `this` is like the word "here". If I say "meet me here" in Paris, it means Paris. If I say it in Tokyo, it means Tokyo. The sentence didn't change; *where it was said* did. A function that uses `this` works the same way: the code is fixed, but `this` depends on the call.
 
-The rule that causes most bugs: **extracting a method loses its receiver**.
+That one idea explains almost every `this` bug you'll ever meet. Then we'll look at **prototypes** (how objects share behaviour) and **classes** (a nicer way to write them).
 
-```js
-const user = { name: 'Ada', hi() { return `hi ${this.name}`; } };
-user.hi();          // "hi Ada"
-const hi = user.hi;
-hi();               // TypeError / "hi undefined" — no dot, no receiver
-setTimeout(user.hi, 0); // same problem: the timer calls it bare
+## Part 1 — What is `this`?
+
+Look at how the function is **called**, not where it was written:
+
+![Call shapes and what this becomes: obj.fn() gives obj, fn() gives undefined, fn.call(x) gives x, new Fn() gives a new object, an arrow function keeps the outer this](fig:this-call-site "Read the call, not the definition. The only exception is the arrow function, which has no `this` of its own.")
+
+The most common case is **method calls**: if there's a dot before the parentheses, whatever is *left of the dot* becomes `this`.
+
+```js try
+const user = {
+  name: 'Ada',
+  hi() {
+    return 'hi ' + this.name;
+  },
+};
+
+console.log(user.hi());
 ```
 
-Fixes, in order of preference: an arrow wrapper (`() => user.hi()`), `.bind(user)`, or define the method as an arrow class field.
+`user.hi()` — the thing left of the dot is `user`, so `this` is `user` and `this.name` is `'Ada'`.
 
-## Arrow functions don't have their own `this`
+### The #1 bug: losing the receiver
 
-They close over the surrounding `this`, like any other variable. That's why they're perfect for callbacks inside methods — and wrong for object methods and prototype methods, where you *want* the dynamic receiver.
+Watch what happens when the method is **copied into a variable** and called without a dot. Predict first:
 
-## What `new` does
+```js try predict
+'use strict'; // modules and classes are always strict, so we use it here too
 
-`new Fn(a, b)` performs four steps:
+const user = {
+  name: 'Ada',
+  hi() {
+    return 'hi ' + this.name;
+  },
+};
 
-1. Create an empty object whose `[[Prototype]]` is `Fn.prototype`.
-2. Call `Fn` with `this` set to that object.
-3. If `Fn` returns an **object**, that becomes the result (a returned primitive is ignored).
-4. Otherwise the new object is the result.
+const hi = user.hi;   // just copies the function; the dot is gone
 
-You'll implement it yourself below — it demystifies half of JS.
+try {
+  console.log(hi());
+} catch (error) {
+  console.log('error:', error.name);
+}
+```
 
-## Prototypes and the chain
+![With a dot, this is user. Copying the method out removes the dot, so this is undefined](fig:lost-receiver "The method is identical in both cases. Only the call changed, and `this` is decided by the call.")
 
-Every object has an internal link to another object, its **prototype**. Reading `obj.x` checks `obj`, then `obj`'s prototype, then *its* prototype… until `null`. Writing `obj.x = 1` always creates/updates an **own** property.
+It crashes with a `TypeError`, because `this` is `undefined` and you can't read `.name` of `undefined`. The same thing happens any time you **hand a method to someone else to call later**:
 
 ```js
+setTimeout(user.hi, 100);            // ❌ the timer calls it with no dot
+button.addEventListener('click', user.hi);   // ❌ (here `this` becomes the button!)
+items.map(user.hi);                  // ❌
+```
+
+Three fixes, in order of preference:
+
+```js try
+const user = {
+  name: 'Ada',
+  hi() { return 'hi ' + this.name; },
+};
+
+// 1. Wrap it in an arrow function that still uses a dot
+const a = () => user.hi();
+
+// 2. bind: makes a copy of the function with `this` locked to user
+const b = user.hi.bind(user);
+
+// 3. call/apply: choose `this` for one call
+const c = user.hi.call(user);
+
+console.log(a(), '|', b(), '|', c);
+```
+
+### Arrow functions have no `this` of their own
+
+An arrow function doesn't get a `this` from the call. It simply **uses the `this` of the place where it was written**, like any other variable it can see. That makes them perfect for callbacks *inside* methods:
+
+```js try
+const timer = {
+  seconds: 0,
+  start() {
+    // the arrow function borrows `this` from start(), which is `timer`
+    [1, 2, 3].forEach(() => { this.seconds += 1; });
+    return this.seconds;
+  },
+};
+
+console.log(timer.start());
+```
+
+…and a bad choice for the method itself (an arrow there would borrow `this` from *outside* the object, which is not the object).
+
+## Part 2 — What `new` really does
+
+`new Dog('Rex')` looks like magic. It is four small steps. Step through it:
+
+```stepper What new Dog('Rex') does
+code:
+  function Dog(name) {
+    this.name = name;
+  }
+  Dog.prototype.bark = function () { return this.name + ' barks'; };
+  const rex = new Dog('Rex');
+---
+line: 4
+say: Every function has a `.prototype` object. We put a shared `bark` method on `Dog.prototype`. (Nothing has been created with `new` yet.)
+Dog.prototype: bark()
+New object:
+Prototype link:
+this inside Dog:
+rex:
+---
+line: 5
+say: `new` **step 1** — create a brand-new empty object.
+New object: { }
+---
+line: 5
+say: `new` **step 2** — link that object to `Dog.prototype`. Now it can "borrow" `bark` when asked for it.
+Prototype link: → Dog.prototype
+---
+line: 1-3
+say: `new` **step 3** — call `Dog` with `this` set to the new object. `this.name = name` puts `name` on it.
+this inside Dog: the new object
+New object: { name: "Rex" }
+---
+line: 5
+say: `new` **step 4** — the constructor didn't return another object, so the new object is the result and is stored in `rex`.
+rex: { name: "Rex" } → Dog.prototype
+```
+
+> **Good to know** If a constructor **returns an object**, that object is used instead of the new one. Returning a number or string is ignored. You'll recreate all four steps in an exercise.
+
+## Part 3 — Prototypes: how objects share things
+
+Every object has a hidden link to another object called its **prototype**. When you ask an object for a property, JavaScript checks:
+
+1. the object **itself**,
+2. then its **prototype**,
+3. then the prototype's prototype,
+4. … until it finds it or reaches `null` (the end).
+
+That is the **prototype chain**.
+
+![rex links to Dog.prototype, then Animal.prototype, then Object.prototype, then null](fig:proto-chain "Lookups walk the chain from left to right. ① The object itself, ② its constructor's prototype, ③ the parent's prototype, ④ the root every object shares.")
+
+```js try predict
 function Animal(name) { this.name = name; }
 Animal.prototype.speak = function () { return this.name + ' makes a sound'; };
 
 const a = new Animal('Rex');
-Object.getPrototypeOf(a) === Animal.prototype; // true
-a.hasOwnProperty('speak'); // false — found on the prototype
+
+console.log(a.speak());
+console.log(a.hasOwnProperty('speak'));
+console.log(Object.getPrototypeOf(a) === Animal.prototype);
 ```
 
-- `Fn.prototype` is the object that **instances** will link to. It is *not* `Fn`'s own prototype (`Object.getPrototypeOf(Fn)` is `Function.prototype`). This naming is the single most confusing thing in the language.
-- `x instanceof C` means "is `C.prototype` somewhere on `x`'s chain?"
-- Methods on the prototype are **shared**; properties assigned in the constructor are **per instance**.
+`speak` isn't on `a` itself. It's found one step up, on `Animal.prototype` — and because `this` is decided by the call (`a.speak()`), it still sees `a.name`. That's the magic: **methods live once on the prototype and are shared by every instance**, while data (`name`) lives on each instance.
 
-## Classes are sugar (with a few extras)
+### The naming confusion (read twice!)
 
-```js
+| You see | It means |
+| --- | --- |
+| `Dog.prototype` | a *template object*: every `new Dog()` will link to it |
+| `Object.getPrototypeOf(rex)` | `rex`'s actual link — for `new Dog()` objects it **is** `Dog.prototype` |
+| `rex.__proto__` | an old spelling of the same link (avoid in new code) |
+| `x instanceof Dog` | "is `Dog.prototype` somewhere on `x`'s chain?" |
+
+### Writing vs reading
+
+Reading goes **up** the chain. **Writing never does**: `rex.name = 'Max'` always creates or changes a property on `rex` itself (this is called *shadowing* if the prototype had one too).
+
+## Part 4 — Classes are a friendlier spelling
+
+```js try
+class Animal {
+  constructor(name) { this.name = name; }
+  speak() { return this.name + ' makes a sound'; }
+}
+
 class Dog extends Animal {
   speak() { return super.speak() + ' (woof)'; }
 }
+
+const d = new Dog('Rex');
+console.log(d.speak());
+console.log(d instanceof Animal);
+console.log(Object.getPrototypeOf(Dog.prototype) === Animal.prototype);
 ```
 
-This sets up exactly the prototype links you'd wire by hand, plus: class bodies are strict, methods are non-enumerable, calling a class without `new` throws, and `extends` links **both** the instance chain and the constructor chain (`Dog.__proto__ === Animal`). Private fields (`#x`) are the one thing prototypes can't emulate.
+Under the hood it's the exact same machinery: `Dog.prototype` links to `Animal.prototype`, and `super.speak()` looks the method up on the parent's prototype. Classes add a few safety features: the body is strict, calling a class without `new` throws, methods don't show up in `for…in`, and you can have real private fields (`#secret`).
 
-## Interview reflexes
+**The `this` trap still applies to classes.** If you pass `obj.method` around as a callback, it loses its receiver, just like before. A common fix in React class components was an *arrow class field*: `handleClick = () => { … }`.
 
-- "What is `this` here?" → look at the *call*, not the definition.
-- "Why does my callback lose `this`?" → it was extracted; bind it or use an arrow.
-- "What's the difference between `__proto__` and `prototype`?" → the first is an object's link *up*; the second is a function's template for the links of the objects it constructs.
+## Common mistakes
+
+1. **Extracting a method** (`const f = obj.method; f()`) — fix with an arrow wrapper or `.bind`.
+2. **Using an arrow function as an object method** and expecting `this` to be the object.
+3. **Putting data on the prototype** (`Dog.prototype.tricks = []`) — every dog then *shares one array*. Data goes in the constructor; methods go on the prototype.
+4. **Forgetting `new`** on a constructor function (`Dog('Rex')` runs with `this` undefined or the global object).
+5. **Confusing `prototype` and `__proto__`** — one is a constructor's template, the other is an object's actual link.
+
+## Quick check
+
+```check
+Q: What is `this` inside `cart.total()`?
+A) Always the global object
+B) The function itself
+C) `cart`, because it is to the left of the dot *
+D) Whatever it was when `total` was defined
+Why: For a method call, `this` is the object left of the dot. It is decided at call time, not when the function was defined.
+---
+Q: What is wrong here?
+Code:
+  const counter = { n: 0, inc() { this.n++; } };
+  setTimeout(counter.inc, 100);
+A) The timer calls `inc` with no dot, so `this` is not `counter` *
+B) `n` cannot be changed after creation
+C) `setTimeout` cannot call methods
+D) Nothing; it increments `counter.n`
+Why: `setTimeout` receives only the function, not the object, so it calls it bare. Use `setTimeout(() => counter.inc(), 100)` or `counter.inc.bind(counter)`.
+---
+Q: Which statement about arrow functions is true?
+A) They get `this` from the object to their left
+B) `call` and `bind` change their `this`
+C) They are always slower
+D) They use the `this` of the place where they were written *
+Why: Arrow functions have no `this` of their own, so it is looked up like any other outer variable, and `call`/`bind` can't change it.
+---
+Q: `rex` was created with `new Dog('Rex')`. Where is `rex.bark` found?
+A) Copied onto `rex` when it was created
+B) On `Dog.prototype`, shared by all dogs *
+C) On `Object.prototype`
+D) On the `Dog` function itself
+Why: The instance doesn't hold its own copy. Lookup walks up the chain to `Dog.prototype`, where the one shared `bark` lives.
+---
+Q: What does `x instanceof Dog` check?
+A) Whether `x` was created with the keyword `class`
+B) Whether `x` has the same properties as a dog
+C) Whether `Dog.prototype` appears somewhere on `x`'s prototype chain *
+D) Whether `x.constructor === Dog` and nothing else
+Why: `instanceof` walks `x`'s prototype chain looking for `Dog.prototype`. Properties and the `constructor` field don't matter.
+```
+
+## Recap
+
+- **`this` is set by the call**, not the definition: `obj.fn()` → `obj`; bare `fn()` → `undefined` (strict); `call/apply/bind` → what you choose; `new` → a fresh object.
+- **Extracting a method loses `this`.** Fix with an arrow wrapper, `.bind`, or an arrow class field.
+- **Arrow functions** use the `this` of where they were written; great for callbacks, wrong for methods.
+- **`new`** = make an object → link it to `Ctor.prototype` → run `Ctor` with `this` = it → return it (unless an object is returned).
+- **Prototype chain**: property lookup goes up the chain; writes stay on the object itself.
+- **Methods on the prototype are shared; data belongs on each instance.**
+- **Classes** are this machinery with nicer syntax and some safety.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: bind a method | Part 1, "losing the receiver" and the arrow-wrapper fix |
+| Re-implement `call()` and `apply()` | Part 1 — `this` = the object left of the dot (so borrow a dot!) |
+| Wire up inheritance by hand | Part 3 and 4 — `Dog.prototype` must link to `Animal.prototype` |
+| Re-implement `bind()` | Part 1 fixes, plus "what `new` does" (bound functions can be `new`-ed) |
+| Re-implement `new` | Part 2 — the four steps |
+| `instanceof` by hand | Part 3 — walk the chain until you find it or hit `null` |
+| `EventEmitter` | Closures (a list of listeners held by the object) + method calls and `this` |
+
+%% exercise this-guided-method | Guided: keep this working | 1 | js | js | bindMethod | 6 | guided
+Write `bindMethod(obj, name)`. It returns a **new function** that, when called, calls `obj[name](...)` *as a method of `obj`* — so `this` is always `obj`, even if the returned function is handed to a timer or an event listener.
+
+```js
+const user = { name: 'Ada', hi(greeting) { return `${greeting}, ${this.name}`; } };
+const hi = bindMethod(user, 'hi');
+hi('Hello');   // "Hello, Ada"  — works even though there is no dot at the call
+```
+
+Follow the numbered steps in the skeleton.
+
+%% worked
+**A similar problem, solved: `logged(obj, name)`** — returns a function that calls the method and also remembers what it returned.
+
+```js
+function logged(obj, name) {
+  return function (...args) {          // ① a NEW function; ...args gathers every argument
+    const result = obj[name](...args); // ② a dot call: `obj` is left of the dot, so this = obj
+    console.log(name, '->', result);   // ③ extra work around the call
+    return result;                     // ④ hand the result back to whoever called us
+  };
+}
+```
+
+The key line is ②: writing `obj[name](...)` keeps the **dot** (`obj[...]` counts), so the method gets `this = obj`. If you wrote `const fn = obj[name]; fn(...args)`, you would lose the receiver — exactly the bug from the lesson.
+
+%% explain
+- **Returns a function** that can be called on its own (no dot needed).
+- **`this` stays `obj`** — the method reads `this.name` from the right object, even when called bare.
+- **Arguments are forwarded** and the method's **return value** is returned.
+- **The method is looked up at call time** — if `obj.hi` is replaced later, the new one is used.
+
+%% nudge
+- Which way of calling the method keeps `obj` to the left of the dot?
+- How do you pass along "however many arguments I was given"?
+
+%% starter
+```js
+export function bindMethod(obj, name) {
+  // Step 1 — return a NEW function (it can then be passed around on its own).
+  return function (...args) {
+    // Step 2 — call the method WITH a dot, so `this` is obj:   obj[name](...)
+    // Step 3 — pass along all the arguments (...args) and return what the method returns.
+  };
+}
+```
+
+%% tests
+```js
+describe('bindMethod', () => {
+  const makeUser = () => ({ name: 'Ada', hi(greeting) { return `${greeting}, ${this.name}`; } });
+
+  it('returns a function', () => {
+    expect(typeof bindMethod(makeUser(), 'hi')).toBe('function');
+  });
+
+  it('keeps this = obj even when called with no dot', () => {
+    const hi = bindMethod(makeUser(), 'hi');
+    expect(hi('Hello')).toBe('Hello, Ada');
+  });
+
+  it('works when handed to something else to call', () => {
+    const user = makeUser();
+    const holder = { run: bindMethod(user, 'hi') };
+    const { run } = holder;
+    expect(run('Hey')).toBe('Hey, Ada');
+  });
+
+  it('forwards every argument', () => {
+    const obj = { sum(...n) { return n.reduce((a, b) => a + b, this.base); }, base: 10 };
+    expect(bindMethod(obj, 'sum')(1, 2, 3)).toBe(16);
+  });
+
+  it('looks the method up when called', () => {
+    const user = makeUser();
+    const hi = bindMethod(user, 'hi');
+    user.hi = function () { return 'replaced ' + this.name; };
+    expect(hi('x')).toBe('replaced Ada');
+  });
+});
+```
+
+%% hints
+- `return obj[name](...args);` is the whole body.
+- The dot matters: `obj[name](...)` keeps `obj` as the receiver.
+
+%% solution
+```js
+export function bindMethod(obj, name) {
+  return function (...args) {
+    return obj[name](...args);
+  };
+}
+```
 
 %% exercise this-call-apply | Re-implement call() and apply() | 2 | js | js | myCall, myApply | 12
 Write `myCall(fn, ctx, ...args)` and `myApply(fn, ctx, argsArray)` **without** using `Function.prototype.call`, `.apply` or `.bind`.
@@ -158,6 +455,35 @@ describe('myApply', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `withTemp(obj, key, value, fn)`** — temporarily puts a property on an object, runs `fn`, and **always** puts things back the way they were.
+
+```js
+function withTemp(obj, key, value, fn) {
+  const had = Object.prototype.hasOwnProperty.call(obj, key);   // ① remember the original state
+  const old = obj[key];
+  obj[key] = value;                                             // ② change it
+  try {
+    return fn();                                                // ③ do the work
+  } finally {
+    if (had) obj[key] = old; else delete obj[key];              // ④ ALWAYS restore (even if fn throws)
+  }
+}
+```
+
+`myCall` uses the same trick with a twist: to run `fn` with `this = ctx`, **give `ctx` a temporary method** holding `fn` and call it *with a dot*: `ctx[tempKey](...args)`. Then `this` is `ctx`. Use a **`Symbol()`** as the key so it can't clash with real properties, and remove it in `finally`. Primitives need wrapping first (`Object(ctx)`), and `null`/`undefined` become `globalThis`.
+
+%% explain
+- **`this` is `ctx`** inside `fn`, and the return value comes back.
+- **Arguments** are passed on (`myCall` takes them one by one, `myApply` as an array).
+- **No leftovers**: `ctx` must have no extra properties afterwards — even if `fn` throws.
+- **`null` / `undefined` context** falls back to `globalThis`.
+- **No cheating**: the tests check you didn't use `call`, `apply` or `bind`.
+
+%% nudge
+- How can you make `fn` run with a dot in front of it — on an object that isn't yours?
+- What guarantees the temporary property is removed even when `fn` throws?
 
 %% hints
 - Temporarily make `fn` a **method of ctx**: `ctx[key] = fn; ctx[key](...args)` — a method call sets `this` for you.
@@ -253,6 +579,40 @@ describe('Dog', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `Square` inherits from `Shape`.**
+
+```js
+function Shape(name) { this.name = name; }
+Shape.prototype.describe = function () { return this.name + ' shape'; };
+
+function Square(side) {
+  Shape.call(this, 'square');                       // ① run the parent constructor on THIS new object
+  this.side = side;
+}
+Square.prototype = Object.create(Shape.prototype);  // ② new prototype object that links up to Shape.prototype
+Object.defineProperty(Square.prototype, 'constructor', {   // ③ restore the back-link, hidden from loops
+  value: Square, writable: true, configurable: true, enumerable: false,
+});
+Square.prototype.area = function () { return this.side * this.side; };   // ④ child-only method
+
+new Square(3).describe();          // "square shape"  (found on Shape.prototype)
+new Square(3) instanceof Shape;    // true
+```
+
+Why ② and not `Square.prototype = Shape.prototype`? That would make both share **one** object, so adding `area` would also add it to every `Shape`. `Object.create` makes a *separate* object that merely links up.
+
+%% explain
+- **Own `name`**: the parent constructor runs on the new dog (`Animal.call(this, name)`).
+- **Chain**: `Dog.prototype` links to `Animal.prototype`, so `dog instanceof Animal`.
+- **`constructor` back-link**: `Dog.prototype.constructor === Dog`, and it doesn't show up in `for…in` (not enumerable).
+- **Override without damage**: `Dog.prototype.speak` is different, but `Animal.prototype.speak` still works as before.
+- **Dog-only `fetch()`** exists on dogs but not on plain animals.
+
+%% nudge
+- Which line gives you a *new* object that links to `Animal.prototype` without being the same object?
+- After replacing `Dog.prototype`, what did you lose? (Look at `constructor`.)
+
 %% hints
 - Inside `Dog`, run the parent constructor on the new object: `Animal.call(this, name)`.
 - `Dog.prototype = Object.create(Animal.prototype)` creates the link without calling `Animal`.
@@ -346,6 +706,34 @@ describe('myBind', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `partial(fn, ...preset)`** — pre-fills the first arguments but leaves `this` alone.
+
+```js
+function partial(fn, ...preset) {
+  return function (...later) {               // ① later arguments arrive when the result is called
+    return fn.apply(this, [...preset, ...later]);   // ② preset first, then the new ones; keep the caller's `this`
+  };
+}
+
+const add = (a, b, c) => a + b + c;
+partial(add, 1, 2)(3);    // 6
+```
+
+`myBind` adds two things. **(1) Lock `this`**: use `ctx` instead of the caller's `this` — so `bound.call(other)` can't change it. **(2) `new` support**: inside the wrapper, `new.target` tells you whether it was called with `new`. If so, build the object with `Reflect.construct(fn, args, new.target)` and ignore `ctx`.
+
+Note the wrapper must be a normal `function` (not an arrow) to have `new.target`.
+
+%% explain
+- **`this` is `ctx`** inside `fn`.
+- **Preset arguments come first**, then call-time ones.
+- **Re-binding is ignored**: `bound.call(other)` still uses `ctx`.
+- **`new bound(...)`** builds an instance of the original `fn`, ignoring `ctx` (like the real `bind`).
+
+%% nudge
+- How can the wrapper tell whether it was called with `new`?
+- `Reflect.construct(fn, args, newTarget)` is the tool for "construct like new does".
+
 %% hints
 - `function bound(...args) { … }` — a regular function, so `new.target` is available inside.
 - When `new.target` is set: `Reflect.construct(fn, allArgs, new.target === bound ? fn : new.target)`.
@@ -423,6 +811,29 @@ describe('myNew', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `makeWithProto(proto, init)`** — create an object that links to `proto`, then fill it in by calling `init` with `this` set to it.
+
+```js
+function makeWithProto(proto, init) {
+  const obj = Object.create(proto);   // ① step 1+2 of `new`: empty object linked to a prototype
+  init.call(obj);                     // ② step 3: run the setup with this = obj
+  return obj;                         // ③ step 4: hand back the object
+}
+```
+
+`myNew` is this plus two details. **(1)** The prototype comes from `Ctor.prototype`. **(2)** The constructor's own return value matters: if it returns an **object or function**, return *that*; otherwise return your new object. Check with `typeof result === 'object' && result !== null || typeof result === 'function'`. And first verify `Ctor` is a function, else throw a `TypeError`.
+
+%% explain
+- **Right prototype**: the result links to `Ctor.prototype`.
+- **`this` inside `Ctor`** is the new object, and arguments are passed through.
+- **Returning an object/function** from the constructor replaces the result; returning a number/string doesn't.
+- **Non-function `Ctor`** throws a `TypeError`.
+
+%% nudge
+- Which of the four steps of `new` does `Object.create(proto)` cover?
+- After calling the constructor, how do you decide which value to return?
 
 %% hints
 - `Object.create(Ctor.prototype)` does step 1.
@@ -505,6 +916,32 @@ describe('myInstanceOf', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `isAncestor(obj, ancestor)`** — is `ancestor` anywhere on `obj`'s chain?
+
+```js
+function isAncestor(obj, ancestor) {
+  let current = Object.getPrototypeOf(obj);   // ① start one step UP from the object
+  while (current !== null) {                  // ② the chain always ends in null
+    if (current === ancestor) return true;    // ③ found it
+    current = Object.getPrototypeOf(current); // ④ climb one more step
+  }
+  return false;                               // ⑤ fell off the end: not found
+}
+```
+
+For `myInstanceOf` the thing you look for is `Ctor.prototype`. Two guards first: **primitives** (and `null`/`undefined`) are never instances — check `typeof` — and `Ctor` must be a function (`TypeError` otherwise). Functions *are* objects, so `fn instanceof Function` should work.
+
+%% explain
+- **Finds `Ctor.prototype` anywhere** on the chain (arrays, class hierarchies, functions).
+- **Primitives and `null`/`undefined`** are never instances.
+- **`Object.create(null)` objects** have no chain, so they are instances of nothing.
+- **Non-function `Ctor`** throws a `TypeError`.
+
+%% nudge
+- What value marks the end of every prototype chain?
+- Which objects are allowed to be instances at all? (Think `typeof`.)
 
 %% hints
 - `Object.getPrototypeOf(x)` steps up one link; stop when you reach `null`.
@@ -639,6 +1076,41 @@ describe('EventEmitter', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a minimal `Bus` with `on` and `emit`.**
+
+```js
+class Bus {
+  constructor() {
+    this.listeners = new Map();                 // ① event name → array of functions
+  }
+  on(event, fn) {
+    if (!this.listeners.has(event)) this.listeners.set(event, []);
+    this.listeners.get(event).push(fn);
+    return this;                                // ② returning `this` makes calls chainable: bus.on().on()
+  }
+  emit(event, ...args) {
+    const list = this.listeners.get(event);
+    if (!list || list.length === 0) return false;
+    for (const fn of [...list]) fn.apply(this, args);   // ③ loop over a COPY, call with this = the bus
+    return true;
+  }
+}
+```
+
+The exercise adds `off`, `once` and `listenerCount`. Two ideas to plan for: **(a) `once`**: wrap the listener in a function that removes itself, and remember the original (`wrapper.original = fn`) so `off(event, fn)` can still find it. **(b) looping over a copy** (③) is what stops listeners that add/remove listeners during `emit` from causing skips or double-calls.
+
+%% explain
+- **`on` / `off` / `once`** return `this` (chainable); `off` on something unregistered does nothing.
+- **`once`** runs at most once, and `off(event, originalFn)` cancels it before it fires.
+- **`emit`** calls listeners in registration order with `this` = the emitter, and returns `true`/`false` for "were there listeners?".
+- **`listenerCount(event)`** counts current listeners.
+- **Safe during emit**: adding/removing listeners while emitting never skips or double-calls others.
+
+%% nudge
+- What should a `once` wrapper do before calling the real listener?
+- If a listener removes itself while you're looping over the array, what happens to the next item?
 
 %% hints
 - A `Map` from event name to an array of listener functions.

@@ -2,62 +2,318 @@
 id: event-loop
 track: js
 title: The event loop, timers & rate limiting
-summary: Predict execution order, then build debounce, throttle and an async memoizer on top of it.
+summary: Why code runs in a surprising order, how to predict it, and how to build debounce, throttle and a request de-duplicator on top of that knowledge.
 ---
 
-JavaScript runs your code on **one thread** with a **call stack**. Anything asynchronous is handed to the host (browser/Node), and when it's done a *callback is queued*. The **event loop** is the rule for when queued callbacks get the stack.
+## The idea in one sentence
 
-## The two queues
+JavaScript has **one worker** (one thread) that does **one thing at a time**; the **event loop** is the rule that decides *what it picks up next*.
 
-1. **Macrotask (task) queue** — `setTimeout`, `setInterval`, I/O, UI events, `MessageChannel`.
-2. **Microtask queue** — promise reactions (`.then`, `await` continuations), `queueMicrotask`, `MutationObserver`.
+> **Analogy** A restaurant kitchen with a **single chef**. Orders (your code) are cooked one at a time, start to finish — the chef never splits in half. Slow things (the oven timer, a delivery) are handled by helpers outside the kitchen. When a helper finishes, they drop a ticket on a pile. The chef takes the next ticket **only when their hands are free**. There's also a small **"urgent" pile** (promises) that the chef always empties *before* touching the normal pile.
+
+![The call stack, the microtask queue, the task queue and the host](fig:event-loop "The stack runs code. Promise callbacks wait in the microtask queue; timers, clicks and network replies wait in the task queue. ① All microtasks run first, then ② exactly one task.")
+
+## The parts
+
+- **Call stack** — where your code actually runs, one function at a time. (If a function calls another, the second goes on top; it must finish first.)
+- **Host** — the browser or Node. It handles slow things for you: timers, network, clicks. It doesn't run your JavaScript; it just waits, and when something is ready it queues a **callback**.
+- **Task queue** (macrotasks) — callbacks from `setTimeout`, `setInterval`, clicks, network, etc.
+- **Microtask queue** — callbacks from promises (`.then`, code after `await`) and `queueMicrotask`.
 
 One turn of the loop:
 
 ```
-run ONE macrotask (the initial script counts as one)
-  └─ then drain the microtask queue COMPLETELY (including microtasks queued by microtasks)
-       └─ then (browser) maybe render: rAF callbacks → style → layout → paint
-            └─ next macrotask
+run ONE task   (the first one is your whole script)
+  → then run ALL microtasks, until that queue is completely empty
+      → then (in a browser) maybe repaint the screen
+          → next task
 ```
 
-Consequences:
+The two consequences that explain almost every "weird order" question:
 
-- Microtasks **always run before the next timer**, even `setTimeout(fn, 0)`. A promise chain can starve rendering if it never ends.
-- `setTimeout(fn, 0)` means "no sooner than, after the current task and its microtasks"; browsers clamp nested timers to ≥ 4 ms, and background tabs to ≥ 1 s.
-- A timer is a *minimum* delay: if the stack is busy, it waits.
-- `await x` is roughly `Promise.resolve(x).then(continue)` — so the code after an `await` is a microtask, and code *before* the first `await` in an async function runs synchronously.
+1. **Microtasks always run before the next timer** — even `setTimeout(fn, 0)`.
+2. `setTimeout(fn, 0)` doesn't mean "now"; it means "**after** the current code and its microtasks are finished".
 
-```js
+## Predict the order
+
+Work it out on paper first, then run it:
+
+```js try predict
 console.log('1');
 setTimeout(() => console.log('2'), 0);
 Promise.resolve().then(() => console.log('3'));
-console.log('4');
-// 1 4 3 2
+queueMicrotask(() => console.log('4'));
+console.log('5');
 ```
 
-## Long tasks block everything
+Step through to check your reasoning:
 
-While a long synchronous loop runs, there is no rendering, no input handling, no timers. Break work into chunks (`setTimeout`/`requestIdleCallback`/`scheduler.yield`), move it to a Web Worker, or make it faster.
+```stepper Sorting code into "now", "microtask" and "task"
+code:
+  console.log('1');
+  setTimeout(() => console.log('2'), 0);
+  Promise.resolve().then(() => console.log('3'));
+  queueMicrotask(() => console.log('4'));
+  console.log('5');
+---
+line: 1
+say: Normal code runs immediately, top to bottom.
+Console: 1
+Microtask queue:
+Task queue (timers):
+---
+line: 2
+say: `setTimeout` asks the host to start a timer. Its callback will go to the **task queue** — later.
+Task queue (timers): log 2
+---
+line: 3
+say: The promise is already resolved, so its `.then` callback goes to the **microtask queue** right away.
+Microtask queue: log 3
+---
+line: 4
+say: `queueMicrotask` adds another microtask, behind the first one.
+Microtask queue: log 3 | log 4
+---
+line: 5
+say: The last normal line runs. The script (the first task) is finished.
+Console: 1 | 5
+---
+say: The stack is empty, so the loop **empties the microtask queue first**, in order: 3, then 4.
+Console: 1 | 5 | 3 | 4
+Microtask queue:
+---
+say: Only now does it take ONE task from the task queue: the timer callback.
+Console: 1 | 5 | 3 | 4 | 2
+Task queue (timers):
+```
 
-## Rate limiting user-driven events
+### `await` splits a function in two
 
-Scroll, resize, mousemove and keystrokes fire far faster than you can handle. Two tools:
+Code **before** the first `await` runs immediately. Code **after** it is a microtask:
 
-| | Behaviour | Use for |
+```js try predict
+async function f() {
+  console.log('f: before await');
+  await null;
+  console.log('f: after await');
+}
+
+console.log('script: start');
+f();
+console.log('script: end');
+```
+
+### A timer is a *minimum* delay
+
+If the thread is busy, a due timer just waits its turn:
+
+```js try
+const start = Date.now();
+
+setTimeout(() => {
+  const late = Math.round((Date.now() - start) / 50) * 50;
+  console.log('the 0ms timer fired after about', late, 'ms');
+}, 0);
+
+while (Date.now() - start < 200) {
+  // a busy loop: the thread is stuck here for 200ms
+}
+console.log('loop finished');
+```
+
+The `0 ms` timer had to wait for the loop. (Browsers also clamp nested timers to ≥ 4 ms and timers in background tabs to ≥ 1 s.)
+
+## Long tasks freeze the page
+
+While your synchronous code runs, **nothing else can** — no painting, no clicks, no timers. A loop that takes 300 ms makes the page feel broken.
+
+![A long task blocks frames from being painted; small chunks or a worker keep the page smooth](fig:long-task "Break big work into chunks, move it to a Web Worker, or make it faster.")
+
+A promise chain that never ends can do the same (microtasks run before painting), so don't loop forever with `.then`.
+
+## Rate limiting user events
+
+Scroll, resize, mouse-move and keystrokes can fire dozens of times per second. Two tools:
+
+![Events over time; debounce fires once after each burst, throttle fires every 300ms](fig:debounce-throttle "Debounce: wait until the events stop. Throttle: at most once per window.")
+
+| | Behaviour | Good for |
 | --- | --- | --- |
-| **debounce**(fn, ms) | run *after the events stop* for `ms` | search box, autosave, window-resize layout |
-| **throttle**(fn, ms) | run *at most once per `ms`* while events keep coming | scroll position, drag, analytics pings |
+| **debounce**(fn, ms) | runs **after the events stop** for `ms` | search box, autosave, resize |
+| **throttle**(fn, ms) | runs **at most once every `ms`** while events keep coming | scroll position, drag, analytics |
 
-Both are closures over timer state — the closure lesson again. Details that separate a good implementation from a bad one: **latest arguments**, preserving `this`, cleaning up (`cancel`), and *leading* vs *trailing* edge.
+A minimal debounce is a closure holding a timer id:
 
-## Deduping in-flight work
+```js try
+function debounce(fn, ms) {
+  let timer;                                  // remembered between calls (closure!)
+  return function (...args) {
+    clearTimeout(timer);                      // a new call cancels the old countdown
+    timer = setTimeout(() => fn.apply(this, args), ms);   // …and starts a fresh one
+  };
+}
 
-If ten components ask for `/api/user/1` in the same tick, you want one request. Cache the **promise**, not the result — then concurrent callers share it. Evict on failure so a retry is possible, and decide on a TTL for freshness.
+const save = debounce((text) => console.log('saved:', text), 100);
+save('h'); save('he'); save('hel');           // a burst of three calls…
+setTimeout(() => save('hello'), 300);         // …and one later
+```
 
-## Frames and `requestAnimationFrame`
+Only the *last* call of each burst runs, with the **latest arguments**. Details that separate a good implementation from a bad one: passing on `this`, a `cancel()` method, and choosing the **leading** edge (run immediately, then ignore the rest) versus the **trailing** edge (run at the end).
 
-Visual updates should run in `requestAnimationFrame` (once per frame, right before paint). A `setTimeout` loop drifts against the display's frame timing and can run more than once per frame.
+## Dedupe: cache the promise, not the result
+
+If ten components ask for `/api/user/1` in the same instant, you want **one** request. Store the *promise* in a cache, and everyone who asks shares it:
+
+```js try
+const cache = new Map();
+let requests = 0;
+
+function getUser(id) {
+  if (!cache.has(id)) {
+    requests++;
+    const promise = new Promise((resolve) => setTimeout(() => resolve({ id }), 50));
+    cache.set(id, promise);                   // store the PROMISE immediately, before it resolves
+  }
+  return cache.get(id);
+}
+
+Promise.all([getUser(1), getUser(1), getUser(1)]).then(() => console.log('network requests:', requests));
+```
+
+Also **evict on failure** (otherwise a failed request is cached forever) and decide how long a cached value stays fresh (a *TTL*).
+
+## Frames: `requestAnimationFrame`
+
+For visual updates use `requestAnimationFrame`: it runs once per frame, right before painting. A `setTimeout` loop drifts against the screen's refresh rate and can fire twice in one frame.
+
+## Quick check
+
+```check
+Q: What is the logging order?
+Code:
+  setTimeout(() => console.log('T'), 0);
+  Promise.resolve().then(() => console.log('P'));
+  console.log('S');
+A) T P S
+B) S T P
+C) P S T
+D) S P T *
+Why: The script's own code (S) runs first. Then all microtasks (P). Only then the next task, the timer (T).
+---
+Q: In an `async` function, which code runs synchronously when you call it?
+A) Everything before the first `await` *
+B) Nothing; it is always delayed
+C) Everything, including after `await`
+D) Only the `return` statement
+Why: An async function runs like a normal function until its first `await`. The rest continues later as a microtask.
+---
+Q: A search box should call the server only once the user has *stopped typing*. Which tool?
+A) `throttle`
+B) `requestAnimationFrame`
+C) `debounce` *
+D) `setInterval`
+Why: Debounce waits for a quiet period. Throttle would still call the server regularly while the user types.
+---
+Q: Why cache the *promise* in a request de-duplicator, rather than the result?
+A) Promises use less memory
+B) So concurrent callers share the in-flight request before any result exists *
+C) Results can't be stored in a Map
+D) Because `await` needs a cache
+Why: Until the first request finishes there is no result to cache. Storing the promise immediately lets the second and third callers join the same request.
+---
+Q: A `for` loop runs 500 ms without yielding. What happens meanwhile?
+A) The browser runs timers in parallel
+B) Only painting is affected
+C) No painting, clicks or timers are processed until it ends *
+D) Promises are cancelled
+Why: There is one thread. While it is busy with your loop, nothing else can run.
+```
+
+## Recap
+
+- **One thread, one thing at a time.** The event loop picks the next job when the stack is empty.
+- Loop turn: **one task → all microtasks → (render) → next task.**
+- **Microtasks** (promises, `await` continuations, `queueMicrotask`) beat **tasks** (timers, clicks, I/O).
+- `setTimeout(fn, 0)` = "after the current code and its microtasks", not "now". Timers are *minimum* delays.
+- Code **before** the first `await` is synchronous; after it is a microtask.
+- **Long synchronous work freezes everything** — chunk it, use a Worker, or speed it up.
+- **Debounce** = run after the quiet; **throttle** = at most once per window. Both are closures over timer state.
+- **Cache the promise** to dedupe in-flight work; evict on failure; add a TTL.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: predict a tiny snippet | "The parts" and the one-turn recipe (now → microtasks → tasks) |
+| Predict the output | The recipe, `await` splitting a function, and the stepper |
+| `debounce` | The minimal debounce above, plus forwarding `this` and the latest arguments |
+| `throttle` | A window that opens on the first call, and a trailing call with the latest arguments |
+| `debounce` with leading, cancel & flush | Debounce + "leading vs trailing edge" |
+| `memoizeAsync` with TTL | "Dedupe: cache the promise" + the failure-eviction note |
+
+%% exercise loop-guided-order | Guided: predict a tiny snippet | 1 | js | js | answer | 4 | guided
+Read this snippet and write down **exactly** what it logs, in order, as an array of strings — *before* running anything.
+
+```js
+console.log('start');
+setTimeout(() => console.log('timer'), 0);
+Promise.resolve().then(() => console.log('promise'));
+console.log('end');
+```
+
+Export your answer as `answer`. The skeleton helps you sort each line into the right bucket.
+
+%% worked
+**A similar problem, solved.**
+
+```js
+console.log('a');
+setTimeout(() => console.log('b'), 0);
+queueMicrotask(() => console.log('c'));
+console.log('d');
+```
+
+1. **Sort each line into a bucket.** `log a` and `log d` run *now*. `log b` is inside a timer, so it goes to the **task queue**. `log c` is inside `queueMicrotask`, so it goes to the **microtask queue**.
+2. **Run "now" lines in order:** `a`, `d`.
+3. **Empty the microtask queue:** `c`.
+4. **Then take one task:** `b`.
+
+Answer: `['a', 'd', 'c', 'b']`. The recipe never changes: *now → all microtasks → one task*.
+
+%% explain
+- The test compares your array to the real output, line by line.
+- It checks **order**, not just the set of messages.
+
+%% nudge
+- Which `console.log` lines are plain code that runs straight away?
+- Promise callbacks versus timer callbacks: which waits in the "urgent" pile?
+
+%% starter
+```js
+export const answer = [
+  // Step 1 — which lines run immediately, in order?
+  // Step 2 — then the microtask (the promise .then callback).
+  // Step 3 — last of all, the timer callback.
+];
+```
+
+%% tests
+```js
+describe('predicted output', () => {
+  it('matches what the snippet really logs', () => {
+    expect(answer).toEqual(['start', 'end', 'promise', 'timer']);
+  });
+});
+```
+
+%% hints
+- `start` and `end` are plain code: they come first.
+- Promise callbacks run before timers, even `setTimeout(..., 0)`.
+
+%% solution
+```js
+export const answer = ['start', 'end', 'promise', 'timer'];
+```
 
 %% exercise loop-order | Predict the output | 1 | js | js | answer1, answer2, answer3 | 10
 Read each snippet and write down **exactly** what gets logged, in order. Fill in the three arrays — no running the code first! (You'll be tempted; the point is to build the model in your head.)
@@ -124,6 +380,36 @@ describe('event loop order', () => {
   });
 });
 ```
+
+%% worked
+**How to solve any "predict the output" puzzle — the recipe, applied:**
+
+```js
+console.log('1');
+setTimeout(() => console.log('2'), 0);
+(async () => {
+  console.log('3');
+  await null;
+  console.log('4');
+})();
+Promise.resolve().then(() => console.log('5'));
+console.log('6');
+```
+
+1. **Run the script top to bottom.** Log `1`. The timer is registered (its callback waits in the task queue). The async function starts: it logs `3` *immediately* (before the first `await`), then pauses; the rest of it (`log 4`) is queued as a microtask. The promise `.then` (`log 5`) is queued as a microtask. Log `6`.
+2. **Now empty the microtask queue, in the order they were queued:** `4`, then `5`.
+3. **Then one task:** the timer → `2`.
+
+Output: `1 3 6 4 5 2`. Write the queues down as you go — it's far easier than doing it in your head.
+
+%% explain
+- **Each answer is an array of strings** in the exact order they are logged.
+- The tests compare with what the real code prints; partial credit doesn't exist, so trace carefully.
+- No trick syntax: every puzzle follows "run now → empty microtasks → take one task → empty microtasks → …".
+
+%% nudge
+- Keep two lists on paper: "microtask queue" and "task queue". Add to them as you read each line.
+- After *every* task, empty the microtask queue before taking the next task.
 
 %% hints
 - Order of business: (1) all synchronous code, (2) the whole microtask queue, (3) *one* timer, (4) microtasks again, (5) next timer…
@@ -221,6 +507,31 @@ describe('debounce', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `delayedLast(fn, ms)`** — it is a debounce without `this` handling, so you can see the skeleton.
+
+```js
+function delayedLast(fn, ms) {
+  let timer;                              // ① state that survives between calls (a closure)
+  return (...args) => {
+    clearTimeout(timer);                  // ② cancel the previous countdown, if any
+    timer = setTimeout(() => fn(...args), ms);   // ③ start a new one using THIS call's arguments
+  };
+}
+```
+
+What to add for `debounce`: the wrapper must be a normal `function` (not an arrow) so it has its own `this`, and then use `fn.apply(this, args)` inside the timer callback — the arrow function inside `setTimeout` keeps the wrapper's `this` and `args`. Each *debounced function* has its own `timer` variable, so two of them don't interfere.
+
+%% explain
+- **Waits `ms` after the *last* call**; each call restarts the countdown.
+- **Latest arguments and `this`** are the ones `fn` receives.
+- **Independent debounced functions** don't share a timer.
+- Tests use **fake timers** to jump the clock, so exact timing is checked.
+
+%% nudge
+- What should happen to the previous timer when a new call arrives?
+- Where should `timer` live so every call can see it, but different debounced functions get separate ones?
 
 %% hints
 - One `let timer` in the closure. On each call: `clearTimeout(timer)` then `timer = setTimeout(...)`.
@@ -334,6 +645,33 @@ describe('throttle', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `oncePerWindow(fn, ms)`** — runs immediately, then ignores calls until the window closes (leading edge only, no trailing call).
+
+```js
+function oncePerWindow(fn, ms) {
+  let open = true;                     // ① is the window currently open?
+  return function (...args) {
+    if (!open) return;                 // ② inside a window: ignore
+    open = false;
+    fn.apply(this, args);              // ③ run right away (the "leading" call)
+    setTimeout(() => { open = true; }, ms);   // ④ re-open after ms
+  };
+}
+```
+
+`throttle` adds the **trailing call**: while the window is closed, don't just ignore — *remember* the latest arguments (`pendingArgs`, `pendingThis`). When the window ends, if something is remembered, run it (with the latest args) and **open a new window**; if nothing is remembered, the throttle goes back to idle so the next call runs immediately.
+
+%% explain
+- **First call runs immediately** and opens a window of `ms`.
+- **Calls in the window are coalesced**: at the end, `fn` runs **once** with the latest arguments, and a new window opens.
+- **No calls in the window** → nothing runs at its end; the next call is immediate again.
+- Example (`ms = 100`): calls at 0 (`a`), 10 (`b`), 20 (`c`) → `fn('a')` at 0, `fn('c')` at 100.
+
+%% nudge
+- What must you remember during the window so the trailing call uses the *latest* arguments?
+- When the window ends and nothing was pending, what state should you return to?
 
 %% hints
 - State: `timer` (is a window open?) and `pending` (the latest args/this received during the window).
@@ -474,6 +812,41 @@ describe('debounce (options)', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `delayedLast` with a `cancel()` method** — shows how to attach extra functions to a function.
+
+```js
+function delayedLast(fn, ms) {
+  let timer;
+  function wrapper(...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => { timer = undefined; fn(...args); }, ms);
+  }
+  wrapper.cancel = () => { clearTimeout(timer); timer = undefined; };   // ① functions are objects: add properties
+  return wrapper;
+}
+```
+
+For the full version, keep a little state machine in the closure: `timer`, `lastArgs` (or `undefined` if nothing is pending), `lastThis`. Then:
+
+- **leading**: on a call with *no active timer*, run `fn` immediately (and remember that the burst has already been served).
+- **trailing**: when the timer fires, run `fn` only if a call arrived *after* the leading one (`lastArgs` is still set).
+- **cancel**: clear the timer and forget `lastArgs`.
+- **flush**: if `lastArgs` is set, clear the timer and run `fn` now.
+
+Write the state down as a table (timer active? pending args?) before you code — most bugs are a missed combination.
+
+%% explain
+- **Trailing (default)**: one call after `ms` of quiet with the latest args.
+- **Leading**: runs on the first call of a burst. With both flags on, a single call runs `fn` **once**; a longer burst runs it once more at the end with the latest args.
+- **`cancel()`** drops any pending call and resets.
+- **`flush()`** runs a pending trailing call immediately.
+- **Both flags off**: the timer never calls `fn`.
+
+%% nudge
+- After a leading call, how do you know whether a trailing call is still needed?
+- What exactly must `cancel()` reset so the *next* burst behaves like a fresh one?
 
 %% hints
 - Add to your simple version: `lastArgs`/`lastThis` cleared after each invocation.
@@ -622,6 +995,33 @@ describe('memoizeAsync', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `dedupe(fn)`** — concurrent calls with the same argument share one promise, and failures are forgotten.
+
+```js
+function dedupe(fn) {
+  const inFlight = new Map();                          // ① key → promise
+  return function (arg) {
+    if (inFlight.has(arg)) return inFlight.get(arg);   // ② someone is already doing this: join them
+    const promise = fn(arg).finally(() => inFlight.delete(arg));   // ③ forget it when it settles (success OR failure)
+    inFlight.set(arg, promise);                        // ④ store the promise immediately
+    return promise;
+  };
+}
+```
+
+`memoizeAsync` goes one step further: keep **successful results** after they settle. Store `{ value, at: Date.now() }` when the promise fulfils; on a later call, if `Date.now() - at < ttl`, return the cached value (wrapped in a resolved promise); otherwise call `fn` again. On **rejection**, delete the cache entry so the next call retries. `clear()` empties both maps. Default key: `JSON.stringify(args)`.
+
+%% explain
+- **In-flight dedupe**: concurrent calls with the same key get the *same* promise and call `fn` once.
+- **TTL cache**: a fulfilled value is reused until `ttl` ms after it *fulfilled* (`Date.now()`).
+- **Failures aren't cached**: a rejected call is evicted so the next call retries.
+- **`memoized.clear()`** empties everything.
+
+%% nudge
+- Which do you need to store *before* the request finishes — the promise or the value?
+- When a promise rejects, what must you delete so later calls try again?
 
 %% hints
 - `Map<key, { promise, expiresAt }>`. Store the promise itself as soon as you call `fn` — that gives you the in-flight dedupe for free.
