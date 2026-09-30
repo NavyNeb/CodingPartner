@@ -144,7 +144,10 @@ if (!filter) {
             const isReact = t.lang === 'jsx' || t.lang === 'tsx';
             const lang = isReact ? 'tsx' : t.lang === 'ts' ? 'ts' : 'js';
             const fake = { id: 'snippet', lang, kind: isReact ? 'react' : 'js', tests: "it('runs', () => {});", exports: [] } as unknown as Exercise;
-            if (isReact) {
+            if (t.types) {
+              const r = runTypes({ id: 'snippet', kind: 'types', tests: '' } as unknown as Exercise, t.code);
+              if (r.diagnostics?.length) problems.push(`types snippet has errors (use @ts-expect-error for intended ones): ${r.diagnostics.map((d) => `L${d.line} ${d.message}`).join(' | ')}`);
+            } else if (isReact) {
               compile(t.code, 'tsx'); // React snippets are mounted in the browser; here we only check that they compile
             } else {
               const r = await run(fake, t.code);

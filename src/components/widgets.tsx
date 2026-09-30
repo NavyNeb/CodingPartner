@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { type CheckQuestion, checkKey, parseCheck, parseStepper, resolveFrames } from '../lib/blocks';
 import { codeBlock, highlightToHtml, renderInline } from '../lib/markdown';
+import { checkTypes } from '../runner/typecheck';
+import type { Exercise } from '../content/types';
 import { runScratch, mountPreview, type LogLine, type PreviewHandle, type ScratchHandle } from '../runner/execute';
 import { progress } from '../store/progress';
 import { CodeEditor } from './CodeEditor';
@@ -128,7 +130,7 @@ export function ConceptCheck({ body }: { body: string }) {
 
 /* ───────────────────────── Runnable snippet ───────────────────────── */
 
-export default function RunnableSnippet({ code: initial, lang, predict }: { code: string; lang: string; predict: boolean }) {
+export default function RunnableSnippet({ code: initial, lang, predict, types = false }: { code: string; lang: string; predict: boolean; types?: boolean }) {
   const isReact = lang === 'jsx' || lang === 'tsx';
   const edLang = isReact ? 'tsx' : lang === 'ts' ? 'ts' : 'js';
   const [code, setCode] = useState(initial);
@@ -147,6 +149,13 @@ export default function RunnableSnippet({ code: initial, lang, predict }: { code
     setLogs([]);
     setStatus('running');
     setRevealed(true);
+    if (types) {
+      const r = await checkTypes({ tests: '' } as Exercise, code, performance.now());
+      const errs = r.fatal ? [r.fatal] : (r.diagnostics ?? []).map((d) => `line ${d.line}: ${d.message}`);
+      setLogs(errs.length ? errs.map((text) => ({ level: 'error' as const, text })) : [{ level: 'log' as const, text: '✓ No type errors — the compiler accepts this code.' }]);
+      setStatus('done');
+      return;
+    }
     if (isReact) {
       if (host.current) handle.current = await mountPreview(code, host.current, (l) => setLogs((s) => [...s, l]));
       setStatus('done');
@@ -189,7 +198,7 @@ export default function RunnableSnippet({ code: initial, lang, predict }: { code
       {isReact && <div className="snippet-preview" ref={host} />}
       {(!isReact || logs.length > 0) && (
         <div className="snippet-out" aria-live="polite">
-          <span className="snippet-out-h">Console</span>
+          <span className="snippet-out-h">{types ? 'Type checker' : 'Console'}</span>
           {!isReact && !revealed && <p className="muted">Write your guess, then press Run.</p>}
           {!isReact && revealed && logs.length === 0 && <p className="muted">{status === 'running' ? 'Running…' : 'Nothing yet — press Run.'}</p>}
           {revealed && logs.map((l, k) => <pre key={k} className={`sn-line ${l.level}`}>{l.text}</pre>)}

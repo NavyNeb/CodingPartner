@@ -138,7 +138,7 @@ export function checkKey(body: string): string {
 
 export interface FoundBlocks {
   checkBodies: string[];
-  tries: { lang: string; predict: boolean; code: string }[];
+  tries: { lang: string; predict: boolean; types: boolean; code: string }[];
   checks: CheckQuestion[][];
   steppers: StepperData[];
   figs: string[];
@@ -152,7 +152,7 @@ export function findBlocks(md: string): FoundBlocks {
     const info = m[2].trim().split(/\s+/);
     if (info[0] === 'check') { out.checks.push(parseCheck(m[3])); out.checkBodies.push(m[3]); }
     else if (info[0] === 'stepper') out.steppers.push(parseStepper(m[2].trim(), m[3]));
-    else if (info.includes('try')) out.tries.push({ lang: info[0], predict: info.includes('predict'), code: m[3] });
+    else if (info.includes('try')) out.tries.push({ lang: info[0], predict: info.includes('predict'), types: info.includes('types'), code: m[3] });
   }
   const fig = /!\[[^\]]*\]\(fig:([\w-]+)/g;
   while ((m = fig.exec(md))) out.figs.push(m[1]);

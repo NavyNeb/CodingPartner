@@ -36,7 +36,7 @@ const marked = new Marked({
       if (l === 'stepper') return `<div class="widget w-stepper" data-info="${enc(lang ?? '')}" data-body="${enc(text)}"><p class="muted">Loading walkthrough…</p></div>\n`;
       if (info.includes('try')) {
         const fallback = `<pre class="code" data-lang="${l}"><code>${highlightToHtml(text, l)}</code></pre>`;
-        return `<div class="widget w-try" data-lang="${l}" data-predict="${info.includes('predict') ? 1 : 0}" data-code="${enc(text)}">${fallback}</div>\n`;
+        return `<div class="widget w-try" data-lang="${l}" data-predict="${info.includes('predict') ? 1 : 0}" data-types="${info.includes('types') ? 1 : 0}" data-code="${enc(text)}">${fallback}</div>\n`;
       }
       return `<pre class="code"${l ? ` data-lang="${l}"` : ''}><code>${highlightToHtml(text, l)}</code></pre>`;
     },

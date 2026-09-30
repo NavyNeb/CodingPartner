@@ -111,7 +111,7 @@ export function Prose({ md, className = '' }: { md: string; className?: string }
         const dec = (v?: string) => decodeURIComponent(v ?? '');
         return createPortal(
           <Suspense fallback={<p className="muted">Loading…</p>}>
-            {m.kind === 'try' && <RunnableSnippet code={dec(d.code)} lang={d.lang ?? 'js'} predict={d.predict === '1'} />}
+            {m.kind === 'try' && <RunnableSnippet code={dec(d.code)} lang={d.lang ?? 'js'} predict={d.predict === '1'} types={d.types === '1'} />}
             {m.kind === 'check' && <ConceptCheck body={dec(d.body)} />}
             {m.kind === 'stepper' && <Stepper info={dec(d.info)} body={dec(d.body)} />}
           </Suspense>,

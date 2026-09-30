@@ -4,7 +4,7 @@
 in interviews, then live coding against real tests — from warm-ups to senior-level problems. Built for getting your
 fundamentals back after leaning on AI.
 
-- **139 exercises** in **28 lessons** (the ten JS lessons are fully illustrated; TypeScript, React, Production and Interview are being upgraded the same way), four difficulty tiers (Warm-up → Core → Hard → Interview)
+- **142 exercises** in **28 lessons** (the JavaScript and TypeScript lessons are fully illustrated; React, Production and Interview are being upgraded the same way), four difficulty tiers (Warm-up → Core → Hard → Interview)
 - **A real editor** (CodeMirror 6) with `Ctrl/⌘ + Enter` to run, autosaved drafts, and optional autocomplete
 - **Real tests**, run in your browser — no server, nothing leaves your machine
 - **Interview mode**: per-exercise countdown, no hints, no solution, no autocomplete
@@ -112,6 +112,8 @@ Lesson theory can embed visuals and interactive blocks (all linted by `npm run v
 
 ````md
 ![alt text](fig:closure-backpack "Caption with ① numbered callouts")   ← SVG figure from src/figures/index.ts
+
+```ts try types      ← TypeScript snippet checked by the real compiler (shows errors)
 
 ```js try            ← editable, runnable snippet  (```js try predict = "guess the output first"; ```tsx try = live React preview)
 console.log('hi');
