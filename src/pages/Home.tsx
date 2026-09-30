@@ -61,7 +61,7 @@ Received: undefined`}</pre>
 
         <section className="wrap method" aria-label="How it works">
           <ol>
-            <li><span>01</span><h3>Read the idea</h3><p>Ten focused minutes per lesson. Mental models, not trivia — plus the traps interviewers set.</p></li>
+            <li><span>01</span><h3>Read the idea</h3><p>Plain-language lessons with labelled diagrams, step-through walkthroughs and quick checks — mental models first, then the traps interviewers set.</p></li>
             <li><span>02</span><h3>Write it yourself</h3><p>A real editor, real tests, no scaffolding. Difficulty climbs from warm-up to interview grade.</p></li>
             <li><span>03</span><h3>Read the failure</h3><p>Tests explain themselves. Hints are rationed; the solution is gated and remembered as “assisted”.</p></li>
             <li><span>04</span><h3>Go timed</h3><p>Interview mode adds a countdown and takes the safety nets away. That’s the real exam.</p></li>

@@ -133,6 +133,7 @@ export function SiteHeader({ children }: { children?: ReactNode }) {
         <nav className="site-nav" aria-label="Primary">
           <NavLink to="/" end>Roadmap</NavLink>
           <NavLink to="/playground">Playground</NavLink>
+          <NavLink to="/glossary">Glossary</NavLink>
         </nav>
         <div className="site-header-right">
           {children}

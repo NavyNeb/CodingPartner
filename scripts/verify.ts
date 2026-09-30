@@ -12,6 +12,7 @@ import { trackMeta } from '../src/content/tracks';
 import { compile } from '../src/runner/transform';
 import { findBlocks } from '../src/lib/blocks';
 import { getFigure } from '../src/figures';
+import { glossary } from '../src/content/glossary';
 import type { Exercise } from '../src/content/types';
 
 const require = createRequire(import.meta.url);
@@ -138,6 +139,10 @@ if (!filter) {
         if (!b.checks.length) problems.push('no concept check');
         if (!/^## Before you start the exercises/m.test(lesson.theory)) problems.push('missing "## Before you start the exercises" section');
         if (!/^## Recap/m.test(lesson.theory)) problems.push('missing "## Recap" section');
+        for (const ex of lesson.exercises) {
+          const missing = (['worked', 'explain', 'nudge'] as const).filter((k) => !ex[k]);
+          if (missing.length) problems.push(`exercise ${ex.id} is missing: ${missing.join(', ')}`);
+        }
         for (const t of b.tries) {
           snippets++;
           try {
@@ -163,7 +168,9 @@ if (!filter) {
       problems.forEach((p) => console.log('   ', p));
     }
   }
-  console.log(lessonProblems ? red(`${lessonProblems} lesson(s) with problems`) : green(`lessons: ${lintedLessons} v3 lesson(s) linted · ${figs} figures · ${snippets} snippets ran`));
+  const lessonIds = new Set(tracks.flatMap((t) => t.lessons.map((l) => l.id)));
+for (const g of glossary) if (!lessonIds.has(g.lesson)) { lessonProblems++; console.log(red('✗'), `glossary "${g.term}" points at unknown lesson "${g.lesson}"`); }
+console.log(lessonProblems ? red(`${lessonProblems} lesson(s) with problems`) : green(`lessons: ${lintedLessons} v3 lesson(s) linted · ${figs} figures · ${snippets} snippets ran`));
 }
 console.log(`\n${total - failures}/${total} exercises verified · ${tests} solution tests · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 process.exit(failures || lessonProblems ? 1 : 0);

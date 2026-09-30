@@ -4,7 +4,7 @@
 in interviews, then live coding against real tests — from warm-ups to senior-level problems. Built for getting your
 fundamentals back after leaning on AI.
 
-- **155 exercises** in **28 lessons** (all lessons except the two Interview ones are fully illustrated; those are next), four difficulty tiers (Warm-up → Core → Hard → Interview)
+- **157 exercises** in **28 lessons** — every lesson is illustrated (labelled diagrams, step-through walkthroughs, runnable snippets, quick checks), every exercise has a worked example, a plain-English test explanation and a nudge, and each lesson starts with a guided warm-up, four difficulty tiers (Warm-up → Core → Hard → Interview)
 - **A real editor** (CodeMirror 6) with `Ctrl/⌘ + Enter` to run, autosaved drafts, and optional autocomplete
 - **Real tests**, run in your browser — no server, nothing leaves your machine
 - **Interview mode**: per-exercise countdown, no hints, no solution, no autocomplete
@@ -66,6 +66,8 @@ the built app in headless Chromium.
 Exercises in the `prod` track get synthetic infrastructure in their test scope: `createFakeSocket(url)` (a controllable
 WebSocket: `.open() .receive() .drop() .listenerCount()`), `createFakeChannelHub()` (BroadcastChannel across "tabs"),
 `createFakePorts()` (entangled MessagePorts for worker RPC) and `flushPromises()` — combined with `jest.useFakeTimers()`.
+
+A **Glossary** page (`/#/glossary`) gives plain-English definitions of the terms used across the lessons, linked to where each is taught (`src/content/glossary.ts`).
 
 ## Adding content
 

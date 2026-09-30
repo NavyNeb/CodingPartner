@@ -2,55 +2,337 @@
 id: interview-ds
 track: interview
 title: Data structures & algorithms in JavaScript
-summary: The recurring shapes — hash maps, stacks, intervals, caches, tries — and how to talk about them.
+summary: The recurring problem shapes — hash maps, stacks, sorted sweeps, caches, tries — and how to reason about them out loud.
 ---
 
-Most live-coding problems are one of about a dozen shapes wearing a costume. Your job in the first two minutes is to **name the shape**, state the complexity you're aiming for, and then write it.
+## The idea in one sentence
+
+Most live-coding problems are **one of about a dozen shapes wearing a costume** — your job in the first two minutes is to **name the shape**, say the complexity you're aiming for, and then write it.
+
+> **Analogy** A mechanic hears a strange noise and doesn't start taking the engine apart — they ask "*when* does it happen?", try the most likely cause, and explain what they're doing as they go. Interviewers want to hear that same calm routine, not silent typing.
 
 ## A repeatable routine
 
-1. **Restate** the problem and ask about inputs: empty? duplicates? sorted? negative? size?
+![Six steps: restate, example, brute force, code, test, complexity](fig:interview-routine "Follow it every time; it keeps you calm and shows how you think.")
+
+1. **Restate** the problem and ask about inputs: empty? duplicates? sorted? negative? how big?
 2. Work **one small example** by hand. Say the answer out loud.
-3. Propose the **brute force** and its cost. Then improve it. ("O(n²) — the inner loop is a lookup; a `Map` makes it O(1).")
+3. Propose the **brute force** and its cost. Then improve it. ("That's O(n²) — the inner loop is really a lookup; a `Map` makes it O(1).")
 4. **Code it**, naming things well. Narrate invariants ("`stack` always holds unmatched openers").
-5. **Test** with your example, an empty input, one element, and a nasty case.
+5. **Test** with your example, an empty input, one element and a nasty case.
 6. State **time and space** complexity.
 
 ## The JavaScript toolbox
 
 | Need | Use | Notes |
 | --- | --- | --- |
-| Lookup by key, counts | `Map` / `Set` | O(1) average. Keys can be any value. Iteration is insertion-ordered. |
-| Dictionary of strings | `Map` (or `Object.create(null)`) | Plain `{}` inherits `toString`, `__proto__`… |
-| Stack | array `push`/`pop` | O(1) |
-| Queue | array `push` + `shift` | `shift` is O(n) on big arrays — use an index pointer or linked list for BFS on large inputs |
-| Sorted order | `arr.sort(cmp)` | O(n log n), stable, **comparator must return a number** |
-| Priority queue | binary heap you write | There's no built-in one |
-| Deduping | `new Set(arr)` | Compares with SameValueZero (`NaN` equals `NaN`) |
-
-`Map` preserves insertion order — which is exactly what you need for an **LRU cache**: "refresh" an entry by deleting and re-inserting it, and the *first* key is always the least recently used.
+| Lookup by key, counts | `Map` / `Set` | O(1) on average. Keys can be any value. Iteration is in insertion order. |
+| Dictionary of strings | `Map` (or `Object.create(null)`) | A plain `{}` inherits `toString`, `__proto__`… |
+| Stack | array `push` / `pop` | O(1) |
+| Queue | array `push` + `shift` | `shift` is O(n) on big arrays — use an index pointer or a linked list for BFS on large inputs |
+| Sorted order | `arr.sort(cmp)` | O(n log n), stable; **the comparator must return a number** |
+| Priority queue | a binary heap you write | There's no built-in one |
+| Deduping | `new Set(arr)` | Uses SameValueZero (`NaN` equals `NaN`) |
 
 ## Complexity cheat-sheet
 
-- Hash map/set operations: O(1) average.
-- Sorting: O(n log n). Scanning once: O(n). Nested loops over the same input: O(n²).
-- Recursion depth counts as space (and the stack is only ~10k frames deep in practice).
-- `includes`/`indexOf`/`find` on an array are O(n) — inside a loop that's the classic hidden O(n²).
-- String concatenation in a loop is fine in modern engines; repeated `slice`/spread of arrays is O(n) each.
+- Hash map/set operations: **O(1)** average.
+- Sorting: **O(n log n)**. One scan: **O(n)**. Nested loops over the same input: **O(n²)**.
+- Recursion depth counts as **space** (and the call stack is only ~10,000 frames deep in practice).
+- `includes` / `indexOf` / `find` on an array are **O(n)** — inside a loop that's the classic hidden O(n²).
+- Repeated `slice` or spreading an array inside a loop is O(n) *each time*.
 
-## Common shapes
+## The shapes
 
-- **Complement lookup** (two-sum): store what you've seen; ask "have I seen the number that completes this one?"
-- **Stack matching** (parentheses, next-greater-element): push openers, pop on closers.
-- **Sort then sweep** (intervals, meeting rooms): sort by start, then one pass merging.
-- **Hash-of-canonical-form** (anagrams): map each item to a key that's identical for equivalent items.
-- **Count then select** (top-K): frequency map, then sort/bucket/heap.
-- **Prefix tree** (autocomplete): one node per character; shared prefixes share nodes.
-- **Design a structure** (LRU, min-stack): choose internal structures so each operation hits its complexity target.
+### 1 · Complement lookup (Two Sum)
+
+Store what you've **seen**; for each new number ask "have I already seen the number that completes it?" — one pass, O(n).
+
+```stepper Two Sum with a Map
+code:
+  function twoSum(nums, target) {
+    const seen = new Map();                 // value → index
+    for (let j = 0; j < nums.length; j++) {
+      const need = target - nums[j];
+      if (seen.has(need)) return [seen.get(need), j];
+      seen.set(nums[j], j);
+    }
+    return null;
+  }
+  twoSum([2, 7, 11, 15], 9);
+---
+line: 3-4
+say: `j = 0`: the number is `2`, so we **need** `9 - 2 = 7`. We haven't seen anything yet.
+Looking at: nums[0] = 2
+Need: 7
+seen (value → index):
+---
+line: 6
+say: `7` isn't in `seen`, so remember `2` at index `0` and move on.
+seen (value → index): 2 → 0
+---
+line: 3-4
+say: `j = 1`: the number is `7`, so we need `9 - 7 = 2`.
+Looking at: nums[1] = 7
+Need: 2
+---
+line: 5
+say: `seen` **has** `2` (index `0`). We found the pair: return `[0, 1]`. One pass, one lookup per item — **O(n)**, instead of the O(n²) "try every pair".
+Result: [0, 1]
+```
+
+### 2 · Stack matching (brackets)
+
+Push openers; on a closer, the **most recent** opener must match. Predict, then run:
+
+```js try predict
+function isBalanced(text) {
+  const pairs = { ')': '(', ']': '[', '}': '{' };
+  const stack = [];                                   // invariant: holds the openers not yet closed
+  for (const ch of text) {
+    if ('([{'.includes(ch)) stack.push(ch);
+    else if (ch in pairs) {
+      if (stack.pop() !== pairs[ch]) return false;    // wrong or missing opener
+    }
+  }
+  return stack.length === 0;                          // anything left open → unbalanced
+}
+
+console.log(isBalanced('([]{})'), isBalanced('([)]'), isBalanced('a(b)c['), isBalanced(''));
+```
+
+### 3 · Sort, then sweep (intervals)
+
+Sort by start, then walk once, extending the current interval while the next one overlaps or touches it.
+
+![Four intervals sorted by start and merged into two](fig:interval-sweep "Sorting is O(n log n); the sweep is O(n).")
+
+```js try
+function mergeIntervals(intervals) {
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);   // copy first: don't mutate the input
+  const out = [];
+  for (const [start, end] of sorted) {
+    const last = out[out.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);   // overlaps or touches → extend
+    else out.push([start, end]);                                      // a gap → start a new interval
+  }
+  return out;
+}
+console.log(mergeIntervals([[8, 10], [1, 3], [2, 6], [9, 12]]));
+```
+
+(We copy the inner arrays in the real exercise so the *input's* inner arrays aren't changed either.)
+
+### 4 · Canonical form (anagrams)
+
+Map every item to a key that's **identical for equivalent items** — for anagrams, the letters sorted:
+
+```js try
+const groups = new Map();
+for (const word of ['eat', 'tea', 'tan', 'ate', 'nat', 'bat']) {
+  const key = [...word].sort().join('');                  // "eat", "tea", "ate" → "aet"
+  if (!groups.has(key)) groups.set(key, []);
+  groups.get(key).push(word);
+}
+console.log([...groups.values()]);
+```
+
+### 5 · Count, then select (top K)
+
+Build a frequency `Map`, then pick the top `k`. Sorting entries is O(d log d) for `d` distinct values; a **bucket** approach (an array where index = frequency) gets it to O(n).
+
+```js try
+const items = ['a', 'b', 'a', 'c', 'b', 'a'];
+const counts = new Map();
+for (const x of items) counts.set(x, (counts.get(x) ?? 0) + 1);
+
+// Map keeps first-appearance order, and sort is stable → ties keep first appearance for free:
+const top2 = [...counts].sort((x, y) => y[1] - x[1]).slice(0, 2).map(([value]) => value);
+console.log(top2);
+```
+
+### 6 · Design a structure (LRU, min-stack)
+
+Pick internal structures so **each operation hits its target complexity**. A `Map` remembers insertion order, so an **LRU cache** is delete-then-reinsert to "refresh"; the *first* key is always the least recently used:
+
+![A cache ordered from least to most recently used; get moves an entry to the recent end; set when full evicts the first](fig:lru-ttl "Delete + set = refresh. `map.keys().next().value` = the least recently used key.")
+
+A **min-stack** keeps a second stack of "the minimum so far" alongside the values, so `min()` is O(1).
+
+### 7 · Prefix tree (autocomplete)
+
+A **trie** has one node per character, so words that share a prefix **share nodes**:
+
+![A trie for car, cat and dog](fig:trie-shape "Checking a prefix costs O(length of the prefix), no matter how many words are stored.")
+
+```js try
+const root = {};
+function insert(word) {
+  let node = root;
+  for (const ch of word) node = node[ch] ??= {};     // walk (or create) one node per character
+  node.$ = true;                                      // mark: a word ends here
+}
+function startsWith(prefix) {
+  let node = root;
+  for (const ch of prefix) { node = node[ch]; if (!node) return false; }
+  return true;
+}
+['car', 'cat', 'dog'].forEach(insert);
+console.log(startsWith('ca'), startsWith('cow'));
+```
 
 ## Talking about trade-offs
 
-Interviewers grade *how you reason*. When two approaches exist, say both, pick one, and say what would make you switch ("If memory mattered more than speed I'd sort in place and use two pointers").
+Interviewers grade **how you reason**. When two approaches exist, say both, pick one, and say what would make you switch: *"If memory mattered more than speed, I'd sort in place and use two pointers."*
+
+## Quick check
+
+```check
+Q: Two Sum with nested loops is O(n²). How does a `Map` improve it?
+A) It sorts the input first
+B) It uses recursion
+C) It stores seen values so each element needs one O(1) lookup, giving O(n) *
+D) It removes duplicates
+Why: For each number you ask "have I seen the complement?" — a constant-time lookup — instead of scanning all the others.
+---
+Q: Why is `queue.shift()` a problem for BFS on very large inputs?
+A) `shift` is O(n) on big arrays, making the whole loop O(n²) *
+B) It mutates the array
+C) It only works on strings
+D) It returns `undefined`
+Why: Removing the first element re-indexes the rest. Use an index pointer or a linked list.
+---
+Q: What does the stack hold in the bracket-matching solution?
+A) All characters
+B) Only closers
+C) The openers that have not yet been matched *
+D) Indices of the string
+Why: That's the invariant: a closer must match the most recent unmatched opener.
+---
+Q: After sorting intervals by start, when do `[1, 4]` and `[4, 5]` merge?
+A) Never — they only touch
+B) Only if you ask
+C) They merge when they overlap by at least 2
+D) Always — touching counts because `start <= last.end` *
+Why: The rule is `next.start <= current.end`; touching ranges merge into `[1, 5]`.
+---
+Q: Why does a Map-based LRU cache delete a key before setting it again on a `get`?
+A) To free memory
+B) Maps can't update
+C) To trigger eviction
+D) Re-inserting moves it to the end, which marks it most recently used *
+Why: `Map` iterates in insertion order. Delete + set moves the entry to the newest end; the first key is the oldest.
+```
+
+## Recap
+
+- **Name the shape** early; follow the **six-step routine**; state complexity.
+- **Map/Set** give O(1) lookups: complement lookup, counting, canonical-form grouping.
+- **Stack** for matching; **sort + sweep** for intervals; **frequency map + select** for top-K.
+- **Design questions**: pick internals that hit each operation's target (Map order → LRU; second stack → min).
+- **Trie** for prefix queries; watch hidden O(n²) (`includes`, `shift`, repeated `slice`).
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: first duplicate | A `Set` of seen values |
+| Two Sum | Shape 1 and its stepper |
+| Balanced brackets | Shape 2 |
+| Min stack | Shape 6: a second stack |
+| Group anagrams | Shape 4 |
+| Merge intervals | Shape 3 |
+| LRU cache | Shape 6 and the figure |
+| Top K frequent | Shape 5 (and buckets for the bonus) |
+| Trie with autocomplete | Shape 7, plus depth-first traversal for `suggest` |
+
+%% exercise ds-guided-first-dup | Guided: first duplicate | 1 | js | js | firstDuplicate | 5 | guided
+Write `firstDuplicate(items)`. Return the **first value that has already appeared earlier** in the array (scanning left to right), or `undefined` if every value is unique.
+
+```js
+firstDuplicate([3, 1, 4, 1, 5, 3]); // 1   (the second 1 is reached before the second 3)
+firstDuplicate(['a', 'b']);         // undefined
+```
+
+It should be **O(n)** — no nested loops.
+
+%% worked
+**A similar problem, solved: `hasDuplicate(items)`** — does any value repeat?
+
+```js
+function hasDuplicate(items) {
+  const seen = new Set();                 // ① a Set remembers what we've met; `has` and `add` are O(1)
+  for (const x of items) {
+    if (seen.has(x)) return true;         // ② seen before → a duplicate
+    seen.add(x);                          // ③ otherwise remember it
+  }
+  return false;
+}
+```
+
+This is the same "store what you've **seen**" idea as Two Sum. The brute-force way (for each item, `items.indexOf(...)` or a nested loop) is O(n²); the Set makes each check O(1), so the whole scan is **O(n)**. For `firstDuplicate`, return the value itself at the moment you find it (instead of `true`).
+
+%% explain
+- **Returns the value** that is the first to repeat while scanning left to right.
+- **`undefined`** when all values are unique (or the array is empty).
+- **Works with any values** (numbers, strings, objects by identity).
+- **Fast**: a 100,000-item test must finish quickly (no nested loops).
+
+%% nudge
+- What data structure answers "have I seen this before?" in constant time?
+- At which moment do you know a value is a duplicate?
+
+%% starter
+```js
+export function firstDuplicate(items) {
+  // Step 1 — keep a Set of the values you have seen:   const seen = new Set();
+  // Step 2 — loop over items; if seen.has(x), return x.
+  // Step 3 — otherwise seen.add(x). After the loop, return undefined.
+  return null;
+}
+```
+
+%% tests
+```js
+describe('firstDuplicate', () => {
+  it('finds the first repeated value', () => {
+    expect(firstDuplicate([3, 1, 4, 1, 5, 3])).toBe(1);
+  });
+
+  it('returns undefined when all values are unique', () => {
+    expect(firstDuplicate(['a', 'b', 'c'])).toBeUndefined();
+    expect(firstDuplicate([])).toBeUndefined();
+  });
+
+  it('works with strings and mixed values', () => {
+    expect(firstDuplicate(['x', 'y', 'x'])).toBe('x');
+    expect(firstDuplicate([1, '1', 1])).toBe(1);
+  });
+
+  it('is linear', () => {
+    const big = Array.from({ length: 100000 }, (_, i) => i);
+    big.push(99999);
+    const t = Date.now();
+    expect(firstDuplicate(big)).toBe(99999);
+    expect(Date.now() - t).toBeLessThan(500);
+  });
+});
+```
+
+%% hints
+- `if (seen.has(x)) return x; seen.add(x);` inside the loop.
+
+%% solution
+```js
+export function firstDuplicate(items) {
+  const seen = new Set();
+  for (const x of items) {
+    if (seen.has(x)) return x;
+    seen.add(x);
+  }
+  return undefined;
+}
+```
 
 %% exercise ds-two-sum | Two Sum | 1 | js | js | twoSum | 8
 Given an array of numbers `nums` and a `target`, return the **indices** `[i, j]` (with `i < j`) of two elements that add up to `target`, or `null` if none exist.
@@ -93,6 +375,32 @@ describe('twoSum', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `hasPairWithDiff(nums, d)`** — is there a pair whose difference is exactly `d`? Same "look for the complement" trick.
+
+```js
+function hasPairWithDiff(nums, d) {
+  const seen = new Set();
+  for (const x of nums) {
+    if (seen.has(x - d) || seen.has(x + d)) return true;   // ① the partner could be either side, so check both complements
+    seen.add(x);                                           // ② remember AFTER checking (so an element never pairs with itself)
+  }
+  return false;
+}
+```
+
+For Two Sum, the **complement** of `x` is `target - x`, and you need its **index**, so use a `Map` (value → index) instead of a `Set`. Order matters: check the map **before** adding the current number, which also guarantees "don't use the same element twice" and gives the smallest `j` (the first pair discovered while scanning left to right).
+
+%% explain
+- **Returns `[i, j]`** with `i < j`, or `null` if no pair exists.
+- **If several pairs work**, return the one with the smallest `j` (the first found by a left-to-right scan).
+- **Never reuses an element.**
+- **O(n)**: there is a 100,000-element test.
+
+%% nudge
+- For each number, what value would complete the sum?
+- Do you add the current number to the map before or after you look for its complement?
 
 %% hints
 - Brute force is two nested loops: O(n²).
@@ -164,6 +472,34 @@ describe('isBalanced', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `isValidTags(text)`** — are `<` and `>` balanced in order? The same push/pop rhythm with one kind of bracket.
+
+```js
+function isBalancedAngles(text) {
+  let open = 0;                            // with ONE kind of bracket a counter is enough (a stack of identical items)
+  for (const ch of text) {
+    if (ch === '<') open++;
+    else if (ch === '>') {
+      if (open === 0) return false;        // a closer with nothing open
+      open--;
+    }
+  }
+  return open === 0;                       // anything still open at the end → unbalanced
+}
+```
+
+With **several kinds** (`()`, `[]`, `{}`) a counter isn't enough — the *kind* of the most recent opener matters — so use a real stack: push openers, and on a closer `pop()` and compare with the expected opener (`pairs[closer]`). Ignore every other character. If `pop()` returns `undefined` (nothing open) it won't equal any opener, so the same comparison covers that case.
+
+%% explain
+- **`true`** if every `(`, `[`, `{` is closed by the matching bracket in the correct order.
+- **All other characters are ignored.**
+- **Empty string** is balanced; leftover openers or an unexpected closer make it unbalanced.
+
+%% nudge
+- What must be true about the most recent unclosed opener when a closer appears?
+- What do you check at the very end of the loop?
 
 %% hints
 - A stack of expected closers: on an opener push its closer; on a closer pop and compare.
@@ -256,6 +592,39 @@ describe('MinStack', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: a stack that also tracks its maximum in O(1)** — the trick is to keep a *second stack* of "the maximum so far".
+
+```js
+class MaxStack {
+  #values = [];
+  #maxes = [];                                   // #maxes[i] = the maximum of values[0..i]
+
+  push(x) {
+    this.#values.push(x);
+    const currentMax = this.#maxes.length ? this.#maxes[this.#maxes.length - 1] : -Infinity;
+    this.#maxes.push(Math.max(currentMax, x));   // ① every push records the new running maximum
+  }
+  pop() {
+    this.#maxes.pop();                           // ② pop BOTH stacks together, so they never get out of step
+    return this.#values.pop();
+  }
+  max() { return this.#maxes[this.#maxes.length - 1]; }   // ③ O(1): the top of the helper stack
+}
+```
+
+For `MinStack` swap `Math.max` for `Math.min`. Because the helper stack stores the running minimum for **every** depth, duplicates of the minimum are handled correctly: popping one copy still leaves the other copy's entry underneath. Return `undefined` from `pop`/`peek`/`min` on an empty stack, and expose `size` as a getter.
+
+%% explain
+- **`push`, `pop`, `peek`, `min`** all O(1).
+- **`pop()`** returns the removed value; **`peek()`** the top without removing; **`min()`** the smallest current value.
+- **Empty stack**: `pop`, `peek`, `min` return `undefined`; **`size`** is a getter.
+- **Duplicates of the minimum** are handled correctly.
+
+%% nudge
+- What extra information would let you answer `min()` instantly after a `pop()`?
+- Why must both stacks be popped together?
+
 %% hints
 - Keep a second stack holding, for each element, the **minimum at the time it was pushed**.
 - `push`: `mins.push(Math.min(x, mins.at(-1) ?? x))`. `pop` pops both.
@@ -339,6 +708,33 @@ describe('groupAnagrams', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `groupByLength(words)`** — the same "group by a computed key" skeleton.
+
+```js
+function groupByLength(words) {
+  const groups = new Map();                       // key → array of words
+  for (const word of words) {
+    const key = word.length;                      // ① the KEY is the thing equivalent items share
+    if (!groups.has(key)) groups.set(key, []);    // ② first time we see this key: create the group
+    groups.get(key).push(word);                   // ③ append, so the original order is kept inside each group
+  }
+  return [...groups.values()];
+}
+```
+
+For anagrams the key is a **canonical form**: the word's letters sorted — `[...word].sort().join('')`. `"eat"`, `"tea"` and `"ate"` all become `"aet"`. Sorting a word of length `k` costs O(k log k), so for `n` words it's **O(n · k log k)**. (A letter-count key like `"a1e1t1"` gets it to O(n · k).) The empty string is a valid word: its key is `''`, which is a perfectly good `Map` key.
+
+%% explain
+- **Anagrams grouped together**; words keep their original relative order within a group.
+- **Each word appears in exactly one group**; group order is unimportant.
+- **Case-sensitive**; the empty string is a valid word.
+- **O(n · k log k)** or better.
+
+%% nudge
+- What key is identical for `"eat"`, `"tea"` and `"ate"`, but different for `"tan"`?
+- Which structure maps a key to "the list of words so far"?
+
 %% hints
 - Two words are anagrams iff their **sorted letters** are equal — that sorted string is a canonical key.
 - Group with a `Map<string, string[]>` and return `[...map.values()]`.
@@ -411,6 +807,35 @@ describe('mergeIntervals', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `insertAndMerge(intervals, newOne)`** — uses the same "sort, then sweep" pattern, in a slightly different order.
+
+```js
+function coverage(intervals) {
+  // total length covered by the union of intervals
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);   // ① sort by START (on a COPY)
+  let total = 0;
+  let [curStart, curEnd] = sorted[0] ?? [0, 0];
+  for (const [start, end] of sorted.slice(1)) {
+    if (start <= curEnd) curEnd = Math.max(curEnd, end);       // ② overlapping/touching → extend the current interval
+    else { total += curEnd - curStart; [curStart, curEnd] = [start, end]; }   // ③ a gap → bank the finished one, start a new one
+  }
+  return total + (curEnd - curStart);                          // ④ don't forget the LAST interval
+}
+```
+
+`mergeIntervals` keeps the merged intervals in a list instead of summing them. **Two traps**: `Math.max(curEnd, end)` (a nested interval like `[1, 10]` then `[2, 3]` must *not* shrink the end), and **not mutating** the input — copy the outer array before sorting *and* copy the inner pairs you extend (`[start, end]` literals, not the original arrays).
+
+%% explain
+- **Returns non-overlapping intervals** covering the same ranges, **sorted by start**.
+- **Touching** intervals (`[1, 4]`, `[4, 5]`) merge; **nested** ones collapse into the outer.
+- **Doesn't mutate** the input or its inner arrays.
+- **O(n log n).**
+
+%% nudge
+- After sorting by start, when does the next interval belong to the current merged one?
+- What should the merged end be — always the next end, or something else?
 
 %% hints
 - Sort a copy by start. Then sweep: compare each interval's start to the current merged interval's end.
@@ -533,6 +958,34 @@ describe('LRUCache', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: a "recent items" list where `visit(x)` moves x to the front, in O(1).** Again a `Map`'s insertion order does the work.
+
+```js
+class Recent {
+  #map = new Map();
+  visit(x) {
+    this.#map.delete(x);            // ① delete…
+    this.#map.set(x, true);         // ② …and re-insert: it is now the NEWEST entry
+  }
+  newest() { return [...this.#map.keys()].pop(); }
+  oldest() { return this.#map.keys().next().value; }   // ③ the FIRST key is the oldest, found in O(1) without copying
+}
+```
+
+For `LRUCache`: `get(key)` — if present, read the value, **delete + set** to refresh, return it (careful: use `has`, not truthiness, because `0`, `null`, `undefined` and `''` are valid values). `put(key, value)` — delete any existing entry, set the new one, and if `size > capacity` delete `map.keys().next().value`. `has(key)` only checks `map.has` (no refresh). Throw `RangeError` when `capacity < 1`.
+
+%% explain
+- **`get`** returns the value (or `undefined`) and marks a hit as most recently used.
+- **`put`** inserts/updates (most recent) and evicts the **least** recently used when over `capacity`.
+- **`has`** doesn't change recency; **`size`** is a getter; **`capacity < 1`** throws a `RangeError`.
+- **Falsy values** (`0`, `null`, `undefined`) must be cached correctly.
+- **Both `get` and `put` are O(1).**
+
+%% nudge
+- Which `Map` operations move an entry to the "newest" end?
+- How do you tell "the key is missing" from "the value is `undefined`"?
+
 %% hints
 - A JS `Map` iterates in insertion order, so its **first key is the oldest**.
 - Refresh = `map.delete(key)` then `map.set(key, value)` (moves it to the end).
@@ -621,6 +1074,34 @@ describe('topKFrequent', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `mostCommonLetter(text)`** — count, then select the maximum.
+
+```js
+function mostCommonLetter(text) {
+  const counts = new Map();
+  for (const ch of text) counts.set(ch, (counts.get(ch) ?? 0) + 1);   // ① count in one pass: O(n)
+
+  let best, bestCount = 0;
+  for (const [ch, n] of counts) {          // ② a Map iterates in FIRST-SEEN order…
+    if (n > bestCount) { best = ch; bestCount = n; }   // ③ …and strict `>` keeps the earliest on a tie
+  }
+  return best;
+}
+```
+
+For top-K: after counting, sort the entries by count descending. Because `Array.prototype.sort` is **stable** and the Map iterates in first-appearance order, ties automatically keep first-appearance order. `slice(0, k)` handles "fewer than `k` distinct values" and `k <= 0` (return `[]`). For the O(n) **bucket** version: create an array of buckets indexed by frequency (`buckets[count].push(value)`), then walk from the highest frequency down collecting values until you have `k`.
+
+%% explain
+- **The `k` most frequent values**, ordered by frequency descending, ties by **first appearance**.
+- **Fewer than `k` distinct** → all of them; **`k <= 0`** → `[]`.
+- **Any value type** (compared with `Map` semantics).
+- **O(n log n) or better**; try buckets for O(n).
+
+%% nudge
+- Which built-in behaviour gives you "ties by first appearance" without extra code?
+- In the bucket approach, what is the index of each bucket?
 
 %% hints
 - Count with a `Map`. A `Map` also remembers **first insertion order**, which is your tie-breaker.
@@ -737,6 +1218,40 @@ describe('Trie', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: a counting trie** — same node shape, but each node remembers how many words pass through it (for "how many words start with…?").
+
+```js
+class PrefixCounter {
+  #root = { kids: new Map(), count: 0 };
+  add(word) {
+    let node = this.#root;
+    for (const ch of word) {
+      if (!node.kids.has(ch)) node.kids.set(ch, { kids: new Map(), count: 0 });   // ① one node per character
+      node = node.kids.get(ch);
+      node.count++;                                                               // ② every word through here passes this node
+    }
+  }
+  countPrefix(prefix) {
+    let node = this.#root;
+    for (const ch of prefix) { node = node.kids.get(ch); if (!node) return 0; }   // ③ walk the prefix; a missing step → none
+    return node.count;
+  }
+}
+```
+
+The `Trie` adds an **`end` flag** on nodes (`has` is a full walk that requires `end`; `startsWith` only requires the walk to succeed, and the empty prefix is true only when the trie has words). `suggest(prefix, limit)` walks to the prefix node and then does a **depth-first traversal** visiting children in **sorted key order**, collecting words whenever `end` is true, stopping at `limit`. `remove(word)` clears `end`, then prunes **upwards** any nodes that have no children and aren't word ends, so no dead branches remain; track `size` as the number of words.
+
+%% explain
+- **`insert`** (duplicates fine); **`has`** exact match; **`startsWith`** any word with the prefix (the empty prefix is true only for a non-empty trie).
+- **`suggest(prefix, limit)`**: words starting with the prefix, **alphabetical**, at most `limit`.
+- **`remove(word)`** returns `true` if it existed; it doesn't affect words sharing a prefix and leaves no dead branches.
+- **`size`** = number of distinct words.
+
+%% nudge
+- How do you keep `suggest` results in alphabetical order without sorting all the words?
+- After un-marking a word's end, which nodes can be deleted?
 
 %% hints
 - Node = `{ children: new Map(), end: false }`. Use a `Map` for children so keys like `constructor` are safe.

@@ -522,3 +522,13 @@ pre.code.stepper-code code { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .sp-chip.fresh { animation: none; }
 }
+
+/* Glossary */
+.glossary { padding-top: 48px; padding-bottom: 80px; max-width: 820px; }
+.gl-search input { width: 100%; margin: 18px 0 8px; padding: 11px 14px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
+.gl-list { margin: 0; }
+.gl-item { padding: 16px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; }
+.gl-item dt { font-family: var(--font-display); font-size: 20px; font-weight: 500; }
+.gl-item dd { margin: 0; line-height: 1.6; }
+.gl-item dd a { display: inline-block; margin-left: 4px; font-size: 13.5px; }
+@media (max-width: 640px) { .gl-item { grid-template-columns: 1fr; gap: 4px; } }

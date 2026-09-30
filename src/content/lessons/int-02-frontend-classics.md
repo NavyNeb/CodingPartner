@@ -2,18 +2,22 @@
 id: interview-frontend
 track: interview
 title: Frontend interview classics
-summary: The utilities frontend interviews love: class names, query strings, templating, HTML rendering, windowing and fuzzy search.
+summary: The small utilities frontend interviews love — class names, query strings, templating, HTML rendering, windowing and fuzzy search — and the escaping and edge-case thinking behind them.
 ---
 
-Frontend loops mix algorithm questions with **"build a small piece of the platform"** questions. They're testing whether you know what the browser and your framework *do for you*, and can write it carefully — with attention to escaping, edge cases and API shape.
+## The idea in one sentence
+
+Frontend interviews mix algorithm questions with **"build a small piece of the platform"** questions, because they show whether you know **what the browser and your framework do for you** — and can write it carefully, with attention to **escaping, edge cases and API shape**.
+
+> **Analogy** Think of a **customs officer**. Anything crossing a border — text going into HTML, into a URL, into CSS — must be **declared in that country's language** (encoded), or it might be mistaken for a command. Most frontend bugs in these questions are someone forgetting to "translate at the border".
 
 ## What interviewers watch for
 
 - **API design first.** Say the signature and two example calls before typing. Ask whether inputs can be `null`, arrays, nested.
-- **Escaping and encoding.** Any time strings cross a boundary (HTML, URLs, CSS) you owe an answer to "what if the user types `<script>`?" or `a&b=c`. Reach for `encodeURIComponent` / an escape map, and know that `encodeURI` is a *different* function.
-- **Immutability & purity.** Return new values; don't mutate arguments.
-- **Performance awareness.** Rendering 100 000 rows means *windowing*. Filtering on every keystroke means debouncing or a cheap ranking function.
-- **Accessibility and semantics.** Especially for UI questions: keyboard support, roles, focus.
+- **Escaping and encoding.** Whenever strings cross a boundary (HTML, URLs, CSS) you owe an answer to "what if the user types `<script>`?" or `a&b=c`. Reach for `encodeURIComponent` or an escape map — and know that `encodeURI` is a *different* function.
+- **Immutability and purity.** Return new values; don't mutate arguments.
+- **Performance awareness.** 100,000 rows means *windowing*; filtering on every keystroke means debouncing or a cheap ranking function.
+- **Accessibility and semantics**, especially for UI questions: keyboard support, roles, focus.
 
 ## Recurring problems
 
@@ -24,19 +28,318 @@ Frontend loops mix algorithm questions with **"build a small piece of the platfo
 | Micro templating (`{{name}}`) | regex replace + path lookup + HTML escaping |
 | Virtual DOM → HTML string | recursion, escaping, void elements, style objects |
 | Virtualised list | pure arithmetic from `scrollTop` |
-| Autocomplete ranking | scoring function + stable tie-breakers |
+| Autocomplete ranking | a scoring function + stable tie-breakers |
 | Relative time ("5 minutes ago") | thresholds + pluralisation |
 | Debounce/throttle, memoize, EventEmitter, deep clone/equal | *(earlier lessons)* |
 
-## Escaping cheat-sheet
+## Escaping: the border rules
 
-- **HTML text/attributes:** replace `& < > " '` with entities. Order matters: `&` first (or use a single regex with a lookup map).
-- **URLs:** `encodeURIComponent` for individual keys/values; it encodes everything except `A–Z a–z 0–9 - _ . ! ~ * ' ( )`. `+` is a *form-encoding* space, not a URL one — decode it as space when parsing `application/x-www-form-urlencoded` query strings.
-- Never build HTML with string concatenation from user data unless you escape. Frameworks escape for you *unless* you opt out (`dangerouslySetInnerHTML`, `v-html`).
+![User input passes through HTML escaping, URL encoding, or raw concatenation](fig:escape-boundaries "Each boundary has its own encoder. Raw concatenation is how injection happens.")
+
+- **HTML text and attributes:** replace `& < > " '` with entities. **Order matters**: `&` first — or do it in one pass with a lookup map, which avoids double-escaping altogether.
+- **URLs:** `encodeURIComponent` for individual keys and values (it encodes everything except `A–Z a–z 0–9 - _ . ! ~ * ' ( )`). A `+` is a *form-encoding* space: decode it as a space when parsing `application/x-www-form-urlencoded` query strings.
+- Never build HTML by concatenating user data unless you escape it. Frameworks escape for you *unless* you opt out (`dangerouslySetInnerHTML`, `v-html`).
+
+```js try predict
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+console.log(escapeHtml('<b onclick="x">Tom & Jerry</b>'));
+console.log(encodeURIComponent('a&b=c d'));
+console.log(decodeURIComponent('hello+world%21'));        // careful: decodeURIComponent does NOT turn "+" into a space!
+```
+
+One regex pass with a lookup map can't double-escape, because each character is replaced exactly once.
+
+## Class names (`clsx`)
+
+```js try
+function classNames(...args) {
+  const out = [];
+  for (const arg of args) {
+    if (!arg) continue;                                   // null, undefined, false, 0, '' contribute nothing
+    if (typeof arg === 'string' || typeof arg === 'number') out.push(String(arg));
+    else if (Array.isArray(arg)) { const inner = classNames(...arg); if (inner) out.push(inner); }   // recursion
+    else if (typeof arg === 'object') for (const key in arg) if (arg[key]) out.push(key);            // keys whose value is truthy
+  }
+  return out.join(' ');
+}
+console.log(classNames('btn', { active: true, disabled: false }, ['big', null, ['x']], 0, 3));
+```
+
+## Query strings: parse and stringify
+
+```stepper Parsing "?a=1&a=2&flag&q=hello+world"
+code:
+  function parseQuery(search) {
+    const out = {};
+    for (const part of search.replace(/^\?/, '').split('&')) {
+      if (!part) continue;
+      const i = part.indexOf('=');
+      const key = decode(i < 0 ? part : part.slice(0, i));
+      const value = i < 0 ? '' : decode(part.slice(i + 1));
+      if (key in out) out[key] = [].concat(out[key], value);
+      else out[key] = value;
+    }
+    return out;
+  }
+---
+line: 3-4
+say: Strip the leading `?`, then split on `&`. We get the pieces `a=1`, `a=2`, `flag`, `q=hello+world`. Empty pieces (from `&&`) are skipped.
+Piece: a=1
+Key / value:
+Result so far:
+---
+line: 5-7
+say: Split at the **first** `=` only (values may contain `=`). `decode` URL-decodes and turns `+` into a space. Key `a`, value `"1"`.
+Key / value: a / "1"
+Result so far: { a: "1" }
+---
+line: 8-9
+say: A second `a`: the key **already exists**, so the value becomes an **array** in order of appearance.
+Piece: a=2
+Key / value: a / "2"
+Result so far: { a: ["1", "2"] }
+---
+line: 5-7
+say: `flag` has **no `=`** (`i < 0`), so the key is the whole piece and the value is an empty string.
+Piece: flag
+Key / value: flag / ""
+Result so far: { a: ["1", "2"], flag: "" }
+---
+line: 5-7
+say: `q=hello+world`: the `+` means a **space** in query strings, so the value is `"hello world"`.
+Piece: q=hello+world
+Key / value: q / "hello world"
+Result so far: { a: ["1", "2"], flag: "", q: "hello world" }
+```
+
+```js try
+const stringifyQuery = (params) =>
+  Object.entries(params)
+    .flatMap(([key, value]) => (Array.isArray(value) ? value : [value]).filter((v) => v != null).map((v) => `${encodeURIComponent(key)}=${encodeURIComponent(String(v))}`))
+    .join('&');
+
+console.log(stringifyQuery({ q: 'hello world', tags: ['a', 'b'], skip: undefined, n: 0 }));
+```
+
+## Micro templating and virtual-DOM-to-HTML
+
+Both are "walk the input, escape on the way out":
+
+```js try
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const get = (data, path) => path.split('.').reduce((value, key) => (value == null ? undefined : value[key]), data);
+
+function render(template, data) {
+  return template
+    .replace(/\{\{\{\s*([\w.]+)\s*\}\}\}/g, (_, path) => String(get(data, path) ?? ''))            // {{{ raw }}}
+    .replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, path) => escapeHtml(get(data, path) ?? ''));           // {{ escaped }}
+}
+
+console.log(render('Hi {{ user.name }}! {{{ html }}}', { user: { name: '<Ann>' }, html: '<b>bold</b>' }));
+```
+
+![A virtual DOM object walked into an HTML string with escaped text and a void br element](fig:vdom-to-html "Escape text and attributes; render void elements without children; call function components.")
 
 ## Windowing arithmetic
 
-With fixed row height `h`, scrolled `s` pixels, and a viewport of `v` pixels, the first visible row is `floor(s / h)` and the last is `ceil((s + v) / h)`. Render that slice plus a small **overscan**, and position it with a spacer of `startIndex * h` pixels; the container's total height is `count * h`.
+![A tall spacer with only the visible rows plus overscan mounted](fig:virtual-window "With fixed row height h, scrolled s and a viewport of v pixels, the first visible row is floor(s / h) and the last is ceil((s + v) / h).")
+
+```js try
+function getVisibleRange({ scrollTop, viewportHeight, itemHeight, itemCount, overscan = 3 }) {
+  const top = Math.max(0, scrollTop);                              // elastic scrolling can go negative
+  const start = Math.max(0, Math.floor(top / itemHeight) - overscan);
+  const end = Math.min(itemCount, Math.ceil((top + viewportHeight) / itemHeight) + overscan);
+  return { start, end: Math.max(start, end), offsetTop: start * itemHeight, totalHeight: itemCount * itemHeight };
+}
+console.log(getVisibleRange({ scrollTop: 400, viewportHeight: 200, itemHeight: 20, itemCount: 10000 }));
+```
+
+## Autocomplete ranking
+
+Score each item by the **best rule** that applies, then sort:
+
+![A ladder: exact 1000, prefix 800, word-start 600, substring 400, subsequence 200](fig:rank-ladder "Break ties by shorter item, then alphabetically.")
+
+The odd one is the **subsequence** test ("`hlo` is a subsequence of `hello`": the query's letters appear in order, not necessarily together):
+
+```js try
+function isSubsequence(query, text) {
+  let i = 0;
+  for (const ch of text) if (ch === query[i]) i++;       // advance in the query whenever the next letter is found
+  return i === query.length;
+}
+console.log(isSubsequence('hlo', 'hello'), isSubsequence('hol', 'hello'));
+```
+
+## Relative time
+
+Thresholds and pluralisation — take the absolute difference, pick the largest unit that fits, `floor` the number, singular only for exactly `1`, then choose "… ago" or "in …":
+
+```js try
+function timeAgo(date, now = Date.now()) {
+  const diff = new Date(date).getTime() - now;
+  const abs = Math.abs(diff), sec = abs / 1000;
+  if (sec < 60) return 'just now';
+  const units = [['minute', 60], ['hour', 3600], ['day', 86400], ['week', 604800], ['month', 2592000], ['year', 31536000]];
+  let label = 'minute', n = Math.floor(sec / 60);
+  for (const [name, size] of units) if (sec >= size) { label = name; n = Math.floor(sec / size); }
+  const text = `${n} ${label}${n === 1 ? '' : 's'}`;
+  return diff < 0 ? `${text} ago` : `in ${text}`;
+}
+const now = 1_000_000_000_000;
+console.log(timeAgo(now - 3 * 3600 * 1000, now), '|', timeAgo(now + 90 * 1000, now), '|', timeAgo(now - 10_000, now));
+```
+
+## Quick check
+
+```check
+Q: Why should `&` be escaped first (or everything done in one pass)?
+A) Otherwise the `&` inside entities you just produced would be escaped again *
+B) It is the most common character
+C) `&` is not special
+D) Browsers require it
+Why: Escaping `<` into `&lt;` and then escaping `&` would give `&amp;lt;`. One pass with a lookup map avoids it.
+---
+Q: A query string contains `q=hello+world`. What should the parsed value be?
+A) `hello+world`
+B) `hello%20world`
+C) `hello world` — `+` means a space in form-encoded query strings *
+D) An array
+Why: `decodeURIComponent` alone keeps `+`; you must replace `+` with a space first.
+---
+Q: What does `a=1&a=2` parse to in a typical `parseQuery`?
+A) `{ a: '2' }`
+B) `{ a: '1' }`
+C) An error
+D) `{ a: ['1', '2'] }` *
+Why: Repeated keys become arrays in order of appearance.
+---
+Q: For a viewport of 200px, rows of 20px and `scrollTop = 400`, which rows are visible (before overscan)?
+A) Rows 10–19
+B) Rows 0–9
+C) Rows 20–29 *
+D) All rows
+Why: The first visible row is floor(400 / 20) = 20 and the end (exclusive) is ceil(600 / 20) = 30, so rows 20 to 29.
+---
+Q: Why is `hlo` a match for `hello` in fuzzy search, but `hol` is not?
+A) Because `hlo` is shorter
+B) The letters must appear in order: `h…l…o` exists, `h…o…l` does not *
+C) `hol` is misspelled
+D) Only prefixes match
+Why: A subsequence keeps the order of the characters but allows gaps.
+```
+
+## Recap
+
+- **Say the API first**, ask about edge cases, return new values.
+- **Escape at every border**: HTML entities (one pass), `encodeURIComponent` for URLs; `+` is a space in form-encoded queries.
+- **Class names**: recursive flatten + truthiness. **Query strings**: split on the first `=`, decode, repeated keys → arrays.
+- **Templates / vDOM → HTML**: walk the input and escape on output; void elements; style objects.
+- **Windowing** is pure arithmetic from `scrollTop`; **ranking** is a score ladder plus stable tie-breakers.
+- **Relative time**: thresholds, `floor`, singular for exactly 1.
+
+## Before you start the exercises
+
+| Exercise | You'll need |
+| --- | --- |
+| Guided: escape HTML | The escape snippet |
+| `classNames()` | The recursive `classNames` snippet |
+| Query strings | The stepper and the stringify snippet |
+| Micro templating | The `render` snippet: paths, escaping, triple braces |
+| Relative time | The `timeAgo` snippet and its thresholds |
+| Virtual DOM → HTML string | The vDOM figure, escaping, void elements, style conversion |
+| Virtual list window | The `getVisibleRange` snippet and its clamping rules |
+| Autocomplete ranking | The score ladder and `isSubsequence` |
+
+%% exercise fe-guided-escape | Guided: escape HTML | 1 | js | js | escapeHtml | 5 | guided
+Write `escapeHtml(value)`. It converts the characters that are special in HTML into entities, so user text can be safely placed inside HTML.
+
+| Character | Entity |
+| --- | --- |
+| `&` | `&amp;` |
+| `<` | `&lt;` |
+| `>` | `&gt;` |
+| `"` | `&quot;` |
+| `'` | `&#39;` |
+
+- Non-strings are converted with `String(value)`; `null` and `undefined` give `''`.
+- Each character is replaced **once** — `&lt;` in the input becomes `&amp;lt;` (the `&` is escaped, nothing is escaped twice).
+
+%% worked
+**A similar problem, solved: `escapeRegex(text)`** — a different boundary (regular expressions) with the same technique: one pass, one lookup.
+
+```js
+function escapeRegex(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');   // ① a regex matching ANY special character; ② `$&` = "the matched text" → prefix it with a backslash
+}
+
+escapeRegex('1+1=2?');   // "1\+1=2\?"
+```
+
+For HTML the replacement isn't "add a backslash", it's "look the character up in a table". A **single pass with a function** replaces each character exactly once, so the `&` inside an entity you just produced is never touched again:
+
+```js
+const map = { '&': '&amp;' /* …the others… */ };
+text.replace(/[&<>"']/g, (char) => map[char]);
+```
+
+%% explain
+- **Five characters** are escaped: `& < > " '` (`'` becomes `&#39;`).
+- **Other text** is untouched.
+- **No double-escaping**: each character is converted once.
+- **`null`/`undefined`** give an empty string; other values are converted with `String`.
+
+%% nudge
+- What goes wrong if you replace `<` first and `&` last?
+- Which `replace` form lets you compute the replacement for each matched character?
+
+%% starter
+```js
+export function escapeHtml(value) {
+  // Step 1 — null / undefined → ''
+  // Step 2 — a lookup table:   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+  // Step 3 — String(value).replace(/[&<>"']/g, (char) => table[char])
+  return '';
+}
+```
+
+%% tests
+```js
+describe('escapeHtml', () => {
+  it('escapes the five special characters', () => {
+    expect(escapeHtml('<a href="x">Tom & Jerry\'s</a>')).toBe('&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;');
+  });
+
+  it('does not double-escape', () => {
+    expect(escapeHtml('&lt;')).toBe('&amp;lt;');
+  });
+
+  it('leaves normal text alone', () => {
+    expect(escapeHtml('hello world 123')).toBe('hello world 123');
+  });
+
+  it('handles null, undefined and numbers', () => {
+    expect(escapeHtml(null)).toBe('');
+    expect(escapeHtml(undefined)).toBe('');
+    expect(escapeHtml(42)).toBe('42');
+  });
+});
+```
+
+%% hints
+- `const table = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };`
+- `return String(value).replace(/[&<>"']/g, (c) => table[c]);`
+
+%% solution
+```js
+const table = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+export function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).replace(/[&<>"']/g, (char) => table[char]);
+}
+```
 
 %% exercise fe-classnames | classNames() | 1 | js | js | classNames | 8
 Write `classNames(...args)`, a tiny `clsx`.
@@ -81,6 +384,35 @@ describe('classNames', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `flattenTruthy(...args)`** — flatten nested arrays and keep only truthy items. `classNames` is this plus special handling for strings and objects.
+
+```js
+function flattenTruthy(...args) {
+  const out = [];
+  for (const arg of args) {
+    if (Array.isArray(arg)) out.push(...flattenTruthy(...arg));   // ① arrays → recurse, then add what came back
+    else if (arg) out.push(arg);                                   // ② anything truthy is kept; falsy values vanish
+  }
+  return out;
+}
+
+flattenTruthy('a', [0, 'b', [null, 'c']], false);   // ['a', 'b', 'c']
+```
+
+For `classNames` the per-argument rules are: **string** → itself (skip `''`), **number** → `String(n)` unless `0`, **object** → each *key* whose value is truthy, **array** → recurse, and `null/undefined/false/true/0` → nothing. Join the parts with a single space (an empty result is `''`).
+
+%% explain
+- **Strings** included as-is; empty strings skipped.
+- **Numbers** other than `0` included (as strings).
+- **Objects** include each key whose value is truthy.
+- **Arrays** are processed recursively.
+- **`null`, `undefined`, `false`, `true`, `0`** contribute nothing; the result is joined by single spaces, no leading/trailing space.
+
+%% nudge
+- Which argument types need a recursive call?
+- How do you avoid a stray space when a nested array produces nothing?
 
 %% hints
 - A recursive helper that pushes onto a shared `out` array is the cleanest.
@@ -171,6 +503,34 @@ describe('stringifyQuery', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `parseCookies(header)`** — `"a=1; b=two; flag"` → `{ a: '1', b: 'two', flag: '' }`. Same split-decode shape, different separators.
+
+```js
+function parseCookies(header) {
+  const out = {};
+  for (const part of header.split(';')) {
+    const piece = part.trim();
+    if (!piece) continue;                           // ① skip empty segments
+    const i = piece.indexOf('=');                   // ② split at the FIRST "=" only (values may contain "=")
+    const key = i < 0 ? piece : piece.slice(0, i);
+    const value = i < 0 ? '' : piece.slice(i + 1);  // ③ no "=" → empty string
+    out[decodeURIComponent(key)] = decodeURIComponent(value);
+  }
+  return out;
+}
+```
+
+For query strings add: **strip a leading `?`**; turn **`+` into a space *before* decoding** (`s.replace(/\+/g, ' ')`); make **repeated keys arrays** (second occurrence → `[first, second]`, later ones append); and use a prototype-free object or `Object.hasOwn` when testing "key already exists" so keys like `constructor` work. `stringifyQuery` goes the other way with `encodeURIComponent`, repeats the key for arrays, **omits** `undefined`/`null`, and converts everything else with `String`.
+
+%% explain
+- **`parseQuery`**: with or without a leading `?`; empty → `{}`; split on `&`, then the **first** `=`; decode keys and values (`+` = space); a key without `=` has value `''`; **repeated keys become arrays**; empty segments ignored.
+- **`stringifyQuery`**: `encodeURIComponent`; array values repeat the key; `undefined`/`null` omitted; others via `String`; no leading `?`; keys in object order.
+
+%% nudge
+- Which split do you need so a value like `a=b=c` keeps its second `=`?
+- In which order: replace `+` with a space, or decode?
 
 %% hints
 - Decode with `decodeURIComponent(s.replace(/\+/g, ' '))` — replace `+` *before* decoding.
@@ -266,6 +626,33 @@ describe('render', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: `fill(template, data)` for `${name}` placeholders** — lookup by path, with a safe fallback.
+
+```js
+const get = (data, path) =>
+  path.split('.').reduce((value, key) => (value == null ? undefined : value[key]), data);   // ① stops safely at null/undefined; also works for array indexes ("items.0.title")
+
+function fill(template, data) {
+  return template.replace(/\$\{\s*([\w.]+)\s*\}/g, (_, path) => {
+    const value = get(data, path);
+    return value == null ? '' : String(value);       // ② missing → empty string
+  });
+}
+```
+
+For `render`: two patterns. Handle the **triple-brace raw** form first — `/\{\{\{\s*([\w.]+)\s*\}\}\}/g` inserts `String(value)` unescaped — then the double-brace form with `escapeHtml(value)`. Doing triple first matters: otherwise the double-brace regex would match the inside of `{{{ x }}}`. Text outside placeholders and unclosed braces are left untouched because the regexes simply don't match them.
+
+%% explain
+- **`{{ path }}`** with dotted paths and array indexes (`items.0.title`); whitespace inside the braces optional.
+- **Values are HTML-escaped**; **`{{{ path }}}`** inserts raw.
+- **Missing paths and `null`/`undefined`** render as `''`; other values use `String`.
+- **Text outside placeholders is untouched**; unclosed braces stay as they are.
+
+%% nudge
+- Which of the two patterns (`{{{ }}}` or `{{ }}`) should be replaced first, and why?
+- How do you look up `user.name` or `items.0.title` safely when something in the path is missing?
+
 %% hints
 - One regex with two alternatives, **triple first**: `/\{\{\{\s*([\w.]+)\s*\}\}\}|\{\{\s*([\w.]+)\s*\}\}/g`, and use a replacer function `(m, raw, esc) => …`.
 - `string.replace` scans the *original* string only, so inserted values are never re-scanned.
@@ -359,6 +746,32 @@ describe('timeAgo', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: `formatBytes(n)`** — pick the largest unit that fits, floor, pluralise.
+
+```js
+function formatBytes(n) {
+  const units = [['GB', 1e9], ['MB', 1e6], ['KB', 1e3]];
+  for (const [name, size] of units) {          // ① check from the LARGEST unit down
+    if (n >= size) return `${Math.floor(n / size)} ${name}`;   // ② first unit that fits wins; floor the number
+  }
+  return `${n} B`;
+}
+```
+
+`timeAgo` has the same shape: compute `diff = now - date`, take its **absolute value**, walk the thresholds (`60 s`, `60 min`, `24 h`, `7 days`, `30 days`, `365 days`) and `floor` the amount. Then finish the **text**: `n === 1 ? singular : plural` (`"1 hour ago"`, `"3 hours ago"`) and choose the direction from the **sign** of the difference (`ago` for the past, `in …` for the future). Under a minute (either direction) is `"just now"`. Accept `Date` objects or timestamps: `new Date(x).getTime()` handles both.
+
+%% explain
+- **Under 60 s** → `"just now"` (past or future).
+- **Units**: minutes (< 60 min), hours (< 24 h), days (< 7 days), weeks (< 30 days, `floor(days / 7)`), months (< 365 days, `floor(days / 30)`), then years (`floor(days / 365)`).
+- **Always floor**; singular for exactly `1`.
+- **Past** → `"… ago"`, **future** → `"in …"`.
+- **`date` and `now`** can each be a `Date` or a millisecond timestamp.
+
+%% nudge
+- How do you handle both past and future with one set of thresholds?
+- Where does the pluralisation decision (`1` vs others) happen?
 
 %% hints
 - Table-driven: an array of `[unitName, msPerUnit, upperBoundMs]` checked in order.
@@ -474,6 +887,35 @@ describe('renderToString', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: render a nested list (array of strings and arrays) to an HTML `<ul>`** — the recursion and escaping you need for the vDOM.
+
+```js
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+function renderList(items) {
+  const lis = items.map((item) =>
+    Array.isArray(item)
+      ? `<li>${renderList(item)}</li>`        // ① an array → a NESTED list (recursion)
+      : `<li>${escapeHtml(item)}</li>`        // ② text → escaped
+  );
+  return `<ul>${lis.join('')}</ul>`;
+}
+```
+
+For `renderToString(node)`: handle **node kinds** in order — `null/undefined/boolean` → `''`; string/number → `escapeHtml(String(node))`; array → render each and join; **function component** (`typeof node.type === 'function'`) → call it with `{ ...props, children }` and render the result; otherwise an **element**: build the attribute string (skip `children`, functions, `false/null/undefined`; rename `className`/`htmlFor`; `true` → bare attribute; escape values; convert `style` objects to `kebab-case:value;` with `px` added to numbers except unitless properties), then either `<tag attrs />` for **void elements** (never render children) or `<tag attrs>children</tag>`.
+
+%% explain
+- **Text and attribute values are escaped**; `null/undefined/booleans` render nothing; arrays flatten; children may nest.
+- **Renames**: `className` → `class`, `htmlFor` → `for`; `true` → bare attribute; `false/null/undefined` and function props omitted.
+- **`style` objects**: camelCase → kebab-case, numbers get `px` unless unitless (`opacity`, `zIndex`, `flex`, `flexGrow`, `lineHeight`, `fontWeight`, `order`).
+- **Void elements** (`br`, `hr`, `img`, `input`, `meta`, `link`) render as `<br />` with no children.
+- **Function components** are called with `{ ...props, children }`.
+
+%% nudge
+- What are all the *kinds* of `node` you can receive, and in which order should you test for them?
+- Which tags must never have children or a closing tag?
 
 %% hints
 - Start with a `switch` on the node kind: array → map+join; string/number → escape; nullish/boolean → `''`; object → element.
@@ -593,6 +1035,31 @@ describe('getVisibleRange', () => {
 });
 ```
 
+%% worked
+**A similar problem, solved: pagination maths** — `getPage({ page, pageSize, total })` returns the slice bounds, clamping bad input. The same arithmetic-and-clamp habits.
+
+```js
+function getPage({ page, pageSize, total }) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));      // ① at least one page, even when empty
+  const current = Math.min(Math.max(1, page), pages);          // ② clamp page into [1, pages]
+  const start = (current - 1) * pageSize;
+  const end = Math.min(total, start + pageSize);               // ③ never past the end
+  return { start, end, pages, current };
+}
+```
+
+For `getVisibleRange`: clamp `scrollTop` to `[0, ...]` first (elastic scrolling on iOS goes negative), compute `start = max(0, floor(top / h) - overscan)` and `end = min(itemCount, ceil((top + viewport) / h) + overscan)`, then make sure `end >= start` (for huge `scrollTop`, `start` can exceed `end` — clamp `end` up to `start`, or `start` down). `offsetTop = start * h`, `totalHeight = count * h`, and `itemCount = 0` gives `start = end = 0`.
+
+%% explain
+- **`start`**: `floor(scrollTop / itemHeight) - overscan`, at least `0`.
+- **`end`** (exclusive): `ceil((scrollTop + viewportHeight) / itemHeight) + overscan`, at most `itemCount`.
+- **`offsetTop = start * itemHeight`**; **`totalHeight = itemCount * itemHeight`**; `overscan` defaults to 3.
+- **Defensive**: negative or oversized `scrollTop` is clamped; `itemCount = 0` → empty range; never `end < start`.
+
+%% nudge
+- What happens if `scrollTop` is larger than the whole list?
+- Which two values must be compared at the end so the range is never inverted?
+
 %% hints
 - `first = floor(scrollTop / itemHeight)`, `last = ceil((scrollTop + viewportHeight) / itemHeight)` — then add/subtract `overscan`.
 - Clamp with `Math.max(0, …)` and `Math.min(itemCount, …)`; clamp `start` to at most `end` too.
@@ -696,6 +1163,43 @@ describe('rankSuggestions', () => {
   });
 });
 ```
+
+%% worked
+**A similar problem, solved: rank files by how well they match a search** with a score function and a stable multi-key sort.
+
+```js
+function score(query, name) {
+  const q = query.toLowerCase(), n = name.toLowerCase();
+  if (n === q) return 100;              // ① rules from BEST to worst; the first that applies wins
+  if (n.startsWith(q)) return 80;
+  if (n.includes(q)) return 40;
+  return 0;                             // ② 0 = no match → excluded
+}
+
+function rankFiles(query, names) {
+  return names
+    .map((name, index) => ({ name, index, s: score(query, name) }))   // ③ carry the ORIGINAL index for the final tie-break
+    .filter((x) => x.s > 0)
+    .sort((a, b) =>
+      b.s - a.s ||                                        // ④ higher score first, THEN…
+      a.name.length - b.name.length ||                    //    shorter first, THEN…
+      a.name.toLowerCase().localeCompare(b.name.toLowerCase()) ||   //    alphabetical, THEN…
+      a.index - b.index)                                  //    original order
+    .map((x) => x.name);
+}
+```
+
+The `||` chain works because a tie returns `0`, which is falsy, so the next rule takes over. In the exercise add the **word-start** rule (split on `[\s\-_/.]+` and test each word), the **subsequence** rule, the **empty-query** case (sorted alphabetically, *no* length rule), and don't mutate the input.
+
+%% explain
+- **Case-insensitive**; score by the best rule: equals `1000`, starts-with `800`, a **word** starts with it `600`, contains `400`, **subsequence** `200`, otherwise excluded.
+- **Sorted by score descending**; ties → shorter item, then alphabetical (case-insensitive), then original order.
+- **Empty/whitespace query** → all items sorted alphabetically (case-insensitive), no length rule.
+- **Input isn't mutated**; duplicates are kept.
+
+%% nudge
+- How can the comparator apply "score, then length, then alphabet, then original index" in one function?
+- How do you test "a word in the item starts with the query" (what are the word separators)?
 
 %% hints
 - Write `score(q, item)` first. Lower-case both once. Use `indexOf` for substring; split on `/[\s\-_/.]+/` for words.
