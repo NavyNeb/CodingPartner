@@ -4,9 +4,11 @@ import { resumePoint, trackStats, lessonStats } from '../lib/curriculum';
 import { useProgress } from '../store/progress';
 import { Inline, Pips, SiteHeader, SolvedMark } from '../components/bits';
 import { Icon } from '../components/Icon';
+import { useReview } from '../lib/useReview';
 
 export default function Home() {
   const p = useProgress();
+  const { due } = useReview();
   const resume = resumePoint(p);
   const solved = Object.keys(p.solved).length;
   const lessonCount = tracks.reduce((n, t) => n + t.lessons.length, 0);
@@ -58,6 +60,17 @@ Received: undefined`}</pre>
             </div>
           </figure>
         </section>
+
+        {due.length > 0 && (
+          <section className="wrap due-card" aria-label="Due for review">
+            <div>
+              <p className="eyebrow">Spaced review</p>
+              <h2>{due.length} {due.length === 1 ? 'exercise is' : 'exercises are'} due today</h2>
+              <p>{due.slice(0, 3).map((i) => i.title).join(' · ')}{due.length > 3 ? ` · +${due.length - 3} more` : ''}</p>
+            </div>
+            <Link className="btn primary" to="/review">Start review</Link>
+          </section>
+        )}
 
         <section className="wrap method" aria-label="How it works">
           <ol>

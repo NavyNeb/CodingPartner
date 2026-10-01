@@ -10,6 +10,9 @@ import '@fontsource-variable/jetbrains-mono/wght.css';
 import './styles/tokens.css';
 import './styles/app.css';
 import App from './App';
+import { startSync } from './lib/sync';
+
+void startSync();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

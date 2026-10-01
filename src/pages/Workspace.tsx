@@ -60,6 +60,14 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
       const r = await runExercise(exercise, code);
       if (id !== runId.current) return;
       setReport(r);
+      const total = Math.max(r.tests.length, 1);
+      progress.logAttempt({
+        ex: exercise.id,
+        passed: r.tests.filter((t) => t.status === 'pass').length,
+        total,
+        assisted: !!progress.get().solutionSeen[exercise.id],
+        ms: r.ms,
+      });
       if (r.passed) progress.markSolved(exercise.id);
     } catch (e) {
       if (id === runId.current) setReport({ tests: [], logs: [], fatal: String((e as Error).message ?? e), ms: 0, passed: false });

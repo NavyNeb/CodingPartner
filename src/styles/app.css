@@ -532,3 +532,49 @@ pre.code.stepper-code code { display: block; }
 .gl-item dd { margin: 0; line-height: 1.6; }
 .gl-item dd a { display: inline-block; margin-left: 4px; font-size: 13.5px; }
 @media (max-width: 640px) { .gl-item { grid-template-columns: 1fr; gap: 4px; } }
+
+/* ---- Sync menu ---- */
+.sync { position: relative; }
+.sync-btn { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.sync-btn:hover { background: var(--surface-2); color: var(--ink); }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.sync-dot.s-synced { background: var(--pass); }
+.sync-dot.s-syncing { background: var(--warn); animation: sync-pulse 1s ease-in-out infinite; }
+.sync-dot.s-offline, .sync-dot.s-error { background: var(--fail); }
+@keyframes sync-pulse { 50% { opacity: 0.35; } }
+@media (max-width: 640px) { .sync-label { display: none; } .sync-btn { padding: 0 9px; } }
+.sync-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 50; width: min(340px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow-pop); padding: 16px; display: grid; gap: 10px; }
+.sync-panel h3 { margin: 0; font-family: var(--font-display); font-size: 18px; }
+.sync-panel p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.sync-panel .muted { color: var(--muted); }
+.sync-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sync-or { font-size: 12px; color: var(--faint); text-align: center; }
+.sync-msg { color: var(--warn); }
+.sync-err { color: var(--fail); }
+.recovery { display: block; padding: 10px 12px; background: var(--surface-2); border: 1px dashed var(--line-strong); border-radius: 6px; font-family: var(--font-mono); font-size: 14px; letter-spacing: 0.04em; word-break: break-all; user-select: all; }
+.check-line { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.sync-danger summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.sync-danger[open] { display: grid; gap: 8px; }
+.input { flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--editor-bg); color: var(--ink); font: inherit; font-family: var(--font-mono); font-size: 13px; }
+
+/* ---- Review ---- */
+.nav-badge { margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 600; display: inline-block; text-align: center; line-height: 18px; }
+.due-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; margin-top: 8px; margin-bottom: 8px; border: 1px solid var(--line-strong); border-left: 4px solid var(--accent); border-radius: 8px; background: var(--surface); }
+.due-card h2 { margin: 2px 0 4px; font-family: var(--font-display); font-size: 22px; }
+.due-card p { margin: 0; color: var(--muted); font-size: 14px; }
+.due-card .eyebrow { margin: 0; }
+@media (max-width: 640px) { .due-card { flex-direction: column; align-items: flex-start; } }
+.review { padding-bottom: 64px; }
+.rv-stats { margin: 20px 0 8px; }
+.rv-h { font-family: var(--font-display); font-size: 22px; margin: 28px 0 10px; }
+.rv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rv-item { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: inherit; text-decoration: none; }
+.rv-item:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.rv-n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; flex: none; }
+.rv-main { display: grid; flex: 1; min-width: 0; }
+.rv-main small { color: var(--muted); font-size: 12.5px; }
+.rv-tag { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.rv-list.quiet .rv-item { padding: 9px 14px; }
+.rv-empty { margin-top: 24px; padding: 20px; border: 1px dashed var(--line-strong); border-radius: 8px; display: grid; gap: 12px; justify-items: start; }
+.rv-empty p { margin: 0; }
+.rv-boxes { margin-top: 14px; font-size: 12.5px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }

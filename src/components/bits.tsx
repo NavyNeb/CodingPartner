@@ -5,6 +5,8 @@ import { DIFFICULTY_LABEL, type Difficulty } from '../content/types';
 import { renderInline, renderMarkdown } from '../lib/markdown';
 import { Icon } from './Icon';
 import { useProgress } from '../store/progress';
+import SyncMenu from './SyncMenu';
+import { useReview } from '../lib/useReview';
 import { allExercises } from '../content';
 
 export function Logo() {
@@ -126,12 +128,14 @@ export function Prose({ md, className = '' }: { md: string; className?: string }
 export function SiteHeader({ children }: { children?: ReactNode }) {
   const p = useProgress();
   const solved = Object.keys(p.solved).length;
+  const due = useReview().due.length;
   return (
     <header className="site-header">
       <div className="wrap site-header-inner">
         <Logo />
         <nav className="site-nav" aria-label="Primary">
           <NavLink to="/" end>Roadmap</NavLink>
+          <NavLink to="/review">Review{due ? <span className="nav-badge">{due}</span> : null}</NavLink>
           <NavLink to="/playground">Playground</NavLink>
           <NavLink to="/glossary">Glossary</NavLink>
         </nav>
@@ -140,6 +144,7 @@ export function SiteHeader({ children }: { children?: ReactNode }) {
           <span className="tally" title="Exercises solved">
             <b>{solved}</b>/{allExercises.length}
           </span>
+          <SyncMenu />
           <ThemeToggle />
         </div>
       </div>

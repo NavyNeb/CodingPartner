@@ -1,24 +1,16 @@
 import { useSyncExternalStore } from 'react';
+import { MAX_ATTEMPTS, MAX_MOCKS, type Attempt, type MockResult, type SyncState } from '../lib/syncMerge';
 
-export interface SolveRecord {
-  at: number;
-  /** True when the reference solution was opened before the tests first passed. */
-  assisted: boolean;
-}
+export type { Attempt, MockResult, SolveRecord } from '../lib/syncMerge';
 
-export interface ProgressState {
-  solved: Record<string, SolveRecord>;
-  drafts: Record<string, string>;
-  hints: Record<string, number>;
-  solutionSeen: Record<string, true>;
-  /** Lesson concept checks the learner has finished, keyed by a hash of the check. */
-  checks: Record<string, true>;
+/** Everything in SyncState is synced across devices; `last` and `timed` stay per-device. */
+export interface ProgressState extends SyncState {
   last?: { lessonId: string; exId: string };
   timed: boolean;
 }
 
 const KEY = 'whetstone:progress:v1';
-const empty: ProgressState = { solved: {}, drafts: {}, hints: {}, solutionSeen: {}, checks: {}, timed: false };
+const empty: ProgressState = { epoch: 0, solved: {}, drafts: {}, draftAt: {}, hints: {}, solutionSeen: {}, checks: {}, attempts: [], mocks: [], timed: false };
 
 function load(): ProgressState {
   try {
@@ -48,12 +40,29 @@ export const progress = {
     return () => { listeners.delete(l); };
   },
   saveDraft(id: string, code: string) {
-    commit({ ...state, drafts: { ...state.drafts, [id]: code } });
+    if (state.drafts[id] === code) return;
+    commit({ ...state, drafts: { ...state.drafts, [id]: code }, draftAt: { ...state.draftAt, [id]: Date.now() } });
   },
   clearDraft(id: string) {
+    if (!(id in state.drafts)) return;
     const drafts = { ...state.drafts };
     delete drafts[id];
-    commit({ ...state, drafts });
+    commit({ ...state, drafts, draftAt: { ...state.draftAt, [id]: Date.now() } });
+  },
+  logAttempt(a: Omit<Attempt, 'id' | 'at'>) {
+    const at = Date.now();
+    const attempt: Attempt = { ...a, id: `${at.toString(36)}${Math.random().toString(36).slice(2, 6)}`, at };
+    commit({ ...state, attempts: [...state.attempts, attempt].slice(-MAX_ATTEMPTS) });
+  },
+  addMock(m: Omit<MockResult, 'id' | 'at'>) {
+    const at = Date.now();
+    const mock: MockResult = { ...m, id: `${at.toString(36)}${Math.random().toString(36).slice(2, 6)}`, at };
+    commit({ ...state, mocks: [...state.mocks, mock].slice(-MAX_MOCKS) });
+    return mock;
+  },
+  /** Replace the synced part of the state (after a merge with the server). Keeps per-device fields. */
+  applySynced(next: SyncState) {
+    commit({ ...state, ...next });
   },
   markSolved(id: string) {
     if (state.solved[id]) return;
@@ -77,7 +86,8 @@ export const progress = {
     commit({ ...state, timed });
   },
   resetAll() {
-    commit({ ...empty });
+    // A higher epoch tells every synced device to drop its old progress too.
+    commit({ ...empty, epoch: state.epoch + 1 });
   },
 };
 

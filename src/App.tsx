@@ -6,6 +6,7 @@ import Glossary from './pages/Glossary';
 import { NotFound } from './pages/NotFound';
 
 const Workspace = lazy(() => import('./pages/Workspace'));
+const Review = lazy(() => import('./pages/Review'));
 const Playground = lazy(() => import('./pages/Playground'));
 
 function Loading() {
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/lesson/:lessonId/:exId" element={<Workspace />} />
           <Route path="/playground" element={<Playground />} />
           <Route path="/glossary" element={<Glossary />} />
+          <Route path="/review" element={<Review />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
