@@ -1,0 +1,25 @@
+# Fly.io: `fly launch --no-deploy --copy-config`, `fly volumes create whetstone_data --size 1`, `fly deploy`.
+app = "whetstone"
+primary_region = "cdg"
+
+[build]
+
+[env]
+  PORT = "8080"
+  DATA_DIR = "/data"
+  TRUST_PROXY = "1"
+
+[[mounts]]
+  source = "whetstone_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  [[http_service.checks]]
+    path = "/api/health"
+    interval = "30s"
+    timeout = "3s"

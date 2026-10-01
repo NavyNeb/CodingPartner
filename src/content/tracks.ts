@@ -26,4 +26,14 @@ export const trackMeta: TrackMeta[] = [
     title: 'Interview gauntlet',
     blurb: 'Senior-level problems in the shapes that come up on live-coding rounds. Timed mode recommended.',
   },
+  {
+    id: 'web',
+    title: 'The web platform',
+    blurb: 'What senior frontend interviews probe beyond frameworks: the DOM and event model, the rendering pipeline, HTTP caching and fetch, and the performance metrics that decide whether a page feels fast.',
+  },
+  {
+    id: 'system',
+    title: 'Frontend system design',
+    blurb: 'A repeatable method for open-ended design rounds, then the building blocks of the classic questions — feeds, typeahead, chat — as small, testable pieces.',
+  },
 ];

@@ -4,6 +4,8 @@ import { tsFigures } from './ts';
 import { reactFigures } from './react';
 import { prodFigures } from './prod';
 import { interviewFigures } from './interview';
+import { webFigures } from './web';
+import { systemFigures } from './system';
 
 /* Figure registry. Lesson Markdown references these ids: ![alt](fig:closure-backpack "Caption") */
 
@@ -319,6 +321,8 @@ export const figureBuilders: Record<string, FigureBuilder> = {
   ...reactFigures,
   ...prodFigures,
   ...interviewFigures,
+  ...webFigures,
+  ...systemFigures,
   'closure-backpack': closureBackpack,
   'closure-alive': closureAlive,
   'scope-chain': scopeChain,

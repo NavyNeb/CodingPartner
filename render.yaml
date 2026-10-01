@@ -1,0 +1,16 @@
+# Render Blueprint: New + > Blueprint, pick this repo. A persistent disk (paid plan) is what keeps accounts across deploys.
+services:
+  - type: web
+    name: whetstone
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: TRUST_PROXY
+        value: "1"
+    disk:
+      name: whetstone-data
+      mountPath: /data
+      sizeGB: 1
