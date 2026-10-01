@@ -62,14 +62,14 @@ Received: undefined`}</pre>
         </section>
 
         {due.length > 0 && (
-          <section className="wrap due-card" aria-label="Due for review">
+          <section className="wrap" aria-label="Due for review"><div className="due-card">
             <div>
               <p className="eyebrow">Spaced review</p>
               <h2>{due.length} {due.length === 1 ? 'exercise is' : 'exercises are'} due today</h2>
               <p>{due.slice(0, 3).map((i) => i.title).join(' · ')}{due.length > 3 ? ` · +${due.length - 3} more` : ''}</p>
             </div>
             <Link className="btn primary" to="/review">Start review</Link>
-          </section>
+          </div></section>
         )}
 
         <section className="wrap method" aria-label="How it works">
