@@ -53,7 +53,7 @@ const intervalSweep: FigureBuilder = () => {
 const escapeBoundaries: FigureBuilder = () => {
   const f = new Fig(W, 270, 'Whenever text crosses a boundary it must be encoded for that boundary. HTML text needs entity escaping, URLs need encodeURIComponent, and raw concatenation with user data is how injection bugs happen.');
   f.box(16, 100, 130, 60, { tone: 'fail', label: 'user input', sub: '<script> & "a=b"', size: 11.5, mono: true });
-  const rows: [string, string, string, Tone][] = [['HTML text / attribute', 'escape  & < > " \'', '&lt;script&gt; &amp; &quot;…', 'info'], ['URL query value', 'encodeURIComponent', '%3Cscript%3E%20%26%20%22a%3Db%22', 'accent'], ['raw string concat', 'no encoding  ✗', 'breaks out → injection', 'fail']];
+  const rows: [string, string, string, Tone][] = [['HTML text / attribute', 'escape  & < > " \'', '&lt;script&gt; &amp; &quot;…', 'info'], ['URL query value', 'encodeURIComponent', '%3Cscript%3E%20%26…', 'accent'], ['raw string concat', 'no encoding  ✗', 'breaks out → injection', 'fail']];
   rows.forEach(([t, how, out, tone], i) => {
     const y = 20 + i * 76;
     f.path(`M148 130 L220 ${y + 26}`, { arrow: true, tone, width: 1.8 });

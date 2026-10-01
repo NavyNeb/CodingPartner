@@ -248,16 +248,16 @@ const promiseChain: FigureBuilder = () => {
   const labels: [string, string][] = [['fetchUser()', 'returns a promise'], ['.then', 'getPosts'], ['.then', 'render'], ['.catch', 'show the error']];
   const tones = ['info', 'ink', 'ink', 'fail'] as const;
   xs.forEach((x, i) => {
-    f.box(x, 70, 132, 56, { tone: tones[i], label: labels[i][0], sub: labels[i][1], mono: true });
+    f.box(x, 70, 124, 56, { tone: tones[i], label: labels[i][0], sub: labels[i][1], mono: true });
     f.num(x + 10, 82 - 6, i + 1);
   });
-  [0, 1].forEach((i) => f.path(`M${xs[i] + 132} 98 H${xs[i + 1]}`, { arrow: true, tone: 'pass', width: 2 }));
-  f.path(`M${xs[2] + 132} 98 H${xs[3]}`, { arrow: true, tone: 'muted', dashed: true });
-  f.text(xs[0] + 149, 120, 'user', { anchor: 'middle', size: 11.5, tone: 'pass', mono: true });
-  f.text(xs[1] + 149, 120, 'posts', { anchor: 'middle', size: 11.5, tone: 'pass', mono: true });
-  f.path(`M${xs[0] + 66} 126 V176 H${xs[3] + 66} V126`, { arrow: true, tone: 'fail', dashed: true, width: 1.6 });
+  [0, 1].forEach((i) => f.path(`M${xs[i] + 124} 98 H${xs[i + 1]}`, { arrow: true, tone: 'pass', width: 2 }));
+  f.path(`M${xs[2] + 124} 98 H${xs[3]}`, { arrow: true, tone: 'muted', dashed: true });
+  f.text(xs[0] + 142, 120, 'user', { anchor: 'middle', size: 10, tone: 'pass', mono: true });
+  f.text(xs[1] + 142, 120, 'posts', { anchor: 'middle', size: 10, tone: 'pass', mono: true });
+  f.path(`M${xs[0] + 62} 126 V176 H${xs[3] + 62} V126`, { arrow: true, tone: 'fail', dashed: true, width: 1.6 });
   f.text(320, 196, 'if ANY step throws or rejects, jump here', { anchor: 'middle', size: 12.5, tone: 'fail', bold: true });
-  f.packet('M14 98 H146 H174 H306 H334 H466', 4, 'pass');
+  f.packet('M14 98 H138 H174 H298 H334 H458', 4, 'pass');
   f.text(320, 40, 'Each .then hands its result to the next one.', { anchor: 'middle', size: 13.5, tone: 'muted', italic: true });
   f.text(320, 236, 'The chain skips every .then between the error and the .catch.', { anchor: 'middle', size: 12.5, tone: 'muted' });
   return f;

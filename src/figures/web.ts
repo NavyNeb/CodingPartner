@@ -96,8 +96,9 @@ const httpCacheFlow: FigureBuilder = () => {
   f.box(20, 16, 170, 44, { tone: 'ink', label: 'GET /prices.json', mono: true, size: 12 });
   f.path('M190 38 H236', { arrow: true });
   f.box(240, 16, 160, 44, { tone: 'info', label: 'in the cache?', size: 12.5 });
-  f.text(420, 28, 'no → network', { size: 11.5, tone: 'muted' });
-  f.path('M400 38 H600', { arrow: true, tone: 'muted', dashed: true });
+  f.text(412, 30, 'no', { size: 11.5, tone: 'muted', bold: true });
+  f.path('M400 38 H490', { arrow: true, tone: 'muted', dashed: true });
+  f.box(494, 16, 130, 44, { tone: 'muted', dashed: true, label: 'full request', sub: 'then store it', size: 12 });
   f.path('M320 60 V92', { arrow: true });
   f.box(240, 94, 160, 44, { tone: 'info', label: 'age < max-age?', mono: true, size: 12 });
   f.path('M240 116 H150', { arrow: true, tone: 'pass', width: 2 });
@@ -174,7 +175,7 @@ const vitalsGauges: FigureBuilder = () => {
 
 const inpAnatomy: FigureBuilder = () => {
   const f = new Fig(W, 280, 'One interaction has three parts: input delay while the main thread is busy, processing time in your event handlers, and presentation delay until the next frame is painted. INP is the longest such interaction on the page.');
-  const x0 = 20, k = 4.2;
+  const x0 = 20, k = 2.6;
   const parts: [string, number, Tone, string][] = [['input delay', 40, 'fail', 'main thread busy'], ['processing', 90, 'accent', 'your handlers'], ['presentation', 50, 'info', 'render + paint']];
   let x = x0;
   parts.forEach(([l, ms, tone]) => { f.box(x, 56, ms * k, 40, { tone, solid: true, label: l, size: 11.5 }); x += ms * k; });
@@ -184,7 +185,7 @@ const inpAnatomy: FigureBuilder = () => {
   f.text(x0, 122, '40 ms', { size: 11.5, mono: true, tone: 'fail' });
   f.text(x0 + 40 * k, 122, '90 ms', { size: 11.5, mono: true, tone: 'accent' });
   f.text(x0 + 130 * k, 122, '50 ms', { size: 11.5, mono: true, tone: 'info' });
-  f.text(W - 20, 76, '= 180 ms', { anchor: 'end', size: 15, bold: true, tone: 'pass' });
+  f.text(x0 + 180 * k + 12, 82, '= 180 ms', { size: 15, bold: true, tone: 'pass' });
   const fixes: [string, string, Tone][] = [['Input delay', 'break up long tasks; yield to the browser', 'fail'], ['Processing', 'do less in the handler; defer non-urgent work', 'accent'], ['Presentation', 'avoid huge DOM updates; keep style/layout cheap', 'info']];
   fixes.forEach(([a, b, tone], i) => { f.text(20, 170 + i * 28, a, { bold: true, size: 12.5, tone }); f.text(150, 170 + i * 28, b, { size: 12.5, tone: 'muted' }); });
   f.text(W / 2, 266, 'INP reports (roughly) the worst interaction, so one slow click can set the score.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
@@ -198,9 +199,9 @@ const clsWindows: FigureBuilder = () => {
   [0, 1000, 2000, 3000].forEach((ms) => { f.line(x0 + ms * k, 146, x0 + ms * k, 154, { tone: 'muted' }); f.text(x0 + ms * k, 170, `${ms / 1000}s`, { anchor: 'middle', size: 11, mono: true, tone: 'muted' }); });
   const shifts: [number, number, Tone][] = [[100, 0.05, 'info'], [450, 0.08, 'info'], [800, 0.04, 'info'], [2400, 0.12, 'accent']];
   shifts.forEach(([ms, v, tone]) => { const h = v * 700; f.box(x0 + ms * k - 8, 150 - h, 16, h, { tone, solid: true, r: 2 }); f.text(x0 + ms * k, 142 - h, String(v), { anchor: 'middle', size: 10.5, mono: true, tone }); });
-  f.box(x0 + 100 * k - 14, 40, 700 * k + 28, 24, { tone: 'info', dashed: true, r: 12, label: 'window 1: 0.17', size: 11.5 });
-  f.box(x0 + 2400 * k - 24, 40, 48, 24, { tone: 'accent', dashed: true, r: 12, label: '0.12', size: 11 });
-  f.text(x0 + 1500 * k, 58, 'gap > 1 s → new window', { anchor: 'middle', size: 11, tone: 'muted' });
+  f.box(x0 + 100 * k - 14, 14, 700 * k + 28, 24, { tone: 'info', dashed: true, r: 12, label: 'window 1: 0.17', size: 11.5 });
+  f.box(x0 + 2400 * k - 34, 14, 68, 24, { tone: 'accent', dashed: true, r: 12, label: 'window 2', size: 11 });
+  f.text(x0 + 1500 * k, 32, 'gap > 1 s → new window', { anchor: 'middle', size: 11, tone: 'muted' });
   f.box(150, 196, 340, 54, { tone: 'pass', label: 'CLS = max(0.17, 0.12) = 0.17', sub: 'a "needs improvement" score', size: 13 });
   f.text(W / 2, 270, 'Shifts right after a tap or key press (hadRecentInput) do not count.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
   return f;

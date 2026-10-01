@@ -10,8 +10,8 @@ const jsxPipeline: FigureBuilder = () => {
   f.box(230, 30, 180, 70, { tone: 'accent', label: 'React element', sub: '{ type: "h1", props }', mono: true, size: 12 });
   f.box(444, 30, 180, 70, { tone: 'pass', label: 'Real DOM', sub: 'only what changed' });
   f.path('M198 65 H228', { arrow: true, width: 2 }); f.path('M412 65 H442', { arrow: true, width: 2 });
-  f.text(213, 55, 'compiles', { anchor: 'middle', size: 10.5, tone: 'muted' });
-  f.text(427, 55, 'diff', { anchor: 'middle', size: 10.5, tone: 'muted' });
+  f.text(213, 22, 'compiles', { anchor: 'middle', size: 10.5, tone: 'muted' });
+  f.text(427, 22, 'diff', { anchor: 'middle', size: 10.5, tone: 'muted' });
   f.text(320, 138, 'An element is just a cheap description — not a DOM node.', { anchor: 'middle', size: 13, bold: true });
   f.text(320, 162, 'Components are functions:  props  →  elements.', { anchor: 'middle', size: 12.5, tone: 'muted' });
   f.text(320, 184, 'Same props in, same elements out — so keep render pure.', { anchor: 'middle', size: 12.5, tone: 'muted' });
@@ -184,7 +184,7 @@ const whatRenders: FigureBuilder = () => {
     f.box(x, 100, 160, 44, { tone: i === 2 ? 'muted' : 'info', label: n, sub: i === 2 ? 'memo: props same' : '② parent rendered', size: 12, dashed: i === 2 });
     f.path(`M320 58 L${x + 80} 100`, { arrow: true, tone: i === 2 ? 'muted' : 'info', dashed: i === 2 });
   });
-  ['<Row />', '<Row />', '<Row />'].forEach((n, i) => { const x = 40 + 200 * 2 + (i - 1) * 50 - 10; f.box(Math.max(430, x), 190, 44, 30, { tone: 'muted', label: 'row', size: 10.5, dashed: true, r: 5 }); });
+  ['<Row />', '<Row />', '<Row />'].forEach((n, i) => { const x = 430 + i * 56; f.box(x, 190, 44, 30, { tone: 'muted', label: 'row', size: 10.5, dashed: true, r: 5 }); });
   ['<Avatar />', '<Menu />'].forEach((n, i) => f.box(40 + i * 92, 190, 84, 30, { tone: 'info', label: n.replace(/[<>/ ]/g, ''), size: 10.5, r: 5 }));
   f.path('M120 144 V190', { arrow: true, tone: 'info' });
   f.text(W / 2, 250, 'A render is a function call, not a DOM update. The cost is the whole subtree — so measure first.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
@@ -220,7 +220,7 @@ const virtualWindow: FigureBuilder = () => {
     const inView = i >= 4 && i <= 7, over = i === 3 || i === 8;
     f.box(54, 50 + i * 19, 222, 16, { tone: inView ? 'pass' : over ? 'info' : 'muted', solid: inView || over, dashed: !inView && !over, label: inView || over ? `row ${i * 10 + 1000}` : '· · ·', size: 10, mono: true, r: 3 });
   }
-  f.box(46, 122, 238, 88, { tone: 'accent', dashed: true });
+  f.box(46, 124, 238, 78, { tone: 'accent', dashed: true });
   f.text(330, 130, 'viewport (scrollTop …', { size: 12, tone: 'accent', bold: true });
   f.text(330, 146, '… scrollTop + height)', { size: 12, tone: 'accent', bold: true });
   f.box(340, 170, 280, 46, { tone: 'pass', label: 'rendered rows', sub: 'visible', size: 11.5 });

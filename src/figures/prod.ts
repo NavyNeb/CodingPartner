@@ -16,7 +16,7 @@ const firehoseFlow: FigureBuilder = () => {
   for (let i = 0; i < 18; i++) f.raw(`<circle class="f-dot t-info" cx="${26 + i * 14}" cy="144" r="4"/>`);
   f.box(282, 122, 120, 54, { tone: 'accent', label: 'buffer', sub: 'Map: key → latest' });
   f.path('M268 144 H280', { arrow: true, width: 2 }); f.path('M404 150 H436', { arrow: true, tone: 'pass', width: 2 });
-  f.text(420, 126, '1× / frame', { anchor: 'middle', size: 10.5, tone: 'pass', bold: true });
+  f.text(420, 112, '1× / frame', { anchor: 'middle', size: 10.5, tone: 'pass', bold: true });
   [0, 1, 2].forEach((i) => f.box(442 + i * 60, 132, 48, 36, { tone: 'pass', solid: true, label: 'render', size: 10.5, r: 4 }));
   f.text(480, 200, '≤ 60 renders / second ✓', { anchor: 'middle', size: 12.5, tone: 'pass', bold: true });
   f.text(W / 2, 244, 'The user can only see the LATEST price, so older ones can be dropped.', { anchor: 'middle', size: 12.5, bold: true });

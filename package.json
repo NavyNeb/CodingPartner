@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "verify": "tsx scripts/verify.ts",
+    "audit:figures": "tsx scripts/audit-figures.mts",
     "start": "node server/index.ts",
     "test": "node --test \"server/test/*.test.ts\"",
     "backup": "node server/backup.ts"
