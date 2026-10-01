@@ -12,6 +12,8 @@ import { ResultsPanel } from '../components/Results';
 import { Icon } from '../components/Icon';
 import { Logo, Pips, Prose, ThemeToggle } from '../components/bits';
 import { useAssist } from '../lib/useAssist';
+import MockBar from '../components/MockBar';
+import { mock, useMock } from '../lib/mock';
 import { NotFound } from './NotFound';
 
 type LeftTab = 'task' | 'lesson' | 'hints' | 'tests' | 'solution';
@@ -36,7 +38,9 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
   const [assistPref, setAssistPref] = useAssist();
   const runId = useRef(0);
   const solved = p.solved[exercise.id];
-  const timed = p.timed;
+  const session = useMock();
+  const inMock = !!session && !session.finishedAt && session.exIds.includes(exercise.id);
+  const timed = p.timed || inMock;
   const assist = assistPref && !timed;
   const prev = prevBefore(lessonId, exercise.id);
   const next = nextAfter(lessonId, exercise.id);
@@ -68,6 +72,7 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
         assisted: !!progress.get().solutionSeen[exercise.id],
         ms: r.ms,
       });
+      mock.record(exercise.id, r.tests.filter((t) => t.status === 'pass').length, total, r.ms);
       if (r.passed) progress.markSolved(exercise.id);
     } catch (e) {
       if (id === runId.current) setReport({ tests: [], logs: [], fatal: String((e as Error).message ?? e), ms: 0, passed: false });
@@ -116,8 +121,8 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
         </nav>
         <Pips level={exercise.difficulty} label />
         <div className="ws-bar-right">
-          <Timer exercise={exercise} active={timed && !solved} />
-          <button className={`chip-btn${timed ? ' on' : ''}`} onClick={() => progress.setTimed(!timed)} aria-pressed={timed} title="Interview mode: countdown, no hints, no solution">
+          <Timer exercise={exercise} active={timed && !solved && !inMock} />
+          <button className={`chip-btn${timed ? ' on' : ''}`} disabled={inMock} onClick={() => progress.setTimed(!timed)} aria-pressed={timed} title="Interview mode: countdown, no hints, no solution">
             <Icon name="timer" size={14} /> Timed
           </button>
           <span className="ws-sep" aria-hidden="true" />
@@ -126,6 +131,8 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
           <ThemeToggle />
         </div>
       </header>
+
+      <MockBar exId={exercise.id} />
 
       <main className="ws-main">
         <Split
@@ -146,7 +153,7 @@ function WorkspaceInner({ lessonId, lessonTitle, theory, exercise }: { lessonId:
                     <h1 className="ex-title">{exercise.title}{exercise.guided && <span className="guided-chip">Guided</span>}</h1>
                     {exercise.guided && <p className="note">Guided exercise: the skeleton is filled in and the numbered steps in the comments walk you through it. Complete them one at a time, running the tests as you go.</p>}
                     <Prose md={exercise.prompt} />
-                    {exercise.worked && (
+                    {exercise.worked && !timed && (
                       <details className="worked">
                         <summary><Icon name="book" size={14} /> See a worked example first</summary>
                         <Prose md={exercise.worked} />

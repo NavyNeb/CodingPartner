@@ -7,6 +7,8 @@ import { NotFound } from './pages/NotFound';
 
 const Workspace = lazy(() => import('./pages/Workspace'));
 const Review = lazy(() => import('./pages/Review'));
+const Mock = lazy(() => import('./pages/Mock'));
+const Shared = lazy(() => import('./pages/Shared'));
 const Playground = lazy(() => import('./pages/Playground'));
 
 function Loading() {
@@ -24,6 +26,8 @@ export default function App() {
           <Route path="/playground" element={<Playground />} />
           <Route path="/glossary" element={<Glossary />} />
           <Route path="/review" element={<Review />} />
+          <Route path="/mock" element={<Mock />} />
+          <Route path="/s/:id" element={<Shared />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

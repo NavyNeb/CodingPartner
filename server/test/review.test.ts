@@ -46,3 +46,31 @@ describe('review queue', () => {
     assert.equal(streak(attempts, T0 + 5 * DAY, 0), 0);
   });
 });
+
+import { LEVELS, pickExercises, rng, scoreOf, type Candidate } from '../../src/lib/mock.ts';
+describe('mock interview picking and scoring', () => {
+  const all: Candidate[] = [];
+  for (let l = 0; l < 6; l++) for (let d = 1; d <= 4; d++) all.push({ id: `l${l}-d${d}`, lessonId: `l${l}`, trackId: l < 3 ? 'js' : 'react', difficulty: d, guided: d === 1 && l === 0 });
+  it('returns three exercises matching the level, from different lessons, never guided', () => {
+    const ids = pickExercises(all, { tracks: [], level: 'senior', solved: {}, random: rng(7) });
+    assert.equal(ids.length, 3);
+    const picked = ids.map((id) => all.find((c) => c.id === id)!);
+    assert.deepEqual(picked.map((c) => c.difficulty), LEVELS.senior.difficulties);
+    assert.equal(new Set(picked.map((c) => c.lessonId)).size, 3);
+    assert.ok(picked.every((c) => !c.guided));
+  });
+  it('respects the track filter and prefers unsolved', () => {
+    const solved = Object.fromEntries(all.filter((c) => c.difficulty === 3 && c.lessonId !== 'l4').map((c) => [c.id, true]));
+    const ids = pickExercises(all, { tracks: ['react'], level: 'mid', solved, random: rng(1) });
+    assert.ok(ids.every((id) => all.find((c) => c.id === id)!.trackId === 'react'));
+    assert.ok(ids.includes('l4-d3'));
+  });
+  it('is reproducible with a seed', () => {
+    const a = pickExercises(all, { tracks: [], level: 'mid', solved: {}, random: rng(42) });
+    assert.deepEqual(a, pickExercises(all, { tracks: [], level: 'mid', solved: {}, random: rng(42) }));
+  });
+  it('scores the mean fraction of tests passed', () => {
+    assert.equal(scoreOf([{ passed: 4, total: 4 }, { passed: 2, total: 4 }, { passed: 0, total: 4 }]), 50);
+    assert.equal(scoreOf([]), 0);
+  });
+});

@@ -1,4 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { tracks } from '../content';
+import { createShare, deleteShare, listShares, useSync } from '../lib/sync';
+import { trackStats } from '../lib/curriculum';
+import { useProgress } from '../store/progress';
 import { SiteHeader } from '../components/bits';
 import { useReview } from '../lib/useReview';
 import { DAY } from '../lib/review';
@@ -9,6 +14,49 @@ function when(due: number, now: number) {
   const d = Math.ceil((due - now) / DAY);
   if (d <= 0) return 'due now';
   return d === 1 ? 'tomorrow' : `in ${d} days`;
+}
+
+function ShareProgress({ streak }: { streak: number }) {
+  const sync = useSync();
+  const p = useProgress();
+  const [shares, setShares] = useState<{ id: string; kind: string; createdAt: number }[]>([]);
+  const [link, setLink] = useState('');
+  const [err, setErr] = useState('');
+  const refresh = () => listShares().then((r) => setShares(r.shares), () => {});
+  useEffect(() => { if (sync.hasProfile) void refresh(); }, [sync.hasProfile]);
+  if (!sync.hasProfile) return sync.status === 'unavailable' ? null : <p className="muted" style={{ marginTop: 24 }}>Turn on Sync (top right) to share your progress with a link.</p>;
+  const create = async () => {
+    setErr('');
+    try {
+      const all = tracks.reduce((n, t) => n + trackStats(t.id, p).total, 0);
+      const id = await createShare('progress', {
+        solved: Object.keys(p.solved).length, total: all, streak,
+        bestMock: p.mocks.length ? Math.max(...p.mocks.map((m) => m.score)) : null,
+        tracks: tracks.map((t) => ({ title: t.title, ...trackStats(t.id, p) })),
+      });
+      setLink(new URL(`#/s/${id}`, document.baseURI).toString());
+      void refresh();
+    } catch (e) { setErr((e as Error).message); }
+  };
+  return (
+    <section className="mock-share">
+      <h2 className="rv-h">Share</h2>
+      <p className="muted">A public, read-only snapshot of your counts: no code, no account details.</p>
+      <div className="sync-row"><button className="btn" onClick={create}>Share my progress</button></div>
+      {link && <p><code className="recovery" data-testid="share-link">{link}</code></p>}
+      {err && <p className="sync-err" role="alert">{err}</p>}
+      {shares.length > 0 && (
+        <ul className="rv-list quiet">
+          {shares.map((s) => (
+            <li key={s.id} className="rv-item">
+              <span className="rv-main"><b>{s.kind === 'mock' ? 'Mock interview' : 'Progress'}</b><small><Link to={`/s/${s.id}`}>#/s/{s.id}</Link> · {new Date(s.createdAt).toLocaleDateString()}</small></span>
+              <button className="btn ghost danger" onClick={() => { void deleteShare(s.id).then(refresh); }}>Delete</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 export default function Review() {
@@ -69,6 +117,7 @@ export default function Review() {
             <p className="rv-boxes" aria-label="Exercises per review box">Boxes: {boxes.map((n, k) => <span key={k}><b>{n}</b> at {[1, 3, 7, 21, 60][k]}d</span>)}</p>
           </>
         )}
+        <ShareProgress streak={streak} />
       </main>
     </>
   );
