@@ -1,5 +1,5 @@
 # Fly.io: `fly launch --no-deploy --copy-config`, `fly volumes create whetstone_data --size 1`, `fly deploy`.
-app = "whetstone"
+app = "whetstone-restless-fern-369"
 primary_region = "cdg"
 
 [build]
