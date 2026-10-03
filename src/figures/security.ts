@@ -359,6 +359,64 @@ const tokenBucket: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 7 · Supply chain and secrets ───────────────────────── */
+
+const supplyChain: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The software supply chain. Your application depends on direct dependencies, which depend on many transitive dependencies, all downloaded from a registry, where any maintainer account, install script or build step is a way in. Most of the code you ship was written by people you never reviewed.');
+  f.box(200, 16, 240, 44, { tone: 'accent', solid: true, label: 'your app: 2,000 lines you wrote', size: 12 });
+  f.box(120, 84, 160, 44, { tone: 'info', label: '20 direct dependencies', size: 11.5 });
+  f.box(360, 84, 160, 44, { tone: 'info', label: 'your build and CI', size: 11.5 });
+  f.box(40, 152, 240, 44, { tone: 'fail', dashed: true, label: '800 transitive dependencies', size: 11.5 });
+  f.box(360, 152, 240, 44, { tone: 'fail', dashed: true, label: 'install scripts · maintainer accounts', size: 11 });
+  f.path('M320 62 L220 82', { arrow: true, tone: 'muted', width: 1.6 });
+  f.path('M320 62 L440 82', { arrow: true, tone: 'muted', width: 1.6 });
+  f.path('M200 130 L160 150', { arrow: true, tone: 'muted', width: 1.6 });
+  f.path('M440 130 L470 150', { arrow: true, tone: 'muted', width: 1.6 });
+  f.text(W / 2, 226, 'Pin versions, verify hashes, keep few dependencies, and watch for known vulnerabilities.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 252, 'Every dependency is code you run with your own permissions.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const lockfileFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Ranges versus the lockfile. The package manifest says which versions are acceptable, for example caret one point two. The lockfile records the exact version that was installed and a hash of its contents. Installing from the lockfile with a clean install command gives the same code on every machine and fails if a file does not match its hash.');
+  f.box(16, 20, 190, 80, { tone: 'info' });
+  f.text(111, 46, 'package.json', { anchor: 'middle', size: 13, bold: true, tone: 'info' });
+  f.text(111, 72, '"lodash": "^4.17.0"', { anchor: 'middle', size: 11.5, mono: true });
+  f.text(111, 90, 'a RANGE of versions', { anchor: 'middle', size: 11, tone: 'muted' });
+  f.path('M208 60 H266', { arrow: true, tone: 'muted', width: 2 });
+  f.text(237, 50, 'resolve', { anchor: 'middle', size: 10.5, tone: 'muted' });
+  f.box(270, 20, 190, 80, { tone: 'accent', solid: true });
+  f.text(365, 46, 'lockfile', { anchor: 'middle', size: 13, bold: true });
+  f.text(365, 70, 'lodash 4.17.21', { anchor: 'middle', size: 11.5, mono: true });
+  f.text(365, 90, 'integrity: sha512-…', { anchor: 'middle', size: 11, mono: true });
+  f.path('M462 60 H500', { arrow: true, tone: 'muted', width: 2 });
+  f.box(504, 20, 120, 80, { tone: 'pass' });
+  f.text(564, 52, 'npm ci', { anchor: 'middle', size: 13, bold: true, tone: 'pass', mono: true });
+  f.text(564, 76, 'exact + checked', { anchor: 'middle', size: 11 });
+  f.text(W / 2, 140, 'Commit the lockfile. Install with npm ci in CI and production.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 168, 'Review lockfile changes in pull requests: a surprise new host or a missing hash is a red flag.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 204, 'Typosquatting: lodahs, reqeust, colour-names... a one-letter mistake installs an attacker\'s package.', { anchor: 'middle', size: 12, tone: 'fail' });
+  f.text(W / 2, 236, 'Check names carefully, and prefer well-known packages with many maintainers.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const secretsLifecycle: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Handling secrets. Keep secrets out of source code and out of git history. Supply them to the app at runtime from the environment or a secret manager, scan for accidentally committed secrets, and if one is ever exposed, assume it is compromised and rotate it, because deleting the commit does not make it secret again.');
+  const steps: [string, string, Tone][] = [['secret manager', 'the source of truth', 'pass'], ['environment', 'injected at runtime', 'info'], ['your app', 'reads config, never prints it', 'info'], ['logs & errors', 'must contain no secrets', 'fail']];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 24, 146, 70, { tone, solid: i === 0 });
+    f.text(x + 73, 52, t, { anchor: 'middle', size: 12.5, bold: true });
+    f.text(x + 73, 76, sub, { anchor: 'middle', size: 10.5 });
+    if (i < 3) f.path(`M${x + 148} 59 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 134, 'Never in git: not in code, not in .env files that are committed, not in screenshots.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 162, 'Scan commits and CI for key patterns and high-entropy strings (pre-commit and in CI).', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 198, 'Leaked? Assume compromised: rotate first, clean up history second.', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.text(W / 2, 232, 'Give every secret the least privilege it needs, and a short life if you can.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const securityFigures: Record<string, FigureBuilder> = {
   'sec-xss-flow': xssFlow,
   'sec-contexts': outputContexts,
@@ -378,4 +436,7 @@ export const securityFigures: Record<string, FigureBuilder> = {
   'sec-validation': validationPipeline,
   'sec-upload': uploadChecks,
   'sec-bucket': tokenBucket,
+  'sec-supply-chain': supplyChain,
+  'sec-lockfile': lockfileFigure,
+  'sec-secrets': secretsLifecycle,
 };
