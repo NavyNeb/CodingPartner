@@ -611,6 +611,75 @@ const fenwickTree: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 9 · Choosing structures ───────────────────────── */
+
+const structureChooser: FigureBuilder = () => {
+  const f = new Fig(W, 366, 'A chooser mapping what a problem needs to the data structure to reach for: fast lookup by key, a hash map or set; most recent first, a stack; first come first served, a queue, deque or ring buffer; smallest or largest next, a heap; sorted order with fast search, a sorted array with binary search or a BST; find things by prefix, a trie; are these connected over time, union-find; paths, ordering or relationships, a graph; range totals possibly with updates, prefix sums or a Fenwick tree.');
+  const rows: [string, string, Tone][] = [
+    ['fast lookup by key', 'Map / Set', 'info'],
+    ['most recent first (undo, matching)', 'Stack', 'info'],
+    ['first-come, first-served (BFS, buffers)', 'Queue · deque · ring buffer', 'info'],
+    ['the smallest or largest next', 'Heap (priority queue)', 'accent'],
+    ['sorted order + fast search', 'Sorted array + search · BST', 'accent'],
+    ['find things by prefix', 'Trie', 'pass'],
+    ['"are these connected?" over time', 'Union-find', 'pass'],
+    ['paths, ordering, relationships', 'Graph: BFS, DFS, Dijkstra, Kahn', 'fail'],
+    ['range totals (maybe with updates)', 'Prefix sums · Fenwick tree', 'fail'],
+  ];
+  f.text(16, 18, 'what the problem needs', { size: 12, bold: true, tone: 'muted' });
+  f.text(364, 18, 'what to reach for', { size: 12, bold: true, tone: 'muted' });
+  rows.forEach(([need, use, tone], i) => {
+    const y = 28 + i * 36;
+    f.box(16, y, 300, 30, { tone: 'ink', label: need, size: 12 });
+    f.path(`M320 ${y + 15} H356`, { arrow: true, tone: 'muted', width: 1.8 });
+    f.box(360, y, 264, 30, { tone, solid: true, label: use, size: 12 });
+  });
+  f.text(W / 2, 356, 'Start from the operations you need and how often; the structure follows.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const combineStructures: FigureBuilder = () => {
+  const f = new Fig(W, 310, 'Hard design problems usually combine two structures, each doing the job the other is bad at. An LRU cache is a hash map for finding plus a doubly linked list for recency order. A randomized set is an array of packed items plus a hash map from item to index. An LFU cache is a hash map from key to value and count plus buckets from count to keys in order.');
+  const rows: [[string, string], [string, string], [string, string]][] = [
+    [['hash map', 'key → list node (finds it)'], ['doubly linked list', 'recency order (reorders)'], ['LRU cache', 'get / put in O(1)']],
+    [['array', 'items packed together'], ['hash map', 'item → its index'], ['randomized set', 'insert / remove / random O(1)']],
+    [['hash map', 'key → value + count'], ['buckets by count', 'count → keys, in order'], ['LFU cache', 'get / put in O(1)']],
+  ];
+  rows.forEach(([a, b, r], i) => {
+    const y = 20 + i * 90;
+    f.box(16, y, 176, 66, { tone: 'info', label: a[0], sub: a[1], size: 13 });
+    f.text(204, y + 40, '+', { anchor: 'middle', size: 22, bold: true, tone: 'muted' });
+    f.box(216, y, 176, 66, { tone: 'info', label: b[0], sub: b[1], size: 13 });
+    f.text(404, y + 40, '=', { anchor: 'middle', size: 22, bold: true, tone: 'muted' });
+    f.box(416, y, 208, 66, { tone: 'pass', solid: true, label: r[0], sub: r[1], size: 13 });
+  });
+  f.text(W / 2, 296, 'Each structure does the one thing the other is bad at.', { anchor: 'middle', size: 12.5, bold: true });
+  return f;
+};
+
+const complexityLadder: FigureBuilder = () => {
+  const f = new Fig(W, 310, 'A ladder of growth rates with the input size you can afford in about a second and examples from this track. Constant and logarithmic cost work for any size; linear works up to about a hundred million; n log n up to about a million; quadratic only up to about ten thousand.');
+  const rows: [string, string, string, Tone][] = [
+    ['O(1)', 'any n', 'Map get · push/pop · heap peek · arr[i]', 'pass'],
+    ['O(log n)', 'any n', 'binary search · heap push/pop · balanced BST · Fenwick', 'pass'],
+    ['O(n)', '≈ 10⁸', 'one scan · BFS/DFS · build a hash table · prefix sums', 'info'],
+    ['O(n log n)', '≈ 10⁶', 'sorting · heap sort · merge K lists · Dijkstra', 'accent'],
+    ['O(n²)', '≈ 10⁴', 'nested loops · includes() in a loop · shift() in a loop', 'fail'],
+  ];
+  f.text(16, 20, 'cost', { size: 12, bold: true, tone: 'muted' });
+  f.text(142, 20, 'n you can afford', { size: 12, bold: true, tone: 'muted' });
+  f.text(262, 20, 'examples from this track', { size: 12, bold: true, tone: 'muted' });
+  rows.forEach(([cost, n, ex, tone], i) => {
+    const y = 30 + i * 46;
+    f.box(16, y, 112, 36, { tone, solid: true, label: cost, mono: true, size: 14 });
+    f.box(136, y, 116, 36, { tone: 'ink', label: n, mono: true, size: 13 });
+    f.text(262, y + 22, ex, { size: 12, tone: 'ink' });
+  });
+  f.text(W / 2, 276, 'Rule of thumb: a computer does roughly 10⁸ simple steps per second.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 296, 'Read the input size first: it tells you which row you can afford.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const dsFigures: Record<string, FigureBuilder> = {
   'ds-array-memory': arrayMemory,
   'ds-array-growth': arrayGrowth,
@@ -646,4 +715,7 @@ export const dsFigures: Record<string, FigureBuilder> = {
   'ds-trie-counts': trieCounts,
   'ds-prefix-sums': prefixSums,
   'ds-fenwick': fenwickTree,
+  'ds-structure-chooser': structureChooser,
+  'ds-combine': combineStructures,
+  'ds-complexity-ladder': complexityLadder,
 };
