@@ -39,7 +39,7 @@ const arrayGrowth: FigureBuilder = () => {
 };
 
 const arrayCosts: FigureBuilder = () => {
-  const f = new Fig(W, 290, 'Costs of common array operations in JavaScript: reading by index and push or pop at the end are constant time; shift, unshift, inserting or removing in the middle, includes and indexOf are linear; binary search on a sorted array is logarithmic.');
+  const f = new Fig(W, 306, 'Costs of common array operations in JavaScript: reading by index and push or pop at the end are constant time; shift, unshift, inserting or removing in the middle, includes and indexOf are linear; binary search on a sorted array is logarithmic.');
   const rows: [string, string, string, Tone][] = [
     ['arr[i]', 'O(1)', 'arithmetic on the address', 'pass'],
     ['push / pop', 'O(1)*', 'at the end; * amortised', 'pass'],
@@ -54,7 +54,7 @@ const arrayCosts: FigureBuilder = () => {
     f.box(232, y, 96, 34, { tone, solid: true, label: cost, mono: true, size: 13 });
     f.text(344, y + 22, why, { size: 12.5, tone: 'muted' });
   });
-  f.text(W / 2, 282, 'Hidden O(n) inside a loop is the classic accidental O(n²).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  f.text(W / 2, 298, 'Hidden O(n) inside a loop is the classic accidental O(n²).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
   return f;
 };
 
@@ -77,9 +77,84 @@ const binarySearchHalving: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 2 · Hash tables ───────────────────────── */
+
+const hashPipeline: FigureBuilder = () => {
+  const f = new Fig(W, 170, 'A hash table turns a key into a bucket number in two steps: a hash function turns the key into a big number, then modulo the number of buckets picks a bucket. The key "ant" has character codes summing to 323, and 323 mod 4 is 3, so it goes in bucket 3.');
+  const steps: [string, string, Tone][] = [['"ant"', 'the key', 'ink'], ['hash(key)', 'chars add up to 323', 'info'], ['323 mod 4', '= 3', 'accent'], ['bucket 3', 'store it here', 'pass']];
+  steps.forEach(([label, sub, tone], i) => {
+    const x = 20 + i * 150;
+    f.box(x, 24, 126, 62, { tone, label, sub, mono: true, size: 14 });
+    if (i < 3) f.path(`M${x + 128} 55 H${x + 148}`, { arrow: true, width: 2 });
+  });
+  f.text(W / 2, 120, 'The same key always lands in the same bucket, so a lookup repeats the same two steps.', { anchor: 'middle', size: 12.5, tone: 'muted' });
+  f.text(W / 2, 144, 'Different keys can land in the same bucket: that is a collision.', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  return f;
+};
+
+const hashChain: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A hash table with four buckets using chaining. Bucket 0 holds bee, bucket 1 holds cow, bucket 2 holds eel, and bucket 3 holds a chain of two entries, ant then tan, because both hash to 3. A lookup hashes the key, goes to its bucket and walks the short chain comparing keys.');
+  const rows: [string[], Tone][] = [[['bee'], 'info'], [['cow'], 'info'], [['eel'], 'info'], [['ant', 'tan'], 'fail']];
+  f.text(20, 18, 'buckets', { size: 12, tone: 'muted', bold: true });
+  rows.forEach(([chain, tone], i) => {
+    const y = 28 + i * 48;
+    f.box(20, y, 56, 38, { tone: 'ink', label: String(i), mono: true, size: 14 });
+    chain.forEach((k, j) => {
+      const x = 112 + j * 120;
+      f.path(`M${x - (j === 0 ? 34 : 30)} ${y + 19} H${x - 2}`, { arrow: true, tone: 'muted' });
+      f.box(x, y, 90, 38, { tone, solid: true, label: k, mono: true, size: 13 });
+    });
+  });
+  f.text(360, 186, 'collision: "ant" and "tan" both hash to 3', { size: 12.5, tone: 'fail', bold: true });
+  f.lines(360, 70, ['Lookup of "tan":', '1. hash → bucket 3', '2. walk the chain: ant? no, tan? yes'], { size: 12.5, tone: 'muted', gap: 20 });
+  f.text(W / 2, 238, 'With good hashing and room to spare, chains stay about 1 long, so lookups are O(1) on average.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const hashResize: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Resizing a hash table. Four buckets holding four entries have a load factor of 1.0 and one bucket has a chain of two. Doubling to eight buckets and rehashing every key spreads the entries out so each bucket holds at most one.');
+  const row = (y: number, counts: number[], title: string) => {
+    f.text(20, y - 8, title, { size: 12.5, tone: 'muted', bold: true });
+    const w = Math.min(70, 560 / counts.length);
+    counts.forEach((c, i) => f.box(20 + i * (w + 6), y, w, 44, { tone: c > 1 ? 'fail' : c === 1 ? 'info' : 'muted', dashed: c === 0, solid: c > 0, label: c ? String(c) : '', mono: true, size: 15 }));
+  };
+  row(34, [1, 0, 1, 2], 'before: 4 buckets, 4 entries  →  load factor 4 / 4 = 1.0');
+  f.path('M60 94 V138', { arrow: true, tone: 'accent', width: 2 });
+  f.text(76, 122, 'double the buckets, then hash every key again (index = hash mod 8)', { size: 12.5, tone: 'accent', bold: true });
+  row(166, [1, 0, 0, 1, 0, 1, 0, 1], 'after: 8 buckets, 4 entries  →  load factor 0.5');
+  f.text(W / 2, 252, 'Rule of thumb: when size / buckets goes above about 0.75, double and rehash.', { anchor: 'middle', size: 12.5, tone: 'ink' });
+  f.text(W / 2, 274, 'One resize is O(n), but they are rare, so insert stays amortised O(1) (like a dynamic array).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const mapVsObject: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Map versus plain object as a dictionary. Map keys can be any value and it keeps insertion order, has a size property and no inherited keys. A plain object only has string and symbol keys, orders integer-like keys first, has no size, and inherits keys like toString and __proto__.');
+  const rows: [string, string, string][] = [
+    ['keys', 'any value (objects too)', 'strings and symbols only'],
+    ['order', 'insertion order', 'integer-like keys first'],
+    ['size', 'map.size', 'Object.keys(o).length'],
+    ['inherited keys', 'none', '"toString", "__proto__"…'],
+    ['frequent add / delete', 'built for it', 'works, but not the goal'],
+  ];
+  f.text(176 + 140, 26, 'Map', { anchor: 'middle', size: 14, bold: true, tone: 'pass' });
+  f.text(404 + 110, 26, 'plain object', { anchor: 'middle', size: 14, bold: true, tone: 'fail' });
+  rows.forEach(([label, a, b], i) => {
+    const y = 38 + i * 44;
+    f.box(16, y, 150, 36, { tone: 'ink', label, size: 12.5 });
+    f.box(176, y, 220, 36, { tone: 'pass', label: a, size: 12.5 });
+    f.box(404, y, 220, 36, { tone: 'fail', label: b, size: 12.5 });
+  });
+  f.text(W / 2, 262, 'Use a Map for lookups by arbitrary keys; keep objects for fixed, known fields.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const dsFigures: Record<string, FigureBuilder> = {
   'ds-array-memory': arrayMemory,
   'ds-array-growth': arrayGrowth,
   'ds-array-costs': arrayCosts,
   'ds-binary-search': binarySearchHalving,
+  'ds-hash-pipeline': hashPipeline,
+  'ds-hash-chain': hashChain,
+  'ds-hash-resize': hashResize,
+  'ds-map-vs-object': mapVsObject,
 };
