@@ -63,7 +63,7 @@ const mergeSplit: FigureBuilder = () => {
 
 const fastPow: FigureBuilder = () => {
   const f = new Fig(W, 250, 'Fast exponentiation. pow(2,10) calls pow(2,5), which calls pow(2,2), then pow(2,1), then pow(2,0) which is 1. Halving the exponent each time needs only about log base 2 of n calls. Coming back up, the results are 1, 2, 4, 32 and 1024.');
-  const calls: [string, string][] = [['pow(2, 10)', 'even: square the half'], ['pow(2, 5)', 'odd: 2 × square'], ['pow(2, 2)', 'even: square the half'], ['pow(2, 1)', 'odd: 2 × square'], ['pow(2, 0)', 'base case → 1']];
+  const calls: [string, string][] = [['pow(2, 10)', 'even: half²'], ['pow(2, 5)', 'odd: 2 · half²'], ['pow(2, 2)', 'even: half²'], ['pow(2, 1)', 'odd: 2 · half²'], ['pow(2, 0)', 'base case → 1']];
   calls.forEach(([l, sub], i) => {
     const x = 8 + i * 126;
     f.box(x, 28, 116, 52, { tone: i === 4 ? 'pass' : 'info', solid: i === 4, label: l, sub, mono: true, size: 12 });
@@ -141,7 +141,7 @@ const sortThenSolve: FigureBuilder = () => {
   [0, 10, 20, 30].forEach((t) => { f.line(x0 + t * k, 150, x0 + t * k, 156, { tone: 'muted' }); f.text(x0 + t * k, 172, String(t), { anchor: 'middle', size: 11, mono: true, tone: 'muted' }); });
   f.line(x0, 150, x0 + 30 * k, 150, { tone: 'muted' });
   f.box(x0 + 5 * k - 4, 22, 5 * k + 8, 74, { tone: 'fail', dashed: true, r: 10 });
-  f.text(x0 + 11 * k, 56, '← starts at 5, before the previous meeting ends at 30', { size: 12, tone: 'fail', bold: true });
+  f.text(x0 + 10 * k + 12, 88, '← starts at 5, before [0, 30] ends', { size: 12, tone: 'fail', bold: true });
   f.lines(24, 206, ['Sorted by start time, a clash can only show up between neighbours:', 'compare each start with the previous end. No need to test every pair.'], { size: 12.5, gap: 20 });
   f.text(W / 2, 252, 'Sorting costs O(n log n) once; the scan is O(n). Versus O(n²) for all pairs.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
   return f;
@@ -365,7 +365,7 @@ const dpEditCell: FigureBuilder = () => {
   f.text(344, 66, '↘ replace (or free match): +1 / +0', { size: 12.5, tone: 'accent', bold: true });
   f.text(344, 110, '↓ delete a letter of a: +1', { size: 12.5, tone: 'fail', bold: true });
   f.text(344, 156, '→ insert a letter of b: +1', { size: 12.5, tone: 'pass', bold: true });
-  f.lines(30, 224, ['dp[i][j] = fewest edits turning the first i letters of a into the first j letters of b'], { size: 12, mono: true });
+  f.lines(30, 218, ['dp[i][j] = fewest edits turning the first i letters', '         of a into the first j letters of b'], { size: 12, mono: true, gap: 17 });
   f.text(W / 2, 250, 'If the two letters are equal the diagonal is free; else 1 + the cheapest of the three.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
   return f;
 };
