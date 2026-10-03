@@ -148,6 +148,75 @@ const mapVsObject: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 3 · Stacks & queues ───────────────────────── */
+
+const stackLifo: FigureBuilder = () => {
+  const f = new Fig(W, 240, 'A stack is last-in, first-out. Items A, B and C are stacked with C on top. push(D) places D on top; pop() removes and returns C, the most recent item. Only the top is touched, so both are constant time.');
+  const items: [string, number][] = [['A', 160], ['B', 116], ['C', 72]];
+  items.forEach(([l, y], i) => f.box(200, y, 140, 40, { tone: i === 2 ? 'accent' : 'info', solid: i === 2, label: l, mono: true, size: 15 }));
+  f.text(270, 214, 'bottom', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(356, 98, '← top', { size: 12.5, tone: 'accent', bold: true });
+  f.path('M270 14 V66', { arrow: true, tone: 'pass', width: 2 });
+  f.text(284, 38, 'push("D")', { size: 12.5, mono: true, tone: 'pass', bold: true });
+  f.path('M344 90 H470', { arrow: true, tone: 'fail', width: 2 });
+  f.text(412, 82, 'pop() → "C"', { size: 12.5, mono: true, tone: 'fail', bold: true, anchor: 'middle' });
+  f.lines(20, 40, ['Last in,', 'first out', '(LIFO)'], { size: 13, bold: true, gap: 20 });
+  f.text(470, 150, 'only the top is touched:', { size: 12, tone: 'muted' });
+  f.text(470, 168, 'push and pop are O(1)', { size: 12, tone: 'muted' });
+  return f;
+};
+
+const queueFifo: FigureBuilder = () => {
+  const f = new Fig(W, 200, 'A queue is first-in, first-out. Items A, B and C wait in line with A at the front. enqueue(D) adds D at the back; dequeue() removes and returns A from the front.');
+  ['A', 'B', 'C'].forEach((l, i) => f.box(150 + i * 100, 70, 90, 44, { tone: i === 0 ? 'accent' : 'info', solid: i === 0, label: l, mono: true, size: 15 }));
+  f.text(195, 136, 'front', { anchor: 'middle', size: 12, tone: 'accent', bold: true });
+  f.text(395, 136, 'back', { anchor: 'middle', size: 12, tone: 'muted', bold: true });
+  f.path('M146 92 H24', { arrow: true, tone: 'fail', width: 2 });
+  f.text(20, 70, 'dequeue() → "A"', { size: 12.5, mono: true, tone: 'fail', bold: true });
+  f.path('M620 92 H494', { arrow: true, tone: 'pass', width: 2 });
+  f.text(520, 70, 'enqueue("D")', { size: 12.5, mono: true, tone: 'pass', bold: true });
+  f.text(W / 2, 30, 'First in, first out (FIFO): like a line at a café', { anchor: 'middle', size: 13, bold: true });
+  f.text(W / 2, 176, 'Both ends are touched, so a good queue makes both O(1).', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const ringBuffer: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'A ring buffer of capacity 8 stored in a plain array that wraps around. Items a to e occupy slots 5, 6, 7, 0 and 1. The head index 5 marks the oldest item and the tail index 2 marks the next slot to write. Both advance with modulo, so nothing ever shifts.');
+  const cx = 190, cy = 150, r = 102;
+  const filled: Record<number, string> = { 5: 'a', 6: 'b', 7: 'c', 0: 'd', 1: 'e' };
+  for (let i = 0; i < 8; i++) {
+    const ang = (-90 + i * 45) * Math.PI / 180;
+    const x = cx + r * Math.cos(ang), y = cy + r * Math.sin(ang);
+    const label = filled[i];
+    f.box(Math.round(x - 26), Math.round(y - 22), 52, 44, { tone: i === 5 ? 'accent' : i === 2 ? 'pass' : label ? 'info' : 'muted', dashed: !label, solid: i === 5 || i === 2, label: label ?? '', sub: String(i), mono: true, size: 14 });
+  }
+  f.lines(360, 70, ['head = 5   (oldest: "a")', 'tail = 2   (next write)'], { size: 13, mono: true, bold: true, gap: 24 });
+  f.lines(360, 140, ['write:  buffer[tail] = x', '        tail = (tail + 1) % 8', 'read:   head = (head + 1) % 8'], { size: 12, mono: true, tone: 'ink', gap: 20 });
+  f.lines(360, 224, ['Nothing ever shifts, so', 'both ends are O(1). When it is', 'full, a write replaces the oldest.'], { size: 12.5, tone: 'muted', gap: 18 });
+  return f;
+};
+
+const monotonicStack: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'A monotonic stack for next greater element on 2, 1, 5, 3, 4. After index 0 the stack holds 2. After index 1 it holds 2 and 1. When 5 arrives it pops 1 and 2, because 5 is their next greater element, and the stack holds 5. Then 3 is pushed, and when 4 arrives it pops 3 and the stack holds 5 and 4.');
+  const cols: { head: string; stack: number[]; note: string }[] = [
+    { head: 'i=0  value 2', stack: [2], note: '' },
+    { head: 'i=1  value 1', stack: [2, 1], note: '' },
+    { head: 'i=2  value 5', stack: [5], note: 'pops 1, then 2' },
+    { head: 'i=3  value 3', stack: [5, 3], note: '' },
+    { head: 'i=4  value 4', stack: [5, 4], note: 'pops 3' },
+  ];
+  cols.forEach((c, i) => {
+    const x = 14 + i * 124;
+    f.text(x + 48, 24, c.head, { anchor: 'middle', size: 11.5, bold: true, mono: true });
+    c.stack.forEach((v, k) => f.box(x, 150 - k * 40, 96, 34, { tone: k === c.stack.length - 1 ? 'accent' : 'info', solid: k === c.stack.length - 1, label: String(v), mono: true, size: 14 }));
+    if (c.note) f.text(x + 48, 222, c.note, { anchor: 'middle', size: 12, tone: 'pass', bold: true });
+  });
+  f.line(14, 196, 626, 196, { tone: 'muted' });
+  f.text(W / 2, 254, 'The stack stays decreasing from bottom to top. A bigger value pops smaller ones:', { anchor: 'middle', size: 12.5 });
+  f.text(W / 2, 272, 'it is their "next greater". Each index is pushed once and popped once → O(n).', { anchor: 'middle', size: 12.5, tone: 'muted' });
+  return f;
+};
+
 export const dsFigures: Record<string, FigureBuilder> = {
   'ds-array-memory': arrayMemory,
   'ds-array-growth': arrayGrowth,
@@ -157,4 +226,8 @@ export const dsFigures: Record<string, FigureBuilder> = {
   'ds-hash-chain': hashChain,
   'ds-hash-resize': hashResize,
   'ds-map-vs-object': mapVsObject,
+  'ds-stack-lifo': stackLifo,
+  'ds-queue-fifo': queueFifo,
+  'ds-ring-buffer': ringBuffer,
+  'ds-monotonic-stack': monotonicStack,
 };
