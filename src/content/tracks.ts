@@ -27,6 +27,11 @@ export const trackMeta: TrackMeta[] = [
     blurb: 'Write tests that catch real bugs: cases and edge cases, test doubles, async code and timers, React Testing Library, TDD and design for testability. Many exercises grade the tests you write against deliberately broken implementations.',
   },
   {
+    id: 'pat',
+    title: 'Design patterns in JS/TS',
+    blurb: 'The patterns that keep real code flexible, written the JavaScript way with functions and closures: factories and builders, strategy and state, observers, decorators and middleware, commands and undo, adapters, composites and visitors.',
+  },
+  {
     id: 'react',
     title: 'React, under the hood',
     blurb: 'Components, state, effects, custom hooks and architecture patterns — tested through the DOM, the way you would in a real codebase.',
