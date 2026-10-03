@@ -12,6 +12,11 @@ export const trackMeta: TrackMeta[] = [
     blurb: 'Type-level exercises checked by the actual compiler: generics, mapped and conditional types, narrowing.',
   },
   {
+    id: 'ds',
+    title: 'Data structures, from scratch',
+    blurb: 'How arrays, hash tables, lists, trees, heaps and graphs actually work — build each one yourself, then use it to solve real problems.',
+  },
+  {
     id: 'react',
     title: 'React, under the hood',
     blurb: 'Components, state, effects, custom hooks and architecture patterns — tested through the DOM, the way you would in a real codebase.',
