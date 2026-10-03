@@ -32,6 +32,11 @@ export const trackMeta: TrackMeta[] = [
     blurb: 'The patterns that keep real code flexible, written the JavaScript way with functions and closures: factories and builders, strategy and state, observers, decorators and middleware, commands and undo, adapters, composites and visitors.',
   },
   {
+    id: 'sec',
+    title: 'Web security',
+    blurb: 'Defensive web security you can code and test: escaping and XSS, injection and path traversal, passwords, sessions and tokens, cookies, CORS and CSRF, security headers and CSP, validation and uploads, supply-chain and secrets. Several exercises grade the security tests you write against vulnerable implementations.',
+  },
+  {
     id: 'react',
     title: 'React, under the hood',
     blurb: 'Components, state, effects, custom hooks and architecture patterns — tested through the DOM, the way you would in a real codebase.',
