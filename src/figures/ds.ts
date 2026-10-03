@@ -614,7 +614,7 @@ const fenwickTree: FigureBuilder = () => {
 /* ───────────────────────── 9 · Choosing structures ───────────────────────── */
 
 const structureChooser: FigureBuilder = () => {
-  const f = new Fig(W, 366, 'A chooser mapping what a problem needs to the data structure to reach for: fast lookup by key, a hash map or set; most recent first, a stack; first come first served, a queue, deque or ring buffer; smallest or largest next, a heap; sorted order with fast search, a sorted array with binary search or a BST; find things by prefix, a trie; are these connected over time, union-find; paths, ordering or relationships, a graph; range totals possibly with updates, prefix sums or a Fenwick tree.');
+  const f = new Fig(W, 382, 'A chooser mapping what a problem needs to the data structure to reach for: fast lookup by key, a hash map or set; most recent first, a stack; first come first served, a queue, deque or ring buffer; smallest or largest next, a heap; sorted order with fast search, a sorted array with binary search or a BST; find things by prefix, a trie; are these connected over time, union-find; paths, ordering or relationships, a graph; range totals possibly with updates, prefix sums or a Fenwick tree.');
   const rows: [string, string, Tone][] = [
     ['fast lookup by key', 'Map / Set', 'info'],
     ['most recent first (undo, matching)', 'Stack', 'info'],
@@ -634,7 +634,7 @@ const structureChooser: FigureBuilder = () => {
     f.path(`M320 ${y + 15} H356`, { arrow: true, tone: 'muted', width: 1.8 });
     f.box(360, y, 264, 30, { tone, solid: true, label: use, size: 12 });
   });
-  f.text(W / 2, 356, 'Start from the operations you need and how often; the structure follows.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  f.text(W / 2, 370, 'Start from the operations you need and how often; the structure follows.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
   return f;
 };
 

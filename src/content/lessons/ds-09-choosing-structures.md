@@ -28,6 +28,12 @@ The size of the input narrows the choices before you think about structures at a
 
 ![Growth rates, the input size each can handle in about a second, and examples](fig:ds-complexity-ladder "Roughly 10⁸ simple steps per second: 100 000 items rules out O(n²) but allows O(n log n).")
 
+```js try predict
+const n = 100000;
+console.log('n log n ≈', Math.round(n * Math.log2(n)).toLocaleString('en-US'), 'steps');
+console.log('n²      =', (n * n).toLocaleString('en-US'), 'steps');   // about 10¹⁰: far too many
+```
+
 A constraint like "up to 100 000 items" is a hint: an O(n²) approach (≈ 10¹⁰ steps) is out, so look for a **hash map**, a **sort**, a **heap** or a **single pass** (see the earlier lessons for each). "Up to 20 items" suggests brute force or backtracking is fine.
 
 ## Two structures are better than one
