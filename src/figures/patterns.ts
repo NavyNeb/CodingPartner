@@ -119,6 +119,77 @@ const flagsVsState: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 3 · Observer and pub/sub ───────────────────────── */
+
+const observerFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'The observer pattern. A subject, here a stock price, keeps a list of subscribers. When the price changes it notifies every subscriber, such as a chart, an alert check and a log writer, and none of them are known by name to the subject. Subscribers can join and leave at any time.');
+  f.box(16, 80, 170, 80, { tone: 'accent', solid: true });
+  f.text(101, 110, 'price', { anchor: 'middle', size: 15, bold: true });
+  f.text(101, 132, 'the subject', { anchor: 'middle', size: 12 });
+  const subs = ['chart.update', 'alert.check', 'log.write'];
+  subs.forEach((s, i) => {
+    const y = 24 + i * 70;
+    f.box(380, y, 240, 44, { tone: 'info', label: s + '(price)', mono: true, size: 11.5 });
+    f.path(`M188 120 L376 ${y + 22}`, { arrow: true, tone: 'accent', width: 1.8 });
+  });
+  f.text(282, 118, 'notify', { anchor: 'middle', size: 11.5, tone: 'accent', bold: true });
+  f.text(101, 190, 'subscribe(fn) adds a listener', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(101, 208, 'the returned function removes it', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(W / 2, 240, 'The subject knows a list of functions, not who they belong to.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const pubsubFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Publish and subscribe. Publishers send messages to named topics on a bus. Subscribers listen to topics. Publishers and subscribers never reference each other: the bus is the only thing they share, so either side can change independently.');
+  ['cart', 'checkout'].forEach((p, i) => {
+    const y = 40 + i * 90;
+    f.box(16, y, 150, 50, { tone: 'info', label: p, size: 12.5 });
+    f.path(`M168 ${y + 25} L236 120`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(91, 24, 'publishers', { anchor: 'middle', size: 12, bold: true, tone: 'info' });
+  f.box(240, 50, 160, 140, { tone: 'accent', solid: true });
+  f.text(320, 78, 'event bus', { anchor: 'middle', size: 14, bold: true });
+  f.lines(262, 108, ['"item:added"', '"order:paid"', '"user:logout"'], { size: 11.5, mono: true, gap: 20 });
+  ['badge', 'analytics'].forEach((p, i) => {
+    const y = 40 + i * 90;
+    f.box(474, y, 150, 50, { tone: 'pass', label: p, size: 12.5 });
+    f.path(`M402 120 L470 ${y + 25}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(549, 24, 'subscribers', { anchor: 'middle', size: 12, bold: true, tone: 'pass' });
+  f.text(W / 2, 236, 'Neither side imports the other. Add a subscriber without touching a publisher.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const leakFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A listener leak. A long-lived emitter keeps a list of listener functions. A widget subscribed to it but was removed from the page without unsubscribing. The emitter still holds the widget listener, so the widget and everything it references can never be freed, and the stale listener keeps running.');
+  f.box(16, 30, 250, 150, { tone: 'accent' });
+  f.text(141, 56, 'emitter (lives forever)', { anchor: 'middle', size: 13, bold: true });
+  f.lines(36, 84, ['listeners = [', '  fnFromWidget1,', '  fnFromWidget2,', '  fnFromWidget3 ]'], { size: 11.5, mono: true, gap: 20 });
+  f.box(380, 40, 244, 56, { tone: 'muted', dashed: true, label: 'widget 2 (removed from page)', size: 11.5 });
+  f.path('M268 110 C330 110 340 90 376 82', { arrow: true, tone: 'fail', width: 2 });
+  f.text(322, 130, 'still holds it', { anchor: 'middle', size: 11.5, tone: 'fail', bold: true });
+  f.box(380, 130, 244, 50, { tone: 'fail', solid: true, label: 'never freed, still runs', size: 12 });
+  f.text(W / 2, 210, 'Every subscribe needs a matching unsubscribe when its owner goes away.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 236, 'Return an unsubscribe function and keep it in a scope you dispose.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const signalGraph: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A signal dependency graph. Two signals, a and b, feed a computed value sum equals a plus b, which feeds an effect that renders. Setting a re-evaluates the computed and re-runs the effect. A signal nothing depends on triggers nothing.');
+  f.box(16, 30, 120, 44, { tone: 'info', label: 'a = signal(1)', mono: true, size: 11 });
+  f.box(16, 110, 120, 44, { tone: 'info', label: 'b = signal(2)', mono: true, size: 11 });
+  f.box(236, 70, 170, 54, { tone: 'accent', solid: true, label: 'sum = a + b', mono: true, size: 12 });
+  f.box(500, 70, 124, 54, { tone: 'pass', solid: true, label: 'render()', mono: true, size: 12 });
+  f.path('M138 52 L234 88', { arrow: true, tone: 'muted', width: 1.8 });
+  f.path('M138 132 L234 106', { arrow: true, tone: 'muted', width: 1.8 });
+  f.path('M408 97 H496', { arrow: true, tone: 'muted', width: 1.8 });
+  f.text(321, 56, 'computed (cached)', { anchor: 'middle', size: 11, tone: 'accent' });
+  f.text(562, 56, 'effect', { anchor: 'middle', size: 11, tone: 'pass' });
+  f.text(W / 2, 190, 'a.set(5): sum is marked stale, then render() re-runs and reads the new sum', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 218, 'Dependencies are discovered automatically by watching what each function reads.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const patternFigures: Record<string, FigureBuilder> = {
   'pat-factory': factoryFigure,
   'pat-builder': builderFigure,
@@ -126,4 +197,8 @@ export const patternFigures: Record<string, FigureBuilder> = {
   'pat-strategy': strategyFigure,
   'pat-state-diagram': stateDiagram,
   'pat-flags-vs-state': flagsVsState,
+  'pat-observer': observerFigure,
+  'pat-pubsub': pubsubFigure,
+  'pat-leak': leakFigure,
+  'pat-signals': signalGraph,
 };
