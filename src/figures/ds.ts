@@ -529,6 +529,88 @@ const topoSort: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 8 · Specialist structures ───────────────────────── */
+
+const dsuForest: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Union-find stores each set as a tree where every node points to its parent and the root points to itself. Before union(1, 3) there are sets {0,1}, {2,3} and {4}. After it, the root of one tree is attached under the root of the other, giving sets {0,1,2,3} and {4}.');
+  const up = (a: Pt, b: Pt) => darrow(f, a, b, 'ink');
+  const b0: Pt = [60, 70], b1: Pt = [60, 150], b2: Pt = [150, 70], b3: Pt = [150, 150], b4: Pt = [236, 70];
+  up(b1, b0); up(b3, b2);
+  tnode(f, b0, '0', 'accent'); tnode(f, b1, '1'); tnode(f, b2, '2', 'accent'); tnode(f, b3, '3'); tnode(f, b4, '4', 'accent');
+  f.text(150, 206, 'before: three sets', { anchor: 'middle', size: 12.5, tone: 'muted', bold: true });
+  f.path('M286 110 H350', { arrow: true, tone: 'accent', width: 2 });
+  f.text(318, 98, 'union(1, 3)', { anchor: 'middle', size: 12, mono: true, bold: true, tone: 'accent' });
+  const a0: Pt = [450, 60], a1: Pt = [400, 130], a2: Pt = [500, 130], a3: Pt = [500, 200], a4: Pt = [585, 60];
+  up(a1, a0); up(a2, a0); up(a3, a2);
+  tnode(f, a0, '0', 'accent'); tnode(f, a1, '1'); tnode(f, a2, '2'); tnode(f, a3, '3'); tnode(f, a4, '4', 'accent');
+  f.text(495, 246, 'after: sets {0,1,2,3} and {4}', { anchor: 'middle', size: 12.5, tone: 'muted', bold: true });
+  f.text(W / 2, 276, 'find(x) climbs parents to the root (the node that is its own parent). Same root = same set.', { anchor: 'middle', size: 12, tone: 'ink' });
+  return f;
+};
+
+const dsuCompress: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Path compression. On the left, a chain of five nodes where each points to the one before it, so find(4) walks four steps. On the right, after find(4) every node on that path points directly at the root, so later finds take one step.');
+  const chain: Pt[] = Array.from({ length: 5 }, (_, i) => [90, 28 + i * 46] as Pt);
+  for (let i = 1; i < 5; i++) darrow(f, chain[i], chain[i - 1], 'ink');
+  chain.forEach((p, i) => tnode(f, p, String(i), i === 0 ? 'accent' : 'info'));
+  f.text(90, 262, 'before: find(4) = 4 steps', { anchor: 'middle', size: 12.5, tone: 'fail', bold: true });
+  f.path('M170 120 H260', { arrow: true, tone: 'accent', width: 2 });
+  f.text(215, 108, 'find(4)', { anchor: 'middle', size: 12, mono: true, bold: true, tone: 'accent' });
+  const root: Pt = [440, 40];
+  const kids: Pt[] = [[340, 150], [410, 150], [480, 150], [550, 150]];
+  tnode(f, root, '0', 'accent');
+  kids.forEach((p, i) => { darrow(f, p, root, 'ink'); tnode(f, p, String(i + 1), 'info'); });
+  f.text(445, 196, 'after: every node on the path now points', { anchor: 'middle', size: 12.5, tone: 'pass', bold: true });
+  f.text(445, 214, 'straight at the root: later finds take 1 step', { anchor: 'middle', size: 12.5, tone: 'pass', bold: true });
+  f.text(W / 2, 282, 'Path compression + union by size makes each operation almost O(1).', { anchor: 'middle', size: 12.5, tone: 'ink' });
+  return f;
+};
+
+const trieCounts: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'A trie holding car, cat and dog, where each node keeps a count of how many inserted words pass through it. Node c and node a both have count 2 because car and cat share the prefix ca; r and t have count 1 and end words; d, o and g have count 1. So the number of words starting with ca is read from node a in one walk.');
+  const P: Record<string, Pt> = { root: [320, 34], c: [190, 98], d: [450, 98], a: [190, 162], o: [450, 162], r: [130, 226], t: [250, 226], g: [450, 226] };
+  [['root', 'c'], ['root', 'd'], ['c', 'a'], ['d', 'o'], ['a', 'r'], ['a', 't'], ['o', 'g']].forEach(([u, v]) => tedge(f, P[u], P[v]));
+  const counts: Record<string, number> = { c: 2, a: 2, r: 1, t: 1, d: 1, o: 1, g: 1 };
+  const ends = new Set(['r', 't', 'g']);
+  tnode(f, P.root, '·', 'ink');
+  Object.keys(counts).forEach((k) => { tnode(f, P[k], k, ends.has(k) ? 'pass' : 'info'); f.text(P[k][0] + 24, P[k][1] - 12, '×' + counts[k], { size: 11.5, mono: true, bold: true, tone: 'accent' }); });
+  f.lines(500, 60, ['×n = how many', 'words pass through', 'this node'], { size: 11.5, tone: 'accent', gap: 16 });
+  f.lines(500, 130, ['green = a word', 'ends here'], { size: 11.5, tone: 'pass', gap: 16 });
+  f.text(20, 270, 'countPrefix("ca") = walk c → a, read the count: 2   (O(length of the prefix))', { size: 12, mono: true });
+  f.text(20, 290, 'erase("cat"): walk down decrementing each count, so "ca" drops from 2 to 1.', { size: 12, mono: true, tone: 'muted' });
+  return f;
+};
+
+const prefixSums: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'Prefix sums. The array 3, 1, 4, 1, 5 has prefix array 0, 3, 4, 8, 9, 14, where prefix[k] is the sum of the first k items. The sum of items 1 to 3 is prefix[4] minus prefix[1], which is 9 minus 3, equal to 6, found in constant time.');
+  const vals = [3, 1, 4, 1, 5];
+  const pref = [0, 3, 4, 8, 9, 14];
+  f.text(20, 22, 'array', { size: 12, tone: 'muted', bold: true });
+  vals.forEach((v, i) => f.box(60 + i * 84, 30, 76, 40, { tone: i >= 1 && i <= 3 ? 'accent' : 'info', solid: i >= 1 && i <= 3, label: String(v), mono: true, size: 15 }));
+  f.text(20, 104, 'prefix[k] = sum of the first k items', { size: 12, tone: 'muted', bold: true });
+  pref.forEach((v, k) => f.box(18 + k * 84, 112, 76, 40, { tone: k === 1 || k === 4 ? 'accent' : 'ink', solid: k === 1 || k === 4, label: String(v), mono: true, size: 15 }));
+  pref.forEach((_, k) => f.text(56 + k * 84, 168, 'k=' + k, { anchor: 'middle', size: 11, mono: true, tone: 'muted' }));
+  f.text(W / 2, 206, 'sum(l..r) = prefix[r + 1] − prefix[l]', { anchor: 'middle', size: 14, mono: true, bold: true });
+  f.text(W / 2, 230, 'sum(1..3) = prefix[4] − prefix[1] = 9 − 3 = 6   →   build once in O(n), every query is O(1)', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const fenwickTree: FigureBuilder = () => {
+  const f = new Fig(W, 310, 'A Fenwick tree over eight positions. Entry i stores the sum of the i minus lowbit of i, up to i, range: entry 1 covers position 1; entry 2 covers 1 to 2; entry 3 covers 3; entry 4 covers 1 to 4; entry 5 covers 5; entry 6 covers 5 to 6; entry 7 covers 7; entry 8 covers 1 to 8. A prefix sum of the first seven positions adds entries 7, 6 and 4.');
+  const x0 = 24, cw = 74;
+  for (let i = 1; i <= 8; i++) f.box(x0 + (i - 1) * cw, 16, cw - 6, 28, { tone: 'ink', label: String(i), mono: true, size: 13 });
+  const bar = (i: number, row: number, from: number, len: number, hot: boolean) => f.box(x0 + (from - 1) * cw, 58 + row * 36, len * cw - 6, 28, { tone: hot ? 'accent' : 'info', solid: hot, label: `T[${i}]`, mono: true, size: 12.5 });
+  [1, 3, 5, 7].forEach((i) => bar(i, 0, i, 1, i === 7));
+  bar(2, 1, 1, 2, false); bar(6, 1, 5, 2, true);
+  bar(4, 2, 1, 4, true);
+  bar(8, 3, 1, 8, false);
+  f.text(20, 214, 'T[i] covers the positions (i − lowbit(i), i], where lowbit(i) is the lowest set bit of i.', { size: 12, tone: 'muted' });
+  f.text(20, 238, 'prefix(7) = T[7] + T[6] + T[4]      (drop the lowest set bit each step: 7 → 6 → 4 → 0)', { size: 12, mono: true, bold: true, tone: 'accent' });
+  f.text(20, 260, 'update(3)  touches  T[3], T[4], T[8]  (add the lowest set bit each step: 3 → 4 → 8)', { size: 12, mono: true, tone: 'ink' });
+  f.text(W / 2, 292, 'Both walks take at most log₂ n steps: point update and prefix sum are O(log n).', { anchor: 'middle', size: 12.5, bold: true });
+  return f;
+};
+
 export const dsFigures: Record<string, FigureBuilder> = {
   'ds-array-memory': arrayMemory,
   'ds-array-growth': arrayGrowth,
@@ -559,4 +641,9 @@ export const dsFigures: Record<string, FigureBuilder> = {
   'ds-bfs-layers': bfsLayers,
   'ds-grid-islands': gridIslands,
   'ds-topo-sort': topoSort,
+  'ds-dsu-forest': dsuForest,
+  'ds-dsu-compress': dsuCompress,
+  'ds-trie-counts': trieCounts,
+  'ds-prefix-sums': prefixSums,
+  'ds-fenwick': fenwickTree,
 };
