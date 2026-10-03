@@ -296,6 +296,69 @@ const cspNonce: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 6 · Validation, uploads, rate limits, logs ───────────────────────── */
+
+const validationPipeline: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Validating input in layers. First check the shape and types against a schema and keep only known fields. Then normalise, for example trim and lower-case. Then apply business rules, then check the caller is allowed to do this. Reject bad input with all its errors rather than trying to repair it, and never copy unknown fields into your model.');
+  const steps: [string, string, Tone][] = [['shape', 'schema: types, sizes, enums', 'accent'], ['normalise', 'trim, lower-case', 'info'], ['business rules', 'stock > 0, date in future', 'info'], ['authorise', 'may this user do it?', 'pass']];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 30, 146, 80, { tone, solid: i === 0 });
+    f.text(x + 73, 58, t, { anchor: 'middle', size: 13, bold: true });
+    f.text(x + 73, 84, sub, { anchor: 'middle', size: 10.5 });
+    if (i < 3) f.path(`M${x + 148} 70 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 146, 'Allowlist the fields: take only { name, email, age } and ignore the rest.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 172, 'Otherwise a client can send role: "admin" or isPaid: true (mass assignment).', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 208, 'Report every problem at once. Reject; do not guess a repair.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 236, 'Client-side checks are for users; server-side checks are for security.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const uploadChecks: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Checks for an uploaded file. Limit the size, detect the real type from the first bytes instead of trusting the name or the declared content type, allow only expected types, make sure the extension agrees with the content, sanitise the file name, then store the file outside the web root under a random name and serve it with nosniff and a download disposition.');
+  const steps: [string, string][] = [
+    ['1 · size limit', 'reject huge or empty files'],
+    ['2 · real type', 'read magic bytes, not the name'],
+    ['3 · allowlist', 'only the types you expect'],
+    ['4 · extension agrees', '.png must really be a PNG'],
+    ['5 · safe name', 'no paths, dots, control chars'],
+    ['6 · store safely', 'outside web root, random name'],
+  ];
+  steps.forEach(([t, sub], i) => {
+    const col = i % 2, row = Math.floor(i / 2);
+    const x = 16 + col * 312, y = 14 + row * 70;
+    f.box(x, y, 296, 58, { tone: i === 5 ? 'pass' : 'accent', solid: i === 5 });
+    f.text(x + 148, y + 24, t, { anchor: 'middle', size: 13, bold: true });
+    f.text(x + 148, y + 44, sub, { anchor: 'middle', size: 11.5 });
+  });
+  f.text(W / 2, 244, 'The file name and Content-Type are claims by the uploader. The bytes are the evidence.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 270, 'Serve with X-Content-Type-Options: nosniff and Content-Disposition: attachment.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const tokenBucket: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'A token bucket rate limiter. The bucket holds up to a capacity of tokens and refills at a steady rate. Each request takes a token. Short bursts up to the capacity are allowed. When the bucket is empty, requests are refused with a retry-after time until enough tokens have refilled.');
+  f.box(16, 30, 150, 110, { tone: 'info' });
+  f.text(91, 56, 'bucket', { anchor: 'middle', size: 13, bold: true, tone: 'info' });
+  [0, 1, 2, 3, 4].forEach((i) => f.box(34 + i * 24, 80, 18, 36, { tone: i < 3 ? 'pass' : 'muted', solid: i < 3, dashed: i >= 3 }));
+  f.text(91, 134, 'capacity 5, 3 left', { anchor: 'middle', size: 10.5, tone: 'muted' });
+  f.path('M168 85 H236', { arrow: true, tone: 'muted', width: 2 });
+  f.text(202, 74, 'request', { anchor: 'middle', size: 11, tone: 'muted' });
+  f.box(240, 50, 180, 70, { tone: 'pass', solid: true });
+  f.text(330, 80, 'take 1 token', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(330, 100, 'allowed', { anchor: 'middle', size: 11.5 });
+  f.box(444, 50, 180, 70, { tone: 'fail', solid: true });
+  f.text(534, 78, 'bucket empty', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(534, 98, '429, Retry-After: 2s', { anchor: 'middle', size: 11, mono: true });
+  f.path('M91 30 V24 H600', { tone: 'accent', width: 1.4, dashed: true });
+  f.text(330, 18, '+ refillPerSec tokens added continuously, capped at capacity', { anchor: 'middle', size: 10.5, tone: 'accent' });
+  f.text(W / 2, 176, 'Key it by user or IP (or both): one noisy client must not drain everyone else.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 204, 'Use it on login, password reset, search and any costly endpoint.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 236, 'Bursts are allowed up to the capacity; the long-run rate is the refill rate.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const securityFigures: Record<string, FigureBuilder> = {
   'sec-xss-flow': xssFlow,
   'sec-contexts': outputContexts,
@@ -312,4 +375,7 @@ export const securityFigures: Record<string, FigureBuilder> = {
   'sec-headers': headersFigure,
   'sec-csp-sources': cspSources,
   'sec-csp-nonce': cspNonce,
+  'sec-validation': validationPipeline,
+  'sec-upload': uploadChecks,
+  'sec-bucket': tokenBucket,
 };
