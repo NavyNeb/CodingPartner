@@ -356,6 +356,66 @@ const antiCorruption: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 7 · Composite, iterator and visitor ───────────────────────── */
+
+const compositeFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The composite pattern. A folder can contain files and other folders, and both files and folders answer the same call, size. A file returns its own size. A folder asks each child for its size and adds them up. The caller treats a single file and a whole tree of folders the same way.');
+  const node = (x: number, y: number, w: number, label: string, folder: boolean) =>
+    f.box(x, y, w, 38, { tone: folder ? 'accent' : 'pass', solid: folder, label, mono: true, size: 11.5 });
+  node(250, 16, 140, 'root/ (folder)', true);
+  node(110, 96, 110, 'a.txt  10', false);
+  node(330, 96, 150, 'docs/ (folder)', true);
+  node(260, 176, 100, 'b.txt  5', false);
+  node(400, 176, 100, 'c.txt  7', false);
+  f.path('M300 56 L170 94', { tone: 'muted', width: 1.6 });
+  f.path('M340 56 L400 94', { tone: 'muted', width: 1.6 });
+  f.path('M380 136 L310 174', { tone: 'muted', width: 1.6 });
+  f.path('M430 136 L450 174', { tone: 'muted', width: 1.6 });
+  f.box(16, 60, 76, 26, { tone: 'pass', solid: true, label: 'leaf', size: 11 });
+  f.box(16, 94, 76, 26, { tone: 'accent', solid: true, label: 'composite', size: 11 });
+  f.text(560, 58, 'size() = 22', { anchor: 'middle', size: 12.5, mono: true, bold: true, tone: 'accent' });
+  f.text(W / 2, 252, 'Leaf and composite share one interface, so callers never check which they have.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const iteratorFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A lazy iterator pipeline. A source produces natural numbers without end. A map step doubles each one, a filter keeps those above four, and take stops after three. Values flow through the pipeline one at a time and only when the consumer asks, so the infinite source is never fully produced.');
+  const steps: [string, string, Tone][] = [
+    ['naturals()', '1, 2, 3, 4 …', 'info'],
+    ['map(x → x*2)', '2, 4, 6, 8 …', 'accent'],
+    ['filter(> 4)', '6, 8, 10 …', 'accent'],
+    ['take(3)', '6, 8, 10', 'pass'],
+  ];
+  steps.forEach(([name, vals, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 40, 146, 76, { tone, solid: i === 3 });
+    f.text(x + 73, 68, name, { anchor: 'middle', size: 11.5, mono: true, bold: true });
+    f.text(x + 73, 96, vals, { anchor: 'middle', size: 11.5, mono: true });
+    if (i < 3) f.path(`M${x + 148} 78 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 156, 'pull-based: the consumer asks for the next value, each step does just enough', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 184, 'The source never runs out of numbers, but take(3) ends the whole chain.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 226, 'for…of and the iterator protocol are how JavaScript lets you build this.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const visitorFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The visitor pattern. A syntax tree has a few node kinds: num, add and mul. Many different operations, such as evaluate, stringify and simplify, each walk the same tree with their own handler for each node kind. A new operation is a new visitor, and the node definitions never change.');
+  f.box(16, 30, 200, 170, { tone: 'info' });
+  f.text(116, 54, 'the tree (stable)', { anchor: 'middle', size: 12.5, bold: true, tone: 'info' });
+  ['num', 'add', 'mul'].forEach((n, i) => f.box(46, 70 + i * 40, 140, 30, { tone: 'muted', label: `{ type: '${n}' }`, mono: true, size: 11 }));
+  const ops: [string, string][] = [['evaluate', 'num → value, add → a + b'], ['stringify', 'num → "3", add → "(a + b)"'], ['simplify', 'add(x, 0) → x']];
+  ops.forEach(([name, rule], i) => {
+    const y = 28 + i * 58;
+    f.box(330, y, 294, 48, { tone: 'accent', solid: i === 0 });
+    f.text(346, y + 20, name, { size: 12.5, bold: true, mono: true });
+    f.text(346, y + 38, rule, { size: 11 });
+    f.path(`M328 ${y + 24} L220 115`, { arrow: true, tone: 'muted', width: 1.4 });
+  });
+  f.text(W / 2, 236, 'New operation = one new visitor. No node type is edited.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const patternFigures: Record<string, FigureBuilder> = {
   'pat-factory': factoryFigure,
   'pat-builder': builderFigure,
@@ -376,4 +436,7 @@ export const patternFigures: Record<string, FigureBuilder> = {
   'pat-adapter': adapterFigure,
   'pat-facade': facadeFigure,
   'pat-acl': antiCorruption,
+  'pat-composite': compositeFigure,
+  'pat-iterator': iteratorFigure,
+  'pat-visitor': visitorFigure,
 };
