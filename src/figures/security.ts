@@ -115,6 +115,66 @@ const pollutionFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 3 · Passwords, sessions and tokens ───────────────────────── */
+
+const passwordStorage: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Storing and checking a password. At sign-up, combine the password with a random salt unique to that user, run a deliberately slow password hash, and store the salt and the hash, never the password. At login, repeat the same steps with the typed password and compare the result with the stored hash in constant time.');
+  f.text(16, 18, 'sign up', { size: 12.5, bold: true, tone: 'info' });
+  const up: [string, Tone][] = [['password', 'info'], ['+ random salt', 'accent'], ['slow hash', 'accent'], ['store salt + hash', 'pass']];
+  up.forEach(([t, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 28, 146, 44, { tone, solid: i === 3, label: t, size: 12 });
+    if (i < 3) f.path(`M${x + 148} 50 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(16, 108, 'log in', { size: 12.5, bold: true, tone: 'info' });
+  const inn: [string, Tone][] = [['typed password', 'info'], ['+ stored salt', 'accent'], ['same slow hash', 'accent'], ['constant-time compare', 'pass']];
+  inn.forEach(([t, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 118, 146, 44, { tone, solid: i === 3, label: t, size: 11.5 });
+    if (i < 3) f.path(`M${x + 148} 140 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 200, 'Salt: identical passwords get different hashes. Slow hash: guessing is expensive.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 226, 'Use bcrypt, scrypt, Argon2 or PBKDF2 from a vetted library, not SHA-256 and not your own.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 252, 'Never store, log or email a password. Never send a "forgot password" that reveals it.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const jwtAnatomy: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The anatomy of a signed token. Three base64url parts separated by dots: a header naming the algorithm, a payload of claims such as subject, expiry, issuer and audience, and a signature computed over the first two parts with a secret. The payload is readable by anyone, only tamper-proof because of the signature. The server must check the algorithm, the signature and the claims.');
+  const parts: [string, string, Tone][] = [['header', '{ "alg": "HS256" }', 'info'], ['payload', '{ "sub": "7", "exp": 2000, "iss": …, "aud": … }', 'accent'], ['signature', 'HMAC(secret, header.payload)', 'pass']];
+  const xs = [12, 170, 440];
+  const ws = [150, 262, 188];
+  parts.forEach(([t, sub, tone], i) => {
+    f.box(xs[i], 28, ws[i], 76, { tone, solid: i === 2 });
+    f.text(xs[i] + ws[i] / 2, 54, t, { anchor: 'middle', size: 13, bold: true });
+    f.text(xs[i] + ws[i] / 2, 82, sub.length > 28 ? sub.slice(0, 28) + '…' : sub, { anchor: 'middle', size: 10.5, mono: true });
+  });
+  f.text(164, 70, '.', { anchor: 'middle', size: 22, bold: true });
+  f.text(436, 70, '.', { anchor: 'middle', size: 22, bold: true });
+  f.text(W / 2, 134, 'verify in this order', { anchor: 'middle', size: 12.5, bold: true });
+  ['1 · alg is exactly what you expect', '2 · signature matches (constant time)', '3 · exp, nbf, iss, aud are right'].forEach((t, i) => f.box(16 + i * 208, 150, 200, 40, { tone: 'pass', label: t, size: 11 }));
+  f.text(W / 2, 222, 'Never trust the header to choose the algorithm: "none" means "no signature".', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.text(W / 2, 248, 'The payload is encoded, not encrypted: do not put secrets in it.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const sessionLifecycle: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The life of a session. Logging in creates a server-side session with a random identifier and rotates any earlier identifier to prevent fixation. Each use refreshes the idle timer, but the absolute lifetime keeps counting. The session ends at logout, at idle timeout, at the absolute timeout, or when the user changes their password and all sessions are destroyed.');
+  const nodes: [string, string, Tone][] = [['login', 'new random id', 'info'], ['active', 'idle timer resets', 'pass'], ['idle too long', 'expires', 'fail'], ['logout / password change', 'destroyed on server', 'fail']];
+  nodes.forEach(([t, sub, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 30, 146, 70, { tone, solid: i === 1 });
+    f.text(x + 73, 58, t, { anchor: 'middle', size: 11.5, bold: true });
+    f.text(x + 73, 82, sub, { anchor: 'middle', size: 11 });
+    if (i < 3) f.path(`M${x + 148} 65 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 140, 'Rotate the id at login and on privilege change (stops session fixation).', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 168, 'Two clocks: an idle timeout (slides) and an absolute lifetime (never extended).', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 196, 'The cookie holds only the random id; the data lives on the server.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 236, 'Destroying the server-side session is the only real logout.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const securityFigures: Record<string, FigureBuilder> = {
   'sec-xss-flow': xssFlow,
   'sec-contexts': outputContexts,
@@ -122,4 +182,7 @@ export const securityFigures: Record<string, FigureBuilder> = {
   'sec-injection': injectionFigure,
   'sec-traversal': traversalFigure,
   'sec-pollution': pollutionFigure,
+  'sec-password-storage': passwordStorage,
+  'sec-jwt': jwtAnatomy,
+  'sec-session': sessionLifecycle,
 };
