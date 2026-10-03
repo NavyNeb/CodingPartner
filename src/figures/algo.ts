@@ -322,6 +322,73 @@ const dpRobber: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 6 · Dynamic programming II ───────────────────────── */
+
+const dpGridPaths: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The number of paths from the top-left corner to each cell of a four by five grid when you may only move right or down. The first row and first column are all 1. Every other cell is the sum of the cell above and the cell to its left: for example the cell with 6 is 3 from above plus 3 from the left.');
+  const grid = [[1, 1, 1, 1, 1], [1, 2, 3, 4, 5], [1, 3, 6, 10, 15], [1, 4, 10, 20, 35]];
+  const x0 = 24, y0 = 30, sx = 74, sy = 54;
+  grid.forEach((row, r) => row.forEach((v, c) => {
+    const tone: Tone = r === 2 && c === 2 ? 'pass' : (r === 1 && c === 2) || (r === 2 && c === 1) ? 'accent' : 'info';
+    f.box(x0 + c * sx, y0 + r * sy, 64, 44, { tone, solid: tone !== 'info', label: String(v), mono: true, size: 16 });
+  }));
+  f.text(x0 + 4, 20, 'dp[r][c] = number of paths to cell (r, c)', { size: 12, bold: true, tone: 'muted' });
+  f.lines(412, 66, ['paths to a cell =', 'paths from above', '+ paths from the left', '', 'dp[2][2] = dp[1][2] + dp[2][1]', '         = 3 + 3 = 6'], { size: 12.5, mono: true, gap: 20 });
+  f.text(W / 2, 258, 'Two indexes make a table; each cell reads its neighbours above and to the left.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const dpLcsTable: FigureBuilder = () => {
+  const f = new Fig(W, 312, 'The longest common subsequence table for abcde and ace. Rows are prefixes of abcde, columns are prefixes of ace. A match adds 1 to the diagonal cell; otherwise a cell takes the larger of the cell above and the cell to the left. The bottom-right cell is 3: the subsequence ace.');
+  const A = ['∅', 'a', 'b', 'c', 'd', 'e'], B = ['∅', 'a', 'c', 'e'];
+  const table = [[0, 0, 0, 0], [0, 1, 1, 1], [0, 1, 1, 1], [0, 1, 2, 2], [0, 1, 2, 2], [0, 1, 2, 3]];
+  const x0 = 80, y0 = 50, sx = 58, sy = 38;
+  B.forEach((ch, j) => f.text(x0 + j * sx + 26, 40, ch, { anchor: 'middle', size: 14, mono: true, bold: true, tone: 'accent' }));
+  A.forEach((ch, i) => f.text(x0 - 14, y0 + i * sy + 24, ch, { anchor: 'end', size: 14, mono: true, bold: true, tone: 'accent' }));
+  const matches = new Set(['1,1', '3,2', '5,3']);
+  table.forEach((row, i) => row.forEach((v, j) => {
+    const match = matches.has(`${i},${j}`);
+    f.box(x0 + j * sx, y0 + i * sy, 52, 32, { tone: match ? 'pass' : i === 0 || j === 0 ? 'ink' : 'info', solid: match, label: String(v), mono: true, size: 14 });
+  }));
+  f.lines(336, 70, ['green = the letters match:', 'dp[i][j] = dp[i−1][j−1] + 1', '', 'otherwise take the better of', 'dp[i−1][j]  (drop a letter of a)', 'dp[i][j−1]  (drop a letter of b)', '', 'dp[5][3] = 3  →  "ace"'], { size: 12, mono: true, gap: 21 });
+  f.text(16, 24, 'rows: prefixes of "abcde"   columns: prefixes of "ace"', { size: 12, bold: true, tone: 'muted' });
+  return f;
+};
+
+const dpEditCell: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Edit distance: a cell depends on three neighbours. From the diagonal cell, replace or match the letter. From the cell above, delete a letter of a. From the cell to the left, insert a letter of b. The cell is one more than the cheapest of these, unless the letters are equal, when the diagonal is free.');
+  const bx = (x: number, y: number, l: string, tone: Tone) => f.box(x, y, 140, 52, { tone, label: l, mono: true, size: 12.5, solid: tone === 'pass' });
+  bx(30, 36, 'dp[i−1][j−1]', 'info'); bx(200, 36, 'dp[i−1][j]', 'info'); bx(30, 130, 'dp[i][j−1]', 'info'); bx(200, 130, 'dp[i][j]', 'pass');
+  f.path('M150 92 L214 134', { arrow: true, tone: 'accent', width: 2 });
+  f.path('M270 90 V126', { arrow: true, tone: 'fail', width: 2 });
+  f.path('M172 156 H196', { arrow: true, tone: 'pass', width: 2 });
+  f.text(344, 66, '↘ replace (or free match): +1 / +0', { size: 12.5, tone: 'accent', bold: true });
+  f.text(344, 110, '↓ delete a letter of a: +1', { size: 12.5, tone: 'fail', bold: true });
+  f.text(344, 156, '→ insert a letter of b: +1', { size: 12.5, tone: 'pass', bold: true });
+  f.lines(30, 224, ['dp[i][j] = fewest edits turning the first i letters of a into the first j letters of b'], { size: 12, mono: true });
+  f.text(W / 2, 250, 'If the two letters are equal the diagonal is free; else 1 + the cheapest of the three.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const dpSubsetSum: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Subset sum for items 1, 5, 11, 5 with target 11, shown as the set of reachable sums after each item. Start: only 0. After 1: 0 and 1. After 5: 0, 1, 5, 6. After 11: 0, 1, 5, 6, 11. After the last 5: 0, 1, 5, 6, 10, 11. Sum 11 is reachable, so the items can be split into two equal halves.');
+  const rows: [string, number[]][] = [['start', [0]], ['+ 1', [0, 1]], ['+ 5', [0, 1, 5, 6]], ['+ 11', [0, 1, 5, 6, 11]], ['+ 5', [0, 1, 5, 6, 10, 11]]];
+  const x0 = 70, sx = 46;
+  f.text(8, 26, 'sum:', { size: 12, tone: 'muted', bold: true });
+  for (let c = 0; c <= 11; c++) f.text(x0 + c * sx + 20, 26, String(c), { anchor: 'middle', size: 12, mono: true, tone: 'muted' });
+  rows.forEach(([label, reach], r) => {
+    const y = 38 + r * 42;
+    f.text(8, y + 22, label, { size: 12.5, mono: true, bold: true });
+    for (let c = 0; c <= 11; c++) {
+      const on = reach.includes(c);
+      f.box(x0 + c * sx, y, 40, 32, { tone: on ? (c === 11 ? 'pass' : 'accent') : 'muted', solid: on, dashed: !on, label: on ? '✓' : '', mono: true, size: 13 });
+    }
+  });
+  f.text(W / 2, 266, 'reachable[s] after an item x: it was reachable before, or s − x was (take x). Target 11 is reachable → true.', { anchor: 'middle', size: 11.5, tone: 'ink' });
+  f.text(W / 2, 284, 'For 0/1 choices, update sums from high to low so each item is used at most once.', { anchor: 'middle', size: 11.5, tone: 'muted', italic: true });
+  return f;
+};
+
 export const algoFigures: Record<string, FigureBuilder> = {
   'alg-call-stack': callStack,
   'alg-fib-tree': fibTree,
@@ -341,4 +408,8 @@ export const algoFigures: Record<string, FigureBuilder> = {
   'alg-dp-fib-table': dpFibTable,
   'alg-dp-coin-table': dpCoinTable,
   'alg-dp-robber': dpRobber,
+  'alg-dp-grid-paths': dpGridPaths,
+  'alg-dp-lcs-table': dpLcsTable,
+  'alg-dp-edit-cell': dpEditCell,
+  'alg-dp-subset-sum': dpSubsetSum,
 };
