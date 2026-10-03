@@ -225,6 +225,61 @@ const retryBackoff: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 5 · React Testing Library ───────────────────────── */
+
+const queryLadder: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The Testing Library query priority. Prefer getByRole with a name, then getByLabelText for form fields, then getByText for plain content, and use getByTestId only as a last resort. The higher queries match what users and screen readers actually perceive, so the test also checks accessibility.');
+  const rows: [string, string, Tone][] = [
+    ['getByRole("button", { name: "Save" })', 'best: what assistive tech sees', 'pass'],
+    ['getByLabelText("Email")', 'form fields, via their label', 'pass'],
+    ['getByText("Saved!")', 'plain content', 'info'],
+    ['getByTestId("save-btn")', 'last resort: invisible to users', 'fail'],
+  ];
+  rows.forEach(([code, why, tone], i) => {
+    const y = 20 + i * 54;
+    f.box(16, y, 330, 42, { tone, label: code, mono: true, size: 11.5 });
+    f.text(362, y + 26, why, { size: 12, tone: tone === 'fail' ? 'fail' : 'muted' });
+  });
+  f.text(W / 2, 252, 'Query like a user, and your test survives refactors and checks accessibility for free.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const queryKinds: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'The three query families. getBy throws if the element is missing and is used for things that must be there. queryBy returns null if missing and is used to assert that something is absent. findBy returns a promise that waits for the element to appear and is used for things that show up later.');
+  const col = (x: number, name: string, how: string[], use: string, tone: Tone) => {
+    f.box(x, 20, 196, 180, { tone });
+    f.text(x + 98, 46, name, { anchor: 'middle', size: 14, bold: true, mono: true, tone });
+    f.lines(x + 12, 76, how, { size: 11.5, gap: 20 });
+    f.text(x + 98, 176, use, { anchor: 'middle', size: 11.5, bold: true, tone });
+  };
+  col(16, 'getBy…', ['sync', 'throws if missing', 'throws if several'], 'must be there now', 'pass');
+  col(222, 'queryBy…', ['sync', 'null if missing', 'throws if several'], 'assert it is gone', 'info');
+  col(428, 'findBy…', ['async: await it', 'waits up to a moment', 'rejects on timeout'], 'appears later', 'accent');
+  f.text(W / 2, 232, 'Pick by the question: must it exist, must it be absent, or will it arrive?', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const rtlFlow: FigureBuilder = () => {
+  const f = new Fig(W, 230, 'The flow of a component test. Render the component, find elements the way a user would, interact with userEvent, then assert on what the screen shows. The test never touches state or internals.');
+  const steps: [string, string, Tone][] = [
+    ['render', 'render(<Counter />)', 'info'],
+    ['find', 'screen.getByRole(…)', 'accent'],
+    ['act', 'await userEvent.click(…)', 'accent'],
+    ['assert', 'expect(…).toBeInTheDocument()', 'pass'],
+  ];
+  steps.forEach(([title, code, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 30, 146, 110, { tone });
+    f.text(x + 73, 56, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.text(x + 73, 92, code.slice(0, 18), { anchor: 'middle', size: 10.5, mono: true });
+    f.text(x + 73, 110, code.slice(18), { anchor: 'middle', size: 10.5, mono: true });
+    if (i < 3) f.path(`M${x + 148} 85 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 176, 'Test what the user can see and do, not how the component is built inside.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 204, 'Rename a state variable and every test still passes. Break the button and one fails.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const testingFigures: Record<string, FigureBuilder> = {
   'tst-pyramid': testPyramid,
   'tst-aaa': arrangeActAssert,
@@ -239,4 +294,7 @@ export const testingFigures: Record<string, FigureBuilder> = {
   'tst-fake-clock': fakeClock,
   'tst-debounce': debounceTimeline,
   'tst-retry': retryBackoff,
+  'tst-query-ladder': queryLadder,
+  'tst-query-kinds': queryKinds,
+  'tst-rtl-flow': rtlFlow,
 };
