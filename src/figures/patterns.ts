@@ -66,8 +66,64 @@ const singletonRisk: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 2 · Strategy and state ───────────────────────── */
+
+const strategyFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The strategy pattern. A checkout has one slot for a pricing strategy. Any of several interchangeable functions, such as percent off, flat off or no discount, can be plugged into that slot, and the checkout code does not change. The percent off strategy is currently plugged in.');
+  f.box(190, 16, 260, 56, { tone: 'info' });
+  f.text(320, 40, 'checkout(items, discount)', { anchor: 'middle', size: 12.5, mono: true, bold: true });
+  f.text(320, 60, 'the algorithm that stays the same', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.box(250, 100, 140, 40, { tone: 'accent', dashed: true, label: 'discount slot', size: 12 });
+  f.path('M320 74 V98', { arrow: true, tone: 'muted', width: 1.8 });
+  const opts: [string, boolean][] = [['percentOff(10)', true], ['flatOff(5)', false], ['noDiscount', false]];
+  opts.forEach(([label, on], i) => {
+    const x = 28 + i * 204;
+    f.box(x, 190, 184, 44, { tone: on ? 'pass' : 'muted', solid: on, dashed: !on, label, mono: true, size: 11.5 });
+    f.path(`M${x + 92} 188 L320 142`, { arrow: on, tone: on ? 'pass' : 'muted', dashed: !on, width: on ? 2.2 : 1.3 });
+  });
+  f.text(W / 2, 258, 'Swap the function, keep the code around it. No if/else chain to edit.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const stateDiagram: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A state diagram of an order. Pending goes to paid with pay, paid goes to shipped with ship, shipped goes to delivered with deliver. A pending or paid order can be cancelled with cancel. Delivered and cancelled are final: nothing leaves them.');
+  const names = ['pending', 'paid', 'shipped', 'delivered'];
+  names.forEach((n, i) => {
+    const x = 16 + i * 160;
+    f.box(x, 40, 120, 52, { tone: i === 3 ? 'pass' : 'info', solid: i === 3, label: n, mono: true, size: 12.5 });
+  });
+  ['pay()', 'ship()', 'deliver()'].forEach((a, i) => {
+    const x = 16 + i * 160 + 122;
+    f.path(`M${x} 66 H${x + 36}`, { arrow: true, tone: 'accent', width: 2 });
+    f.text(x + 18, 112, a, { anchor: 'middle', size: 10.5, mono: true, tone: 'accent' });
+  });
+  f.box(96, 150, 150, 52, { tone: 'fail', solid: true, label: 'cancelled', mono: true, size: 12.5 });
+  f.path('M76 94 L130 148', { arrow: true, tone: 'fail', width: 1.8 });
+  f.path('M236 94 L210 148', { arrow: true, tone: 'fail', width: 1.8 });
+  f.text(70, 138, 'cancel()', { anchor: 'middle', size: 10.5, mono: true, tone: 'fail' });
+  f.text(262, 138, 'cancel()', { anchor: 'middle', size: 10.5, mono: true, tone: 'fail' });
+  f.text(470, 160, 'delivered and cancelled are final', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 236, 'Only the arrows drawn are allowed. Everything else is an error by design.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const flagsVsState: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'Boolean flags versus a single state. Three booleans, isPaid, isShipped and isCancelled, allow eight combinations, and many of them make no sense, such as shipped but not paid. A single status field with five values allows only meaningful situations.');
+  f.box(16, 20, 296, 170, { tone: 'fail' });
+  f.text(164, 46, 'three booleans', { anchor: 'middle', size: 14, bold: true, tone: 'fail' });
+  f.lines(40, 76, ['isPaid, isShipped, isCancelled', '2 × 2 × 2 = 8 combinations', 'shipped but not paid?', 'cancelled and delivered?', '…you must guard every one'], { size: 12, gap: 20 });
+  f.box(328, 20, 296, 170, { tone: 'pass' });
+  f.text(476, 46, 'one status', { anchor: 'middle', size: 14, bold: true, tone: 'pass' });
+  f.lines(352, 76, ['status = pending | paid |', '  shipped | delivered | cancelled', '5 states, all meaningful', 'illegal combos cannot exist', 'transitions are one table'], { size: 12, gap: 20 });
+  f.text(W / 2, 226, 'Make illegal states unrepresentable.', { anchor: 'middle', size: 12.5, tone: 'muted', italic: true });
+  return f;
+};
+
 export const patternFigures: Record<string, FigureBuilder> = {
   'pat-factory': factoryFigure,
   'pat-builder': builderFigure,
   'pat-singleton': singletonRisk,
+  'pat-strategy': strategyFigure,
+  'pat-state-diagram': stateDiagram,
+  'pat-flags-vs-state': flagsVsState,
 };
