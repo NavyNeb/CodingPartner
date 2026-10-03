@@ -454,6 +454,77 @@ const sweepRooms: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 8 · Spotting the pattern ───────────────────────── */
+
+const patternSignals: FigureBuilder = () => {
+  const f = new Fig(W, 372, 'A guide from signals in a problem statement to the pattern to try: sorted input with a pair or triple, two pointers or binary search; longest or shortest contiguous run, sliding window or prefix sums; all combinations or placements, backtracking; count ways, min or max with choices, dynamic programming; fewest steps in an unweighted graph or grid, BFS; k largest or next smallest, a heap; intervals and scheduling, sort and greedy or sweep; are these connected, union-find or DFS; prefix queries and key lookups, trie or hash map.');
+  const rows: [string, string, Tone][] = [
+    ['sorted input; a pair or triple with a target', 'Two pointers · binary search', 'info'],
+    ['longest / shortest / best contiguous run', 'Sliding window · prefix sums', 'info'],
+    ['"all" combinations, orders, placements', 'Backtracking', 'accent'],
+    ['count ways / min / max with choices', 'Dynamic programming', 'accent'],
+    ['fewest steps (unweighted graph or grid)', 'BFS', 'pass'],
+    ['k largest · next smallest · merge sorted', 'Heap', 'pass'],
+    ['intervals, scheduling, "at most"', 'Sort + greedy · sweep', 'fail'],
+    ['are these connected? groups?', 'Union-find · DFS', 'fail'],
+    ['prefix queries · lookups by key', 'Trie · hash map', 'ink'],
+  ];
+  f.text(16, 18, 'a signal in the problem …', { size: 12, bold: true, tone: 'muted' });
+  f.text(376, 18, '… suggests', { size: 12, bold: true, tone: 'muted' });
+  rows.forEach(([sig, pat, tone], i) => {
+    const y = 28 + i * 36;
+    f.box(16, y, 336, 30, { tone: 'ink', label: sig, size: 12 });
+    f.path(`M356 ${y + 15} H372`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(376, y, 248, 30, { tone, solid: tone !== 'ink', label: pat, size: 12 });
+  });
+  f.text(W / 2, 362, 'Signals narrow the field; the brute force and the examples confirm the pick.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const constraintsGuide: FigureBuilder = () => {
+  const f = new Fig(W, 310, 'How the input size hints at the intended complexity. n up to 20 allows exponential work such as backtracking. n up to 500 allows cubic loops. n up to 5 000 allows quadratic. n up to 100 000 needs n log n: sorting, heaps, binary search, windows. n up to a million needs linear: one pass, hash maps, two pointers. Larger inputs need logarithmic or constant solutions: binary search on the answer or maths.');
+  const rows: [string, string, string, Tone][] = [
+    ['n ≤ 20', 'O(2ⁿ) · O(n!)', 'backtracking, bitmasks', 'fail'],
+    ['n ≤ 500', 'O(n³)', 'three loops, small DP tables', 'accent'],
+    ['n ≤ 5 000', 'O(n²)', 'pairwise DP, nested scans', 'accent'],
+    ['n ≤ 100 000', 'O(n log n)', 'sort, heap, binary search, windows', 'info'],
+    ['n ≤ 1 000 000', 'O(n)', 'one pass, hash map, two pointers', 'pass'],
+    ['n ≥ 10⁹', 'O(log n) · O(1)', 'binary search on the answer, maths', 'pass'],
+  ];
+  f.text(16, 20, 'input size', { size: 12, bold: true, tone: 'muted' });
+  f.text(152, 20, 'work you can afford', { size: 12, bold: true, tone: 'muted' });
+  f.text(318, 20, 'typical tools', { size: 12, bold: true, tone: 'muted' });
+  rows.forEach(([n, cost, tools, tone], i) => {
+    const y = 30 + i * 40;
+    f.box(16, y, 122, 32, { tone: 'ink', label: n, mono: true, size: 12.5 });
+    f.box(146, y, 156, 32, { tone, solid: true, label: cost, mono: true, size: 12.5 });
+    f.text(314, y + 21, tools, { size: 12, tone: 'ink' });
+  });
+  f.text(W / 2, 288, 'Read the constraints first: they tell you which row (and so which patterns) you are in.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 306, 'Roughly 10⁸ simple steps per second.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const bruteToPattern: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'From brute force to a pattern, twice. Longest substring without repeats: checking all substrings costs cubic time, extending from each start until a repeat is quadratic, and a sliding window with a last-seen map is linear. Pair with a target sum: trying every pair is quadratic, sorting then two pointers is n log n, and a hash map of seen values is linear.');
+  const rows: [string, [string, string, Tone][]][] = [
+    ['longest substring without repeats', [['all substrings, check each', 'O(n³)', 'fail'], ['extend from each start', 'O(n²)', 'accent'], ['window + last-seen map', 'O(n)', 'pass']]],
+    ['two numbers that sum to a target', [['try every pair', 'O(n²)', 'fail'], ['sort, then two pointers', 'O(n log n)', 'accent'], ['hash map of seen values', 'O(n)', 'pass']]],
+  ];
+  rows.forEach(([title, steps], r) => {
+    const y = 30 + r * 110;
+    f.text(16, y - 8, title, { size: 12.5, bold: true, tone: 'muted' });
+    steps.forEach(([label, cost, tone], i) => {
+      const x = 16 + i * 208;
+      f.box(x, y, 188, 58, { tone, solid: true, label, sub: cost, mono: false, size: 12.5 });
+      if (i < 2) f.path(`M${x + 190} ${y + 29} H${x + 206}`, { arrow: true, tone: 'muted', width: 1.8 });
+    });
+  });
+  f.text(W / 2, 258, 'Say the brute force out loud, find what it repeats, and let a pattern remove the repetition.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 278, 'Each arrow is one idea: a hash map, a sort, a window, a table, a heap.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const algoFigures: Record<string, FigureBuilder> = {
   'alg-call-stack': callStack,
   'alg-fib-tree': fibTree,
@@ -481,4 +552,7 @@ export const algoFigures: Record<string, FigureBuilder> = {
   'alg-interval-scheduling': intervalScheduling,
   'alg-jump-reach': jumpReach,
   'alg-sweep-rooms': sweepRooms,
+  'alg-pattern-signals': patternSignals,
+  'alg-constraints': constraintsGuide,
+  'alg-brute-to-pattern': bruteToPattern,
 };
