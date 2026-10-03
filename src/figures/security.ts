@@ -417,6 +417,64 @@ const secretsLifecycle: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 8 · Capstone ───────────────────────── */
+
+const strideFigure: FigureBuilder = () => {
+  const f = new Fig(W, 330, 'Threat modelling with STRIDE. For each part of a system ask six questions. Spoofing: can someone pretend to be someone else, defended by strong authentication. Tampering: can data be changed, defended by signatures and validation. Repudiation: can someone deny what they did, defended by audit logs. Information disclosure: can data leak, defended by encoding, redaction and least privilege. Denial of service: can it be overwhelmed, defended by limits. Elevation of privilege: can someone gain rights, defended by authorisation checks.');
+  const rows: [string, string, string, Tone][] = [
+    ['S', 'Spoofing', 'strong auth, sessions, signed tokens', 'info'],
+    ['T', 'Tampering', 'signatures, integrity hashes, validation', 'accent'],
+    ['R', 'Repudiation', 'audit logs of who did what', 'info'],
+    ['I', 'Information disclosure', 'encoding, redaction, least privilege, TLS', 'accent'],
+    ['D', 'Denial of service', 'rate and size limits, timeouts', 'info'],
+    ['E', 'Elevation of privilege', 'server-side authorisation, deny by default', 'fail'],
+  ];
+  rows.forEach(([letter, threat, defence, tone], i) => {
+    const y = 12 + i * 52;
+    f.box(16, y, 44, 42, { tone, solid: true, label: letter, size: 18 });
+    f.box(68, y, 220, 42, { tone: 'muted', label: threat, size: 12.5 });
+    f.path(`M290 ${y + 21} H316`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(320, y, 304, 42, { tone, label: defence, size: 11 });
+  });
+  return f;
+};
+
+const authzFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Authentication versus authorisation. Authentication answers who you are and happens once per session. Authorisation answers whether you may do this specific thing to this specific object, and must be checked on the server for every request. Hiding a button is not authorisation. Deny by default, and check ownership, because a user changing an id in a request is the most common authorisation bug.');
+  f.box(16, 20, 290, 100, { tone: 'info' });
+  f.text(161, 46, 'authentication', { anchor: 'middle', size: 14, bold: true, tone: 'info' });
+  f.text(161, 74, '"who are you?"', { anchor: 'middle', size: 12.5 });
+  f.text(161, 98, 'once per session', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.box(334, 20, 290, 100, { tone: 'accent', solid: true });
+  f.text(479, 46, 'authorisation', { anchor: 'middle', size: 14, bold: true });
+  f.text(479, 74, '"may YOU do THIS to THAT?"', { anchor: 'middle', size: 12.5 });
+  f.text(479, 98, 'every request, on the server', { anchor: 'middle', size: 11.5 });
+  f.text(W / 2, 156, 'GET /api/invoices/42  → is invoice 42 yours? (change the 42 and try again)', { anchor: 'middle', size: 12, mono: true, tone: 'fail' });
+  f.text(W / 2, 190, 'Deny by default. Check the role AND the owner. Never rely on hidden buttons or client checks.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 222, 'Return 404 instead of 403 when even revealing that an object exists would leak information.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 250, 'Insecure direct object references (IDOR) top the list of real-world access bugs.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const pipelineFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'A secure request pipeline. Each request passes, in order, a rate limit, finding the route, authentication, a CSRF check for state-changing requests, authorisation, input validation, and only then the handler. Each step can stop the request with the right status code. Errors produce a generic message and security headers are added to every response.');
+  const steps: [string, string][] = [
+    ['1 rate limit', '429'], ['2 route', '404 / 405'], ['3 authenticate', '401'], ['4 CSRF', '403'],
+    ['5 authorise', '403'], ['6 validate', '400'], ['7 handler', '200 / 500'], ['8 headers', 'always'],
+  ];
+  steps.forEach(([t, code], i) => {
+    const col = i % 4, row = Math.floor(i / 4);
+    const x = 12 + col * 158, y = 20 + row * 100;
+    f.box(x, y, 146, 72, { tone: i === 6 ? 'pass' : i === 7 ? 'info' : 'accent', solid: i === 6 });
+    f.text(x + 73, y + 30, t, { anchor: 'middle', size: 12.5, bold: true });
+    f.text(x + 73, y + 54, code, { anchor: 'middle', size: 12, mono: true });
+    if (col < 3) f.path(`M${x + 148} ${y + 36} H${x + 156}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.text(W / 2, 236, 'Cheap checks first. Never run a handler before the request earned it.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 262, 'Log each outcome once, without headers, cookies or bodies.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const securityFigures: Record<string, FigureBuilder> = {
   'sec-xss-flow': xssFlow,
   'sec-contexts': outputContexts,
@@ -439,4 +497,7 @@ export const securityFigures: Record<string, FigureBuilder> = {
   'sec-supply-chain': supplyChain,
   'sec-lockfile': lockfileFigure,
   'sec-secrets': secretsLifecycle,
+  'sec-stride': strideFigure,
+  'sec-authz': authzFigure,
+  'sec-pipeline': pipelineFigure,
 };
