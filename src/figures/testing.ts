@@ -59,8 +59,59 @@ const mutantGrading: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 2 · Cases & edges ───────────────────────── */
+
+const equivalenceClasses: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Equivalence classes and boundaries for a ticket price by age. Ages below 0 are an error, 0 to 12 are free, 13 to 64 pay 10 and 65 and over pay 6. Test one typical value in each class, and both sides of each boundary: minus 1 and 0, 12 and 13, 64 and 65.');
+  const classes: [string, string, Tone][] = [['age < 0', 'throws RangeError', 'fail'], ['0 … 12', 'free', 'info'], ['13 … 64', 'pays 10', 'accent'], ['65 and over', 'pays 6', 'pass']];
+  classes.forEach(([a, b, tone], i) => f.box(16 + i * 156, 30, 140, 56, { tone, solid: true, label: a, sub: b, mono: true, size: 13 }));
+  f.text(16, 24, 'the input space splits into classes that behave the same', { size: 12, bold: true, tone: 'muted' });
+  f.text(16, 118, 'one typical value per class:', { size: 12, bold: true, tone: 'muted' });
+  [['-5', 0], ['5', 1], ['30', 2], ['80', 3]].forEach(([v, i]) => f.pill(16 + (i as number) * 156 + 50, 128, v as string, 'ink'));
+  f.text(16, 182, 'both sides of every boundary (bugs hide here):', { size: 12, bold: true, tone: 'muted' });
+  [['-1 | 0', 0], ['12 | 13', 1], ['64 | 65', 2]].forEach(([v, i]) => {
+    const x = 16 + ((i as number) + 1) * 156 - 8;
+    f.path(`M${x} 90 V196`, { tone: 'accent', dashed: true, width: 1.5 });
+    f.pill(x - 40, 202, v as string, 'accent');
+  });
+  f.text(W / 2, 258, 'Off-by-one mistakes (< versus <=) only show up when you test exactly at the edge.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const edgeChecklist: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A checklist of edge inputs to try: empty, a single item, many items, duplicates, zero and negatives, boundaries, unusual values like NaN, null and undefined, different orderings such as sorted and reversed, and very large inputs.');
+  const cards: [string, string][] = [
+    ['empty', '[]   ""   {}'], ['one item', '[x]   "a"'], ['many items', 'a long list'],
+    ['duplicates', '[1, 1, 1]'], ['zero & negatives', '0   -1   -0.5'], ['boundaries', 'min · max · min−1 · max+1'],
+    ['unusual values', 'NaN · null · undefined · " "'], ['order', 'sorted · reversed · shuffled'], ['big', '10⁶ items · huge numbers'],
+  ];
+  cards.forEach(([title, ex], i) => {
+    const x = 16 + (i % 3) * 208, y = 20 + Math.floor(i / 3) * 76;
+    f.box(x, y, 196, 64, { tone: i % 2 ? 'info' : 'accent', label: title, sub: ex, size: 13 });
+  });
+  f.text(W / 2, 258, 'Run through this list for every function you test: each line has caught real bugs.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const tableDriven: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'A table-driven test. A table of cases, each with inputs and the expected result, is looped over to produce one named test per row. Adding a case means adding one row.');
+  const rows: [string, string, string][] = [['2', '3', '5'], ['-2', '-3', '-5'], ['0', '0', '0'], ['1.5', '2.25', '3.75']];
+  f.text(16, 24, 'the table', { size: 12.5, bold: true, tone: 'muted' });
+  ['a', 'b', 'expected'].forEach((h, i) => f.text(48 + i * 84, 46, h, { anchor: 'middle', size: 12, mono: true, bold: true, tone: 'accent' }));
+  rows.forEach((r, i) => r.forEach((v, j) => f.box(16 + j * 84, 54 + i * 40, 66, 32, { tone: j === 2 ? 'pass' : 'info', label: v, mono: true, size: 13 })));
+  f.path('M278 120 H334', { arrow: true, tone: 'accent', width: 2 });
+  f.text(306, 108, 'it.each', { anchor: 'middle', size: 12, mono: true, bold: true, tone: 'accent' });
+  f.text(350, 24, 'one test per row', { size: 12.5, bold: true, tone: 'muted' });
+  rows.forEach(([a, b, e], i) => f.box(350, 54 + i * 40, 274, 32, { tone: 'pass', solid: true, label: `✓ add(${a}, ${b}) → ${e}`, mono: true, size: 12 }));
+  f.text(W / 2, 236, 'Adding a case = adding one row. Failures name the exact row that broke.', { anchor: 'middle', size: 12.5, bold: true });
+  return f;
+};
+
 export const testingFigures: Record<string, FigureBuilder> = {
   'tst-pyramid': testPyramid,
   'tst-aaa': arrangeActAssert,
   'tst-mutants': mutantGrading,
+  'tst-equivalence': equivalenceClasses,
+  'tst-edge-checklist': edgeChecklist,
+  'tst-table-driven': tableDriven,
 };
