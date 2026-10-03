@@ -131,6 +131,74 @@ const fixedVariable: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 3 · Sorting, selection & binary search on the answer ───────────────────────── */
+
+const sortThenSolve: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Meetings 0 to 30, 5 to 10 and 15 to 20 sorted by start time and drawn as bars on a timeline. After sorting, any clash must appear between neighbours: the meeting 5 to 10 starts before the previous one, 0 to 30, ends, so you cannot attend both.');
+  const x0 = 40, k = 17;
+  const bars: [string, number, number, Tone][] = [['[0, 30]', 0, 30, 'info'], ['[5, 10]', 5, 10, 'fail'], ['[15, 20]', 15, 20, 'info']];
+  bars.forEach(([l, a, b, tone], i) => f.box(x0 + a * k, 28 + i * 40, (b - a) * k, 30, { tone, solid: true, label: l, mono: true, size: 12 }));
+  [0, 10, 20, 30].forEach((t) => { f.line(x0 + t * k, 150, x0 + t * k, 156, { tone: 'muted' }); f.text(x0 + t * k, 172, String(t), { anchor: 'middle', size: 11, mono: true, tone: 'muted' }); });
+  f.line(x0, 150, x0 + 30 * k, 150, { tone: 'muted' });
+  f.box(x0 + 5 * k - 4, 22, 5 * k + 8, 74, { tone: 'fail', dashed: true, r: 10 });
+  f.text(x0 + 11 * k, 56, '← starts at 5, before the previous meeting ends at 30', { size: 12, tone: 'fail', bold: true });
+  f.lines(24, 206, ['Sorted by start time, a clash can only show up between neighbours:', 'compare each start with the previous end. No need to test every pair.'], { size: 12.5, gap: 20 });
+  f.text(W / 2, 252, 'Sorting costs O(n log n) once; the scan is O(n). Versus O(n²) for all pairs.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const partitionStep: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'One partition step of quickselect on 7, 2, 9, 4, 3, 8, 5 with pivot 5. After partitioning, smaller items 2, 4, 3 are left of the pivot, the pivot 5 sits at index 3, and larger items 9, 8, 7 are on its right. To find the 3rd smallest, the pivot is the 4th smallest, so only the left part needs searching.');
+  const x0 = 40, step = 78;
+  const before = [7, 2, 9, 4, 3, 8, 5];
+  const after: [number, Tone][] = [[2, 'info'], [4, 'info'], [3, 'info'], [5, 'accent'], [9, 'muted'], [8, 'muted'], [7, 'muted']];
+  f.text(x0, 24, 'before: pick a pivot (here the last item, 5)', { size: 12.5, bold: true, tone: 'muted' });
+  before.forEach((v, i) => f.box(x0 + i * step, 34, 70, 40, { tone: i === 6 ? 'accent' : 'ink', solid: i === 6, label: String(v), mono: true, size: 15 }));
+  f.path('M320 82 V114', { arrow: true, tone: 'accent', width: 2 });
+  f.text(334, 104, 'partition: smaller left, larger right', { size: 12.5, tone: 'accent', bold: true });
+  f.text(x0, 134, 'after: the pivot is in its final sorted position (index 3)', { size: 12.5, bold: true, tone: 'muted' });
+  after.forEach(([v, tone], i) => f.box(x0 + i * step, 144, 70, 40, { tone, solid: tone === 'accent', dashed: tone === 'muted', label: String(v), mono: true, size: 15 }));
+  f.text(x0 + 110, 204, 'smaller', { anchor: 'middle', size: 12, tone: 'info', bold: true });
+  f.text(x0 + 3 * step + 35, 204, 'pivot', { anchor: 'middle', size: 12, tone: 'accent', bold: true });
+  f.text(x0 + 5 * step + 35, 204, 'larger', { anchor: 'middle', size: 12, tone: 'muted', bold: true });
+  f.text(W / 2, 238, 'k = 3: the pivot is the 4th smallest, so the 3rd smallest is on the LEFT: ignore the right.', { anchor: 'middle', size: 12.5 });
+  f.text(W / 2, 258, 'Each round throws away a part: about n + n/2 + n/4 + … = O(n) on average.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const dutchFlag: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The Dutch national flag partition of an array of 0s, 1s and 2s using three pointers. Everything left of lo is 0, everything from lo up to mid is 1, the part from mid to hi is still unknown, and everything right of hi is 2. The mid pointer sweeps the unknown part.');
+  const cells: [string, Tone, boolean][] = [['0', 'info', false], ['0', 'info', false], ['0', 'info', false], ['1', 'pass', false], ['1', 'pass', false], ['?', 'muted', true], ['?', 'muted', true], ['?', 'muted', true], ['2', 'fail', false], ['2', 'fail', false]];
+  const x0 = 22, step = 60;
+  f.text(W / 2, 26, 'invariant (always true while sweeping)', { anchor: 'middle', size: 12.5, bold: true, tone: 'muted' });
+  cells.forEach(([l, tone, dashed], i) => f.box(x0 + i * step, 44, 54, 44, { tone, dashed, solid: !dashed, label: l, mono: true, size: 17 }));
+  const pointer = (i: number, label: string, tone: Tone) => { f.path(`M${x0 + i * step + 27} 138 V94`, { arrow: true, tone, width: 2 }); f.text(x0 + i * step + 27, 156, label, { anchor: 'middle', size: 13, mono: true, bold: true, tone }); };
+  pointer(3, 'lo', 'pass'); pointer(5, 'mid', 'accent'); pointer(7, 'hi', 'fail');
+  f.text(x0 + 3 * 60 - 30, 188, '0s', { anchor: 'middle', size: 12, bold: true, tone: 'info' });
+  f.text(x0 + 4 * 60, 188, '1s', { anchor: 'middle', size: 12, bold: true, tone: 'pass' });
+  f.text(x0 + 6 * 60 + 27, 188, 'not looked at yet', { anchor: 'middle', size: 12, bold: true, tone: 'muted' });
+  f.text(x0 + 9 * 60 - 3, 188, '2s', { anchor: 'middle', size: 12, bold: true, tone: 'fail' });
+  f.lines(24, 218, ['look at nums[mid]:  0 → swap with lo, lo++, mid++    1 → mid++    2 → swap with hi, hi--'], { size: 12, mono: true });
+  f.text(W / 2, 256, 'One pass, no extra memory: every swap puts one item in its final region.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const bsAnswer: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Binary search on the answer. For eating speeds 1 to 11 bananas per hour, the question "is this speed fast enough to finish within 8 hours?" is no for speeds 1 to 3 and yes for speeds 4 to 11. Because the answers switch from no to yes exactly once, binary search finds the smallest yes.');
+  const x0 = 16, step = 57;
+  f.text(W / 2, 22, 'is speed k fast enough?  (piles 3, 6, 7, 11 within 8 hours)', { anchor: 'middle', size: 12.5, bold: true, tone: 'muted' });
+  for (let k = 1; k <= 11; k++) {
+    const ok = k >= 4;
+    f.box(x0 + (k - 1) * step, 38, 51, 38, { tone: ok ? 'pass' : 'fail', solid: true, label: ok ? 'yes' : 'no', mono: true, size: 13 });
+    f.text(x0 + (k - 1) * step + 25, 96, String(k), { anchor: 'middle', size: 13, mono: true, bold: k === 4, tone: k === 4 ? 'accent' : 'muted' });
+  }
+  f.path(`M${x0 + 3 * step + 25} 142 V106`, { arrow: true, tone: 'accent', width: 2 });
+  f.text(x0 + 3 * step + 25, 160, 'answer: the first "yes"', { anchor: 'middle', size: 12.5, bold: true, tone: 'accent' });
+  f.lines(24, 196, ['The answers flip from no to yes exactly once (monotone), so you can', 'binary search the speed itself: check the middle, discard the half that cannot hold the boundary.'], { size: 12.5, gap: 20 });
+  f.text(W / 2, 250, 'Each check costs O(n); about log₂(max speed) checks: O(n log max).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const algoFigures: Record<string, FigureBuilder> = {
   'alg-call-stack': callStack,
   'alg-fib-tree': fibTree,
@@ -139,4 +207,8 @@ export const algoFigures: Record<string, FigureBuilder> = {
   'alg-two-pointers': twoPointers,
   'alg-window-shape': windowShape,
   'alg-fixed-variable': fixedVariable,
+  'alg-sort-then-solve': sortThenSolve,
+  'alg-partition': partitionStep,
+  'alg-dutch-flag': dutchFlag,
+  'alg-bs-answer': bsAnswer,
 };
