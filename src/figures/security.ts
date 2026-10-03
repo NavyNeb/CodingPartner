@@ -175,6 +175,72 @@ const sessionLifecycle: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 4 · Cookies, CORS and CSRF ───────────────────────── */
+
+const sameOrigin: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'The same-origin policy. An origin is the scheme, host and port together. Compared with https://app.example.com, the page https://app.example.com/other is the same origin, while http://app.example.com differs in scheme, https://api.example.com differs in host, https://app.example.com:8443 differs in port, and https://example.com differs in host.');
+  f.text(16, 20, 'page origin:', { size: 12.5, bold: true });
+  f.text(120, 20, 'https://app.example.com', { size: 12.5, mono: true, bold: true, tone: 'info' });
+  const rows: [string, string, boolean][] = [
+    ['https://app.example.com/other', 'same origin', true],
+    ['http://app.example.com', 'different scheme', false],
+    ['https://api.example.com', 'different host', false],
+    ['https://app.example.com:8443', 'different port', false],
+    ['https://example.com', 'different host', false],
+  ];
+  rows.forEach(([u, why, same], i) => {
+    const y = 38 + i * 40;
+    f.box(16, y, 360, 32, { tone: 'muted', label: u, mono: true, size: 11.5 });
+    f.box(388, y, 236, 32, { tone: same ? 'pass' : 'fail', solid: true, label: (same ? '✓ ' : '✗ ') + why, size: 12 });
+  });
+  f.text(W / 2, 256, 'Scripts can freely read responses only from their own origin.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 276, 'Sites (eTLD+1) are coarser than origins: SameSite cookies use sites.', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  return f;
+};
+
+const corsFlow: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'How CORS works. A page on one origin wants to read a response from another origin. For non-simple requests the browser first sends a preflight OPTIONS request asking permission. The server answers with Access-Control headers. The browser, not the server, then decides whether the page may read the response. CORS relaxes the same-origin policy in the browser, it does not authenticate anyone, and the server still receives the requests.');
+  const steps: [string, string, Tone][] = [
+    ['page', 'fetch(api, { credentials })', 'info'],
+    ['preflight', 'OPTIONS + Origin', 'accent'],
+    ['server', 'Access-Control-* headers', 'accent'],
+    ['browser', 'allows or blocks the page', 'pass'],
+  ];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 28, 146, 84, { tone, solid: i === 3 });
+    f.text(x + 73, 58, t, { anchor: 'middle', size: 13, bold: true });
+    f.text(x + 73, 84, sub.length > 22 ? sub.slice(0, 22) : sub, { anchor: 'middle', size: 10.5 });
+    if (sub.length > 22) f.text(x + 73, 98, sub.slice(22), { anchor: 'middle', size: 10.5 });
+    if (i < 3) f.path(`M${x + 148} 70 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 148, 'CORS is a browser rule that protects users, not a lock on your server.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 176, 'curl, scripts and attackers ignore it: still authenticate and authorise every request.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 214, 'Echo only allowlisted origins. Never reflect any Origin. Never "*" with credentials.', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.text(W / 2, 244, 'Send Vary: Origin so caches do not serve one origin the answer for another.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const csrfFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Cross-site request forgery. A victim is logged in to a bank site. They visit an evil page that makes their browser send a request to the bank. The browser automatically attaches the bank session cookie, so the bank sees a legitimate looking request. Defences: SameSite cookies, a secret CSRF token that the evil page cannot read, and checking the Origin header.');
+  f.box(16, 30, 150, 70, { tone: 'fail' });
+  f.text(91, 58, 'evil.example', { anchor: 'middle', size: 13, bold: true, tone: 'fail' });
+  f.text(91, 80, 'hidden form / request', { anchor: 'middle', size: 11 });
+  f.box(246, 30, 150, 70, { tone: 'info' });
+  f.text(321, 58, "victim's browser", { anchor: 'middle', size: 13, bold: true, tone: 'info' });
+  f.text(321, 80, 'adds the bank cookie!', { anchor: 'middle', size: 11, bold: true });
+  f.box(474, 30, 150, 70, { tone: 'pass' });
+  f.text(549, 58, 'bank.example', { anchor: 'middle', size: 13, bold: true, tone: 'pass' });
+  f.text(549, 80, 'sees a valid session', { anchor: 'middle', size: 11 });
+  f.path('M168 65 H242', { arrow: true, tone: 'fail', width: 2 });
+  f.path('M398 65 H470', { arrow: true, tone: 'fail', width: 2 });
+  f.text(W / 2, 134, 'Defences (use several):', { anchor: 'middle', size: 12.5, bold: true });
+  ['SameSite=Lax / Strict cookies', 'secret CSRF token in the request', 'check Origin / Referer'].forEach((t, i) => f.box(16 + i * 208, 148, 200, 44, { tone: 'pass', solid: true, label: t, size: 11 }));
+  f.text(W / 2, 222, 'A token works because evil.example cannot READ your pages to copy it.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 250, 'Only state-changing requests need it; GET must never change anything.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const securityFigures: Record<string, FigureBuilder> = {
   'sec-xss-flow': xssFlow,
   'sec-contexts': outputContexts,
@@ -185,4 +251,7 @@ export const securityFigures: Record<string, FigureBuilder> = {
   'sec-password-storage': passwordStorage,
   'sec-jwt': jwtAnatomy,
   'sec-session': sessionLifecycle,
+  'sec-same-origin': sameOrigin,
+  'sec-cors': corsFlow,
+  'sec-csrf': csrfFigure,
 };
