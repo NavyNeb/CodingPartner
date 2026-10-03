@@ -389,6 +389,71 @@ const dpSubsetSum: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 7 · Greedy & intervals ───────────────────────── */
+
+const greedyVsDp: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Coins 1, 3 and 4 making amount 6. Greedy takes the biggest coin each time: 4, then 1, then 1, which is 3 coins. The best answer is 3 plus 3, only 2 coins. A locally best choice can ruin the global best, so greedy needs an argument that it is safe.');
+  f.text(24, 28, 'amount 6, coins 1, 3, 4', { size: 13, bold: true, tone: 'muted' });
+  f.text(24, 64, 'greedy: always the biggest coin that fits', { size: 12.5, bold: true, tone: 'fail' });
+  ['4', '1', '1'].forEach((c, i) => f.box(24 + i * 84, 76, 74, 44, { tone: 'fail', solid: true, label: c, mono: true, size: 18 }));
+  f.text(290, 104, '3 coins', { size: 15, bold: true, tone: 'fail' });
+  f.text(24, 158, 'best: looks at all options (dynamic programming)', { size: 12.5, bold: true, tone: 'pass' });
+  ['3', '3'].forEach((c, i) => f.box(24 + i * 84, 170, 74, 44, { tone: 'pass', solid: true, label: c, mono: true, size: 18 }));
+  f.text(206, 198, '2 coins', { size: 15, bold: true, tone: 'pass' });
+  f.lines(380, 90, ['greedy took 4 and got', 'stuck with a remainder', 'of 2 that needs two 1s.'], { size: 12, tone: 'muted', gap: 18 });
+  f.text(W / 2, 252, 'Greedy is only safe when you can argue that its choice never hurts (an exchange argument).', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 272, 'Look for a counterexample first: one is enough to rule greedy out.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const intervalScheduling: FigureBuilder = () => {
+  const f = new Fig(W, 330, 'Interval scheduling. Six meetings sorted by end time: 0 to 3, 2 to 5, 4 to 7, 1 to 9, 6 to 10 and 9 to 12. The greedy rule takes the earliest-ending meeting that starts after the last chosen one finishes. It chooses 0 to 3, 4 to 7 and 9 to 12, three meetings, and skips the others because they overlap a chosen meeting.');
+  const x0 = 44, k = 44;
+  const items: [number, number, boolean][] = [[0, 3, true], [2, 5, false], [4, 7, true], [1, 9, false], [6, 10, false], [9, 12, true]];
+  f.text(x0, 18, 'sorted by END time; take a meeting if it starts at or after the last chosen end', { size: 12, bold: true, tone: 'muted' });
+  items.forEach(([a, b, take], i) => {
+    const y = 30 + i * 36;
+    f.box(x0 + a * k, y, (b - a) * k - 2, 28, { tone: take ? 'pass' : 'fail', solid: take, dashed: !take, label: `[${a}, ${b}]  ${take ? 'take' : 'skip'}`, mono: true, size: 11.5 });
+  });
+  [0, 2, 4, 6, 8, 10, 12].forEach((t) => { f.line(x0 + t * k, 252, x0 + t * k, 258, { tone: 'muted' }); f.text(x0 + t * k, 274, String(t), { anchor: 'middle', size: 11, mono: true, tone: 'muted' }); });
+  f.line(x0, 252, x0 + 12 * k, 252, { tone: 'muted' });
+  f.text(W / 2, 306, 'The earliest finish leaves the most room for what follows: 3 meetings, the maximum.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 324, 'Sorting by START time instead would let a long meeting block many short ones.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const jumpReach: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Jump game on 2, 3, 1, 1, 4 where each number is the maximum jump from that index. Tracking the farthest reachable index as you scan gives 2 after index 0, 4 after index 1, and stays 4. The last index is 4, so it is reachable. If you ever stand at an index beyond the farthest reach, you are stuck.');
+  const nums = [2, 3, 1, 1, 4], reach = [2, 4, 4, 4, 8];
+  const x0 = 80, step = 100;
+  f.text(8, 70, 'jump', { size: 12, bold: true, tone: 'muted' });
+  f.text(8, 150, 'reach', { size: 12, bold: true, tone: 'muted' });
+  f.text(x0, 28, 'index 0 … 4 (the goal is the last index, 4)', { size: 12, bold: true, tone: 'muted' });
+  nums.forEach((v, i) => f.box(x0 + i * step, 42, 84, 42, { tone: i === 4 ? 'pass' : 'ink', solid: i === 4, label: String(v), mono: true, size: 16 }));
+  reach.forEach((v, i) => f.box(x0 + i * step, 122, 84, 42, { tone: v >= 4 ? 'pass' : 'info', solid: v >= 4, label: String(v), mono: true, size: 16 }));
+  f.text(x0, 112, 'farthest index reachable after looking at index i:   max(reach, i + nums[i])', { size: 11.5, mono: true, tone: 'muted' });
+  f.lines(24, 200, ['reach ≥ last index (4) from index 1 on → the goal is reachable.', 'if i > reach at any point, you cannot even stand at i: stuck → false.'], { size: 12.5, gap: 20 });
+  f.text(W / 2, 250, 'One pass, one number to remember: O(n).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const sweepRooms: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Counting meeting rooms by sweeping events in time order. Meetings 0 to 30, 5 to 10 and 15 to 20 give events plus one at 0, plus one at 5, minus one at 10, plus one at 15, minus one at 20, minus one at 30. The running count is 1, 2, 1, 2, 1, 0, so at most 2 rooms are needed at once.');
+  const events: [string, number, number][] = [['+1 @ 0', 0, 1], ['+1 @ 5', 5, 2], ['−1 @ 10', 10, 1], ['+1 @ 15', 15, 2], ['−1 @ 20', 20, 1], ['−1 @ 30', 30, 0]];
+  f.text(16, 24, 'events in time order (a meeting starts: +1 room, ends: −1 room)', { size: 12, bold: true, tone: 'muted' });
+  events.forEach(([label, , count], i) => {
+    const x = 16 + i * 102;
+    f.box(x, 38, 94, 40, { tone: label.startsWith('+') ? 'info' : 'ink', label, mono: true, size: 12 });
+    f.box(x + 17, 108, 60, 40, { tone: count === 2 ? 'accent' : 'ink', solid: count === 2, label: String(count), mono: true, size: 17 });
+    f.path(`M${x + 47} 82 V104`, { arrow: true, tone: 'muted', width: 1.5 });
+  });
+  f.text(16, 102, 'rooms in use after each event', { size: 12, bold: true, tone: 'muted' });
+  f.text(W / 2, 192, 'maximum running count = 2 rooms', { anchor: 'middle', size: 15, bold: true, tone: 'accent' });
+  f.text(W / 2, 224, 'Process an end before a start at the same time (a room is free the moment a meeting ends).', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 252, 'Sort the starts and ends separately, then walk both: O(n log n).', { anchor: 'middle', size: 12.5, bold: true });
+  return f;
+};
+
 export const algoFigures: Record<string, FigureBuilder> = {
   'alg-call-stack': callStack,
   'alg-fib-tree': fibTree,
@@ -412,4 +477,8 @@ export const algoFigures: Record<string, FigureBuilder> = {
   'alg-dp-lcs-table': dpLcsTable,
   'alg-dp-edit-cell': dpEditCell,
   'alg-dp-subset-sum': dpSubsetSum,
+  'alg-greedy-vs-dp': greedyVsDp,
+  'alg-interval-scheduling': intervalScheduling,
+  'alg-jump-reach': jumpReach,
+  'alg-sweep-rooms': sweepRooms,
 };
