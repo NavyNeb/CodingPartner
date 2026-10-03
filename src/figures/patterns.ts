@@ -246,6 +246,64 @@ const proxyFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 5 · Command, undo and snapshots ───────────────────────── */
+
+const commandFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The command pattern. An action is turned into an object that knows how to do itself and how to undo itself. The invoker, such as a toolbar, a history or a job queue, holds and runs these command objects without knowing the details, and each command acts on the receiver, such as the document.');
+  f.box(16, 70, 150, 90, { tone: 'info' });
+  f.text(91, 98, 'invoker', { anchor: 'middle', size: 14, bold: true, tone: 'info' });
+  f.lines(30, 122, ['toolbar, history,', 'job queue…'], { size: 11.5, gap: 16 });
+  const cmds = ['AddText', 'DeleteRange', 'Indent'];
+  cmds.forEach((c, i) => {
+    const y = 20 + i * 68;
+    f.box(236, y, 170, 52, { tone: 'accent', solid: true });
+    f.text(321, y + 22, c, { anchor: 'middle', size: 12.5, bold: true, mono: true });
+    f.text(321, y + 40, 'do()   undo()', { anchor: 'middle', size: 11, mono: true });
+    f.path(`M168 115 L232 ${y + 26}`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.path(`M408 ${y + 26} L472 115`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.box(474, 70, 150, 90, { tone: 'pass' });
+  f.text(549, 98, 'receiver', { anchor: 'middle', size: 14, bold: true, tone: 'pass' });
+  f.text(549, 124, 'the document', { anchor: 'middle', size: 11.5 });
+  f.text(W / 2, 244, 'An action as an object can be stored, queued, logged, undone and replayed.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const undoStacks: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Undo and redo with two stacks. Executing a command pushes it on the undo stack and empties the redo stack. Undo pops the top of the undo stack, reverses it, and pushes it on the redo stack. Redo moves it back. Any new command clears the redo stack because the future it described no longer exists.');
+  const stack = (x: number, title: string, items: string[], tone: Tone) => {
+    f.text(x + 80, 22, title, { anchor: 'middle', size: 13, bold: true, tone });
+    f.box(x, 32, 160, 150, { tone, dashed: true });
+    items.forEach((it, i) => {
+      const y = 36 + (3 - items.length + i) * 36;
+      f.box(x + 12, y, 136, 30, { tone, solid: i === items.length - 1, label: it, mono: true, size: 11.5 });
+    });
+  };
+  stack(30, 'undo stack', ['type "a"', 'type "b"', 'type "c"'], 'info');
+  stack(450, 'redo stack', ['type "d"'], 'accent');
+  f.path('M194 90 C260 60 380 60 446 90', { arrow: true, tone: 'info', width: 2 });
+  f.text(320, 56, 'undo(): top moves right', { anchor: 'middle', size: 11.5, tone: 'info' });
+  f.path('M446 130 C380 160 260 160 194 130', { arrow: true, tone: 'accent', width: 2 });
+  f.text(320, 176, 'redo(): top moves back', { anchor: 'middle', size: 11.5, tone: 'accent' });
+  f.text(W / 2, 214, 'execute(command): push on undo, EMPTY redo', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.text(W / 2, 240, 'A new action rewrites history, so the old future is gone.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const mementoFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Two ways to support undo. Command based: store the action and its inverse, which is small but every action needs a correct undo. Snapshot based, also called memento: store a complete copy of the state at each step, which is simple and reliable but uses more memory for large state.');
+  const col = (x: number, title: string, tone: Tone, lines: string[], verdict: string) => {
+    f.box(x, 20, 296, 190, { tone });
+    f.text(x + 148, 46, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.lines(x + 18, 78, lines, { size: 12, gap: 22 });
+    f.text(x + 148, 190, verdict, { anchor: 'middle', size: 11.5, bold: true, tone });
+  };
+  col(16, 'command + inverse', 'accent', ['stores: "inserted \'x\' at 4"', 'undo: remove it again', 'tiny memory per step', 'every action needs a', 'correct inverse'], 'good for big state, fine edits');
+  col(328, 'snapshots (memento)', 'info', ['stores: a copy of the state', 'undo: restore that copy', 'trivially correct', 'memory grows with size', 'x number of steps'], 'good for small or immutable state');
+  f.text(W / 2, 240, 'Immutable state makes snapshots cheap: old versions share unchanged parts.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const patternFigures: Record<string, FigureBuilder> = {
   'pat-factory': factoryFigure,
   'pat-builder': builderFigure,
@@ -260,4 +318,7 @@ export const patternFigures: Record<string, FigureBuilder> = {
   'pat-decorator': decoratorFigure,
   'pat-onion': onionFigure,
   'pat-proxy': proxyFigure,
+  'pat-command': commandFigure,
+  'pat-undo-stacks': undoStacks,
+  'pat-memento': mementoFigure,
 };
