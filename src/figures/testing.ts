@@ -389,6 +389,68 @@ const brittleVsRobust: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 8 · Capstone ───────────────────────── */
+
+const suiteRecipe: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A recipe for building a test suite from a specification. First list every rule in the spec. Then write at least one test per rule. Then add the boundary on both sides of every limit. Then cover empty, one and many, and the error cases. Last, check that inputs are not mutated and that state carries over between calls. After that, ask which broken version would still pass.');
+  const steps: [string, string][] = [
+    ['1 · list the rules', 'every sentence in the spec is a rule'],
+    ['2 · one test per rule', 'the happy path of each'],
+    ['3 · both sides of limits', '49.99 and 50, 999 and 1000'],
+    ['4 · empty, one, many, errors', 'the shapes of input'],
+    ['5 · state and side effects', 'input untouched, state carried over'],
+    ['6 · ask: what still passes?', 'invent a mutant, then kill it'],
+  ];
+  steps.forEach(([title, sub], i) => {
+    const col = i % 2, row = Math.floor(i / 2);
+    const x = 16 + col * 312, y = 16 + row * 80;
+    f.box(x, y, 296, 66, { tone: i === 5 ? 'accent' : 'info', solid: i === 5 });
+    f.text(x + 148, y + 28, title, { anchor: 'middle', size: 13, bold: true });
+    f.text(x + 148, y + 48, sub, { anchor: 'middle', size: 11.5, tone: 'muted' });
+  });
+  f.text(W / 2, 262, 'Spec in, suite out: a checklist beats inspiration.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const riskMap: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Choosing what to test first. A grid of how likely something is to break against how bad it is when it does. Test first the code that is likely to break and costly when it does, such as money and permissions. Test lightly the code that is unlikely to break and harmless, such as a label.');
+  f.box(60, 16, 260, 100, { tone: 'info' });
+  f.box(324, 16, 260, 100, { tone: 'fail', solid: true });
+  f.box(60, 120, 260, 100, { tone: 'muted' });
+  f.box(324, 120, 260, 100, { tone: 'info' });
+  f.text(190, 60, 'costly, unlikely', { anchor: 'middle', size: 13, bold: true });
+  f.text(190, 82, 'cover the key cases', { anchor: 'middle', size: 11.5 });
+  f.text(454, 60, 'costly AND likely', { anchor: 'middle', size: 13, bold: true });
+  f.text(454, 82, 'test first, test hard', { anchor: 'middle', size: 11.5 });
+  f.text(190, 164, 'cheap, unlikely', { anchor: 'middle', size: 13, bold: true });
+  f.text(190, 186, 'little or nothing', { anchor: 'middle', size: 11.5 });
+  f.text(454, 164, 'cheap, likely', { anchor: 'middle', size: 13, bold: true });
+  f.text(454, 186, 'quick tests', { anchor: 'middle', size: 11.5 });
+  f.text(322, 240, 'cost when it breaks →', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(W / 2, 260, 'Money, permissions and data loss come before labels and colours.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const debugLoop: FigureBuilder = () => {
+  const f = new Fig(W, 230, 'Debugging with tests. Reproduce the bug as a small failing test, change the code until the test passes, run all the tests to make sure nothing else broke, and keep the test so the bug cannot return.');
+  const steps: [string, string, Tone][] = [
+    ['reproduce', 'smallest failing input', 'fail'],
+    ['fix', 'change the code', 'accent'],
+    ['all green', 'run every test', 'pass'],
+    ['keep it', 'the test stays', 'info'],
+  ];
+  steps.forEach(([title, sub, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 30, 146, 90, { tone, solid: i === 2 });
+    f.text(x + 73, 66, title, { anchor: 'middle', size: 14, bold: true });
+    f.text(x + 73, 90, sub, { anchor: 'middle', size: 11.5 });
+    if (i < 3) f.path(`M${x + 148} 75 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 166, 'The failing test is the bug report that never goes out of date.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 194, 'Shrink the input until the failure is obvious, then you usually see the cause.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const testingFigures: Record<string, FigureBuilder> = {
   'tst-pyramid': testPyramid,
   'tst-aaa': arrangeActAssert,
@@ -412,4 +474,7 @@ export const testingFigures: Record<string, FigureBuilder> = {
   'tst-flaky-causes': flakyCauses,
   'tst-coverage-lie': coverageLie,
   'tst-brittle': brittleVsRobust,
+  'tst-suite-recipe': suiteRecipe,
+  'tst-risk-map': riskMap,
+  'tst-debug-loop': debugLoop,
 };
