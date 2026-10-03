@@ -241,6 +241,61 @@ const csrfFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 5 · Headers, CSP and integrity ───────────────────────── */
+
+const headersFigure: FigureBuilder = () => {
+  const f = new Fig(W, 320, 'The security headers every site should consider. Strict-Transport-Security forces HTTPS. Content-Security-Policy limits what the page may load and run. X-Content-Type-Options nosniff stops the browser guessing file types. frame-ancestors or X-Frame-Options controls who may embed the page. Referrer-Policy limits what is leaked in the Referer header. Permissions-Policy turns off powerful browser features the page does not use.');
+  const rows: [string, string, Tone][] = [
+    ['Strict-Transport-Security', 'always use HTTPS for this site', 'pass'],
+    ['Content-Security-Policy', 'what the page may load and run', 'pass'],
+    ['X-Content-Type-Options: nosniff', 'do not guess the content type', 'accent'],
+    ['frame-ancestors / X-Frame-Options', 'who may embed this page (clickjacking)', 'accent'],
+    ['Referrer-Policy', 'how much URL to reveal when linking out', 'info'],
+    ['Permissions-Policy', 'switch off camera, mic, geolocation…', 'info'],
+  ];
+  rows.forEach(([name, why, tone], i) => {
+    const y = 14 + i * 48;
+    f.box(16, y, 300, 38, { tone, solid: true, label: name, mono: true, size: 11 });
+    f.text(332, y + 24, why, { size: 12 });
+  });
+  f.text(W / 2, 312, 'Headers are cheap, global, and enforced by the browser: set them once for every response.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const cspSources: FigureBuilder = () => {
+  const f = new Fig(W, 312, 'How a Content Security Policy source list is matched. The policy script-src self plus https cdn.example.com lets scripts load from the page origin and from that one CDN host. A script from evil.example does not match any source, so the browser refuses to load it. Keywords like none allow nothing, and wildcard hosts such as star dot example dot com match subdomains but not the bare domain.');
+  f.box(16, 14, 608, 44, { tone: 'accent', solid: true, label: "script-src 'self' https://cdn.example.com *.trusted.example", mono: true, size: 12 });
+  const rows: [string, string, boolean][] = [
+    ['https://app.example/app.js', "matches 'self' (same origin)", true],
+    ['https://cdn.example.com/lib.js', 'matches the CDN host source', true],
+    ['https://img.trusted.example/x.js', 'matches the *.trusted.example wildcard', true],
+    ['https://trusted.example/x.js', 'bare domain: the wildcard does NOT match it', false],
+    ['https://evil.example/x.js', 'matches no source: blocked', false],
+  ];
+  rows.forEach(([u, why, ok], i) => {
+    const y = 72 + i * 42;
+    f.box(16, y, 270, 34, { tone: 'muted', label: u, mono: true, size: 10.5 });
+    f.box(296, y, 328, 34, { tone: ok ? 'pass' : 'fail', solid: true, label: (ok ? '✓ ' : '✗ ') + why, size: 11 });
+  });
+  f.text(W / 2, 304, "'self' = same scheme, host and port. A source with no port means the default port.", { anchor: 'middle', size: 11.5, tone: 'muted', italic: true });
+  return f;
+};
+
+const cspNonce: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Nonce based CSP. For every response the server creates a fresh random nonce, puts it in the CSP header as nonce-abc and on its own script tags as a nonce attribute. The browser runs only scripts whose nonce matches. A script injected by an attacker does not know the nonce, so it is blocked. Nonces must be unguessable and different on every response.');
+  f.box(16, 20, 290, 100, { tone: 'info' });
+  f.text(161, 44, 'server response', { anchor: 'middle', size: 13, bold: true, tone: 'info' });
+  f.lines(30, 70, ["Content-Security-Policy:", "  script-src 'nonce-R4nd0m'", '<script nonce="R4nd0m">…</script>'], { size: 10.5, mono: true, gap: 16 });
+  f.box(334, 20, 290, 100, { tone: 'fail' });
+  f.text(479, 44, 'attacker injects', { anchor: 'middle', size: 13, bold: true, tone: 'fail' });
+  f.lines(348, 70, ['<script>steal()</script>', '', 'no nonce, or a wrong guess'], { size: 11, mono: true, gap: 16 });
+  f.box(16, 146, 290, 44, { tone: 'pass', solid: true, label: '✓ runs: nonce matches', size: 12 });
+  f.box(334, 146, 290, 44, { tone: 'fail', solid: true, label: '✗ blocked by the browser', size: 12 });
+  f.text(W / 2, 224, 'A new random nonce per response, never reused, never predictable.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 250, "'unsafe-inline' is ignored when a nonce or hash is present.", { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const securityFigures: Record<string, FigureBuilder> = {
   'sec-xss-flow': xssFlow,
   'sec-contexts': outputContexts,
@@ -254,4 +309,7 @@ export const securityFigures: Record<string, FigureBuilder> = {
   'sec-same-origin': sameOrigin,
   'sec-cors': corsFlow,
   'sec-csrf': csrfFigure,
+  'sec-headers': headersFigure,
+  'sec-csp-sources': cspSources,
+  'sec-csp-nonce': cspNonce,
 };
