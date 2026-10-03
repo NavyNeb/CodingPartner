@@ -286,6 +286,89 @@ const doublyList: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 5 · Trees & BSTs ───────────────────────── */
+
+type Pt = [number, number];
+const R = 17;
+const tnode = (f: Fig, [x, y]: Pt, label: string, tone: Tone = 'info') => {
+  f.raw(`<circle class="f-box t-${tone} solid" cx="${x}" cy="${y}" r="${R}"/>`);
+  f.text(x, y + 5, label, { anchor: 'middle', bold: true, mono: true, tone, size: 13.5 });
+};
+const tedge = (f: Fig, [x1, y1]: Pt, [x2, y2]: Pt, tone: Tone = 'muted', width = 1.8) => {
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+  const ux = dx / len, uy = dy / len;
+  f.line(+(x1 + ux * R).toFixed(1), +(y1 + uy * R).toFixed(1), +(x2 - ux * R).toFixed(1), +(y2 - uy * R).toFixed(1), { tone, width });
+};
+
+const treeAnatomy: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A binary tree with root 8. Node 8 has children 3 and 10. Node 3 has children 1 and 6. Node 10 has one child, 14. Nodes 1, 6 and 14 have no children and are called leaves. Depth counts steps down from the root and height is the depth of the deepest node.');
+  const P: Record<string, Pt> = { r: [320, 40], a: [200, 108], b: [440, 108], c: [130, 176], d: [270, 176], e: [510, 176] };
+  const edges: [string, string][] = [['r', 'a'], ['r', 'b'], ['a', 'c'], ['a', 'd'], ['b', 'e']];
+  edges.forEach(([u, v]) => tedge(f, P[u], P[v]));
+  tnode(f, P.r, '8', 'accent'); tnode(f, P.a, '3'); tnode(f, P.b, '10');
+  tnode(f, P.c, '1', 'pass'); tnode(f, P.d, '6', 'pass'); tnode(f, P.e, '14', 'pass');
+  f.text(284, 44, 'root', { anchor: 'end', size: 12.5, tone: 'accent', bold: true });
+  f.text(130, 212, 'leaf', { anchor: 'middle', size: 12, tone: 'pass', bold: true });
+  f.text(270, 212, 'leaf', { anchor: 'middle', size: 12, tone: 'pass', bold: true });
+  f.text(510, 212, 'leaf', { anchor: 'middle', size: 12, tone: 'pass', bold: true });
+  f.text(164, 90, 'parent of 1 and 6', { anchor: 'end', size: 12, tone: 'muted' });
+  f.text(488, 90, 'child of 8', { size: 12, tone: 'muted' });
+  f.text(W / 2, 244, 'depth of a node = steps down from the root (the root is 0). height = depth of the deepest node (here 2).', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 262, 'A node is { val, left, right }; a missing child is null.', { anchor: 'middle', size: 12, tone: 'muted', mono: true });
+  return f;
+};
+
+const treeTraversals: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The same seven-node binary tree walked four ways. Pre-order visits 4 2 1 3 6 5 7. In-order visits 1 2 3 4 5 6 7, which is sorted when the tree is a binary search tree. Post-order visits 1 3 2 5 7 6 4. Level-order visits row by row: 4 2 6 1 3 5 7.');
+  const P: Pt[] = [[170, 40], [90, 104], [250, 104], [50, 168], [130, 168], [210, 168], [290, 168]];
+  const vals = ['4', '2', '6', '1', '3', '5', '7'];
+  [[0, 1], [0, 2], [1, 3], [1, 4], [2, 5], [2, 6]].forEach(([a, b]) => tedge(f, P[a], P[b]));
+  P.forEach((p, i) => tnode(f, p, vals[i]));
+  f.text(170, 218, 'DFS goes deep first (recursion / stack)', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(170, 238, 'BFS goes row by row (queue)', { anchor: 'middle', size: 12, tone: 'muted' });
+  const rows: [string, string, Tone][] = [
+    ['pre-order  (root, left, right)', '4 2 1 3 6 5 7', 'info'],
+    ['in-order  (left, root, right)', '1 2 3 4 5 6 7   sorted for a BST', 'pass'],
+    ['post-order  (left, right, root)', '1 3 2 5 7 6 4', 'info'],
+    ['level-order  (row by row)', '4 2 6 1 3 5 7', 'accent'],
+  ];
+  rows.forEach(([name, seq, tone], i) => {
+    f.text(350, 44 + i * 58, name, { size: 12.5, bold: true, tone });
+    f.text(350, 64 + i * 58, seq, { size: 12.5, mono: true });
+  });
+  return f;
+};
+
+const bstSearch: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Searching for 6 in a binary search tree rooted at 8. Since 6 is less than 8, go left; since 6 is greater than 3, go right; found 6 after three comparisons, ignoring everything in the right half of the tree.');
+  const P: Record<string, Pt> = { r: [320, 40], a: [200, 108], b: [440, 108], c: [130, 176], d: [270, 176], e: [510, 176] };
+  tedge(f, P.r, P.b); tedge(f, P.a, P.c); tedge(f, P.b, P.e);
+  tedge(f, P.r, P.a, 'accent', 3); tedge(f, P.a, P.d, 'accent', 3);
+  tnode(f, P.b, '10', 'muted'); tnode(f, P.c, '1', 'muted'); tnode(f, P.e, '14', 'muted');
+  tnode(f, P.r, '8', 'accent'); tnode(f, P.a, '3', 'accent'); tnode(f, P.d, '6', 'pass');
+  f.text(350, 44, '6 < 8: go left, skip the whole right side', { size: 12, tone: 'accent', bold: true });
+  f.text(164, 112, '6 > 3: go right', { anchor: 'end', size: 12, tone: 'accent', bold: true });
+  f.text(270, 214, 'found!', { anchor: 'middle', size: 12.5, tone: 'pass', bold: true });
+  f.text(W / 2, 246, 'Left subtree < node < right subtree, at every node. Each step discards a whole subtree.', { anchor: 'middle', size: 12.5, tone: 'ink' });
+  f.text(W / 2, 264, 'Balanced: about log₂ n steps.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const bstBalance: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Two binary search trees holding the same seven values. Inserted in a good order, the tree is balanced and only three levels tall. Inserted already sorted, every node goes to the right and the tree becomes a chain of height seven, so searching degrades to a linear scan.');
+  const L: Pt[] = [[150, 36], [80, 96], [220, 96], [40, 156], [120, 156], [180, 156], [260, 156]];
+  [[0, 1], [0, 2], [1, 3], [1, 4], [2, 5], [2, 6]].forEach(([a, b]) => tedge(f, L[a], L[b]));
+  L.forEach((p, i) => tnode(f, p, String([4, 2, 6, 1, 3, 5, 7][i]), 'pass'));
+  f.text(150, 206, 'balanced: height 3', { anchor: 'middle', size: 12.5, tone: 'pass', bold: true });
+  f.text(150, 224, 'search ≈ log₂ n steps', { anchor: 'middle', size: 12, tone: 'muted' });
+  const C: Pt[] = Array.from({ length: 7 }, (_, i) => [380 + i * 36, 30 + i * 30] as Pt);
+  for (let i = 0; i < 6; i++) tedge(f, C[i], C[i + 1], 'muted');
+  C.forEach((p, i) => tnode(f, p, String(i + 1), 'fail'));
+  f.text(500, 252, 'inserted in sorted order: a chain, height 7', { anchor: 'middle', size: 12.5, tone: 'fail', bold: true });
+  f.text(150, 252, 'Same values, different shape.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const dsFigures: Record<string, FigureBuilder> = {
   'ds-array-memory': arrayMemory,
   'ds-array-growth': arrayGrowth,
@@ -303,4 +386,8 @@ export const dsFigures: Record<string, FigureBuilder> = {
   'ds-list-insert': listInsert,
   'ds-floyd-cycle': floydCycle,
   'ds-doubly-list': doublyList,
+  'ds-tree-anatomy': treeAnatomy,
+  'ds-tree-traversals': treeTraversals,
+  'ds-bst-search': bstSearch,
+  'ds-bst-balance': bstBalance,
 };
