@@ -250,6 +250,78 @@ const queensDeadEnd: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 5 · Dynamic programming I ───────────────────────── */
+
+const dpRecipe: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'The four-step dynamic programming recipe, shown with the house robber problem. 1 State: dp[i] is the best loot using houses 0 to i. 2 Recurrence: dp[i] is the maximum of dp[i-1] and dp[i-2] plus nums[i]. 3 Base cases: dp[0] is nums[0] and dp[1] is the larger of the first two. 4 Order and answer: fill left to right, the answer is the last entry.');
+  const rows: [string, string, string, Tone][] = [
+    ['1 · state', 'what does dp[i] mean?', 'dp[i] = best loot from houses 0 … i', 'info'],
+    ['2 · recurrence', 'how do smaller answers combine?', 'dp[i] = max(dp[i−1], dp[i−2] + nums[i])', 'accent'],
+    ['3 · base cases', 'what is obvious?', 'dp[0] = nums[0];  dp[1] = max(nums[0], nums[1])', 'pass'],
+    ['4 · order + answer', 'small → big; where is the result?', 'fill left to right; answer = dp[n − 1]', 'ink'],
+  ];
+  f.text(16, 18, 'the recipe', { size: 12, bold: true, tone: 'muted' });
+  f.text(266, 18, 'example: house robber (no two neighbouring houses)', { size: 12, bold: true, tone: 'muted' });
+  rows.forEach(([name, q, ex, tone], i) => {
+    const y = 28 + i * 58;
+    f.box(16, y, 236, 48, { tone, solid: true, label: name, sub: q, size: 13 });
+    f.path(`M254 ${y + 24} H264`, { arrow: true, tone: 'muted' });
+    f.box(266, y, 358, 48, { tone: 'ink', label: ex, mono: true, size: 12 });
+  });
+  f.text(W / 2, 270, 'Every DP problem fits these four questions.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const dpFibTable: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'A bottom-up table for Fibonacci: entries 0, 1, 1, 2, 3, 5, 8, 13 for indexes 0 to 7. Each entry is the sum of the two entries before it, so dp[7] is dp[6] plus dp[5], 8 plus 5, equal to 13. Each value is computed once, from answers already in the table.');
+  const vals = [0, 1, 1, 2, 3, 5, 8, 13];
+  const x0 = 40, step = 74;
+  f.text(x0, 26, 'table, filled left to right (bottom-up)', { size: 12.5, bold: true, tone: 'muted' });
+  vals.forEach((v, i) => {
+    const tone: Tone = i === 7 ? 'pass' : i === 6 || i === 5 ? 'accent' : i < 2 ? 'ink' : 'info';
+    f.box(x0 + i * step, 40, 64, 44, { tone, solid: i >= 5, label: String(v), mono: true, size: 16 });
+    f.text(x0 + i * step + 32, 104, String(i), { anchor: 'middle', size: 12, mono: true, tone: 'muted' });
+  });
+  f.text(x0 + 32, 122, 'base cases', { size: 11.5, tone: 'muted' });
+  [[6, 'accent'], [5, 'accent']].forEach(([i, tone]) => {
+    const cx = x0 + (i as number) * step + 32;
+    f.path(`M${cx} 130 V${i === 6 ? 168 : 182} H${x0 + 7 * step + 32 + (i === 6 ? 10 : -10)} V138`, { arrow: true, tone: tone as Tone, width: 1.8 });
+  });
+  f.text(W / 2, 214, 'dp[7] = dp[6] + dp[5] = 8 + 5 = 13', { anchor: 'middle', size: 14, mono: true, bold: true });
+  f.text(W / 2, 242, 'Every value is computed once, from smaller answers already in the table: O(n), not O(2ⁿ).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const dpCoinTable: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The coin change table for coins 1, 2, 5 and amounts 0 to 11. dp holds the fewest coins for each amount: 0, 1, 1, 2, 2, 1, 2, 2, 3, 3, 2, 3. To get dp[11], try each coin: dp[10] plus 1 equals 3 with coin 1, dp[9] plus 1 equals 4 with coin 2, dp[6] plus 1 equals 3 with coin 5. The minimum is 3.');
+  const vals = [0, 1, 1, 2, 2, 1, 2, 2, 3, 3, 2, 3];
+  const x0 = 16, step = 50;
+  f.text(x0, 26, 'dp[a] = fewest coins that make amount a   (coins 1, 2, 5)', { size: 12.5, bold: true, tone: 'muted' });
+  vals.forEach((v, a) => {
+    const tone: Tone = a === 11 ? 'pass' : a === 10 || a === 9 || a === 6 ? 'accent' : 'info';
+    f.box(x0 + a * step, 40, 44, 42, { tone, solid: tone !== 'info', label: String(v), mono: true, size: 15 });
+    f.text(x0 + a * step + 22, 100, String(a), { anchor: 'middle', size: 11.5, mono: true, tone: 'muted' });
+  });
+  f.lines(24, 140, ['dp[11] = 1 + min( dp[11 − 1], dp[11 − 2], dp[11 − 5] )', '       = 1 + min( dp[10],     dp[9],      dp[6]     )', '       = 1 + min(   2,          3,          2       ) = 3'], { size: 12.5, mono: true, gap: 22 });
+  f.text(W / 2, 238, 'Try every coin as the LAST coin used; the rest is a smaller, already-solved amount.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const dpRobber: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'House robber on 2, 7, 9, 3, 1. dp holds the best loot so far: 2, 7, 11, 11, 12. For house 2, dp[2] is the maximum of skipping it, dp[1] which is 7, and robbing it, dp[0] plus 9 which is 11, so 11.');
+  const nums = [2, 7, 9, 3, 1], dp = [2, 7, 11, 11, 12];
+  const x0 = 70, step = 100;
+  f.text(8, 66, 'loot', { size: 12, tone: 'muted', bold: true });
+  f.text(8, 146, 'best', { size: 12, tone: 'muted', bold: true });
+  nums.forEach((v, i) => f.box(x0 + i * step, 40, 84, 40, { tone: i === 2 ? 'accent' : 'ink', solid: i === 2, label: String(v), mono: true, size: 16 }));
+  dp.forEach((v, i) => f.box(x0 + i * step, 120, 84, 40, { tone: i === 2 ? 'pass' : i === 4 ? 'pass' : 'info', solid: i === 2 || i === 4, label: String(v), mono: true, size: 16 }));
+  f.path(`M${x0 + 1 * step + 42} 118 L${x0 + 2 * step + 30} 90`, { arrow: true, tone: 'muted', dashed: true });
+  f.path(`M${x0 + 0 * step + 42} 118 L${x0 + 2 * step + 10} 90`, { arrow: true, tone: 'accent', dashed: true });
+  f.lines(24, 196, ['dp[2] = max( skip house 2: dp[1] = 7 ,  rob it: dp[0] + 9 = 11 ) = 11', 'the answer is the last entry: dp[4] = 12  (rob houses 0, 2 and 4: 2 + 9 + 1)'], { size: 12, mono: true, gap: 22 });
+  f.text(W / 2, 250, 'Each entry only looks back two steps: you can keep just two variables.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const algoFigures: Record<string, FigureBuilder> = {
   'alg-call-stack': callStack,
   'alg-fib-tree': fibTree,
@@ -265,4 +337,8 @@ export const algoFigures: Record<string, FigureBuilder> = {
   'alg-backtrack-cycle': backtrackCycle,
   'alg-subsets-tree': subsetsTree,
   'alg-queens-deadend': queensDeadEnd,
+  'alg-dp-recipe': dpRecipe,
+  'alg-dp-fib-table': dpFibTable,
+  'alg-dp-coin-table': dpCoinTable,
+  'alg-dp-robber': dpRobber,
 };
