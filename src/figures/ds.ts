@@ -369,6 +369,76 @@ const bstBalance: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 6 · Heaps & priority queues ───────────────────────── */
+
+const heapTreeArray: FigureBuilder = () => {
+  const f = new Fig(W, 320, 'A min-heap drawn as a tree and stored as an array: 1, 3, 2, 7, 4, 5, 9. Every parent is less than or equal to its children, so the smallest value is at the root, index 0. In the array, the children of index i are at 2i+1 and 2i+2, and the parent of index i is at floor of (i-1)/2.');
+  const vals = [1, 3, 2, 7, 4, 5, 9];
+  const P: Pt[] = [[320, 40], [200, 98], [440, 98], [130, 156], [270, 156], [370, 156], [510, 156]];
+  [[0, 1], [0, 2], [1, 3], [1, 4], [2, 5], [2, 6]].forEach(([a, b]) => tedge(f, P[a], P[b]));
+  P.forEach((p, i) => tnode(f, p, String(vals[i]), i === 0 ? 'accent' : 'info'));
+  f.text(20, 44, 'rule: every parent ≤ its children', { size: 12.5, bold: true });
+  f.text(354, 44, 'smallest at the top: peek is O(1)', { size: 12.5, tone: 'accent', bold: true });
+  vals.forEach((v, i) => {
+    f.box(20 + i * 88, 214, 80, 40, { tone: i === 0 ? 'accent' : 'info', solid: i === 0, label: String(v), mono: true, size: 15 });
+    f.text(60 + i * 88, 274, String(i), { anchor: 'middle', size: 12, mono: true, tone: 'muted' });
+  });
+  f.text(W / 2, 198, 'the same heap stored in a plain array (no pointers):', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 302, 'children of i: 2i + 1 and 2i + 2      parent of i: ⌊(i − 1) / 2⌋', { anchor: 'middle', size: 12.5, mono: true, bold: true });
+  return f;
+};
+
+const heapRows = (f: Fig, rows: { vals: number[]; hot: number[]; note: string; sub: string; tone?: Tone }[]) => {
+  rows.forEach((r, k) => {
+    const y = 30 + k * 76;
+    r.vals.forEach((v, i) => f.box(20 + i * 66, y, 60, 40, { tone: r.hot.includes(i) ? (r.tone ?? 'accent') : 'info', solid: r.hot.includes(i), label: String(v), mono: true, size: 15 }));
+    f.text(300, y + 16, r.note, { size: 12.5, bold: true });
+    f.text(300, y + 36, r.sub, { size: 12, tone: 'muted' });
+  });
+};
+
+const heapSiftUp: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Pushing 1 into the min-heap stored as the array 2, 5, 3. Add it at the end, giving 2, 5, 3, 1. Its parent at index 1 is 5, which is larger, so swap, giving 2, 1, 3, 5. Its parent at index 0 is 2, which is larger, so swap again, giving 1, 2, 3, 5. It reached the root, so the heap property holds again.');
+  heapRows(f, [
+    { vals: [2, 5, 3, 1], hot: [3], note: 'push(1): add it at the END (index 3)', sub: 'parent of 3 = ⌊(3−1)/2⌋ = 1, which holds 5' },
+    { vals: [2, 1, 3, 5], hot: [1, 3], note: '1 < 5: swap with the parent', sub: 'now at index 1; parent = index 0, which holds 2' },
+    { vals: [1, 2, 3, 5], hot: [0, 1], note: '1 < 2: swap again. At the root: done', sub: 'at most one swap per level: O(log n)', tone: 'pass' },
+  ]);
+  f.text(W / 2, 252, 'This is "sift up" (also called bubble up).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const heapSiftDown: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Popping the minimum from the heap 1, 2, 3, 5. Take the root 1. Move the last item, 5, to the root, giving 5, 2, 3. Compare it with its children 2 and 3 and swap with the smaller one, 2, giving 2, 5, 3, which is a heap again.');
+  heapRows(f, [
+    { vals: [1, 2, 3, 5], hot: [0], note: 'pop(): the minimum is the root (1)', sub: 'removing it leaves a hole at the top' },
+    { vals: [5, 2, 3], hot: [0], note: 'move the LAST item (5) to the root', sub: 'the array is shorter and the shape stays complete' },
+    { vals: [2, 5, 3], hot: [0, 1], note: 'swap with the SMALLER child (2)', sub: 'repeat down the tree until neither child is smaller', tone: 'pass' },
+  ]);
+  f.text(W / 2, 252, 'This is "sift down". At most one swap per level: O(log n).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const heapCosts: FigureBuilder = () => {
+  const f = new Fig(W, 272, 'Costs of a priority queue built three ways. Peek at the minimum: unsorted array O(n), sorted array O(1), heap O(1). Insert: unsorted O(1), sorted O(n), heap O(log n). Remove the minimum: unsorted O(n), sorted O(n), heap O(log n). Build from n items: sorted O(n log n), heap O(n).');
+  const cols = ['unsorted array', 'sorted array', 'binary heap'];
+  const rows: [string, string[], Tone[]][] = [
+    ['peek min', ['O(n)', 'O(1)', 'O(1)'], ['fail', 'pass', 'pass']],
+    ['insert', ['O(1)', 'O(n)', 'O(log n)'], ['pass', 'fail', 'info']],
+    ['remove min', ['O(n)', 'O(n)*', 'O(log n)'], ['fail', 'fail', 'info']],
+    ['build from n items', ['n × O(1)', 'O(n log n)', 'O(n)'], ['pass', 'info', 'pass']],
+  ];
+  cols.forEach((c, i) => f.text(170 + i * 148 + 70, 24, c, { anchor: 'middle', size: 12.5, bold: true, tone: i === 2 ? 'accent' : 'ink' }));
+  rows.forEach(([name, vals, tones], r) => {
+    const y = 38 + r * 46;
+    f.box(16, y, 148, 36, { tone: 'ink', label: name, size: 12.5 });
+    vals.forEach((v, i) => f.box(170 + i * 148, y, 140, 36, { tone: tones[i], solid: true, label: v, mono: true, size: 13 }));
+  });
+  f.text(W / 2, 248, '* shifting after the removal; O(1) only if you keep the array in descending order.', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(W / 2, 266, 'A heap is the balanced trade: both insert and remove-min are O(log n).', { anchor: 'middle', size: 12.5, bold: true });
+  return f;
+};
+
 export const dsFigures: Record<string, FigureBuilder> = {
   'ds-array-memory': arrayMemory,
   'ds-array-growth': arrayGrowth,
@@ -390,4 +460,8 @@ export const dsFigures: Record<string, FigureBuilder> = {
   'ds-tree-traversals': treeTraversals,
   'ds-bst-search': bstSearch,
   'ds-bst-balance': bstBalance,
+  'ds-heap-tree-array': heapTreeArray,
+  'ds-heap-sift-up': heapSiftUp,
+  'ds-heap-sift-down': heapSiftDown,
+  'ds-heap-costs': heapCosts,
 };
