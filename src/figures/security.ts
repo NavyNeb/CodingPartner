@@ -66,8 +66,60 @@ const trustBoundary: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 2 · Injection and trusting input ───────────────────────── */
+
+const injectionFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Injection and its cure. With string concatenation, the data the user typed becomes part of the query text, so the database cannot tell code from data. With a parameterized query, the query text with placeholders and the values travel separately, so the values can never be interpreted as code.');
+  const col = (x: number, title: string, tone: Tone, code: string[], verdict: string) => {
+    f.box(x, 16, 304, 200, { tone });
+    f.text(x + 152, 42, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.lines(x + 14, 72, code, { size: 11, mono: true, gap: 20 });
+    f.text(x + 152, 200, verdict, { anchor: 'middle', size: 11.5, bold: true, tone });
+  };
+  col(12, 'string concatenation', 'fail', ['"… WHERE name = \'"', '  + input + "\'"', '', 'one channel:', 'code and data mixed'], 'input can rewrite the query');
+  col(324, 'parameterized', 'pass', ['text:   "… WHERE name = $1"', 'values: [ input ]', '', 'two channels:', 'code | data'], 'input is only ever a value');
+  f.text(W / 2, 248, 'Never build code by gluing strings. Hand the engine the data separately.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const traversalFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Path traversal. A server serves files from a base folder. A request for a normal name resolves to a path inside the base. A request containing dot-dot segments climbs out of the base and reaches other files. The fix is to resolve the path first, then verify it is still inside the base, comparing whole path segments, not string prefixes.');
+  f.box(16, 20, 330, 150, { tone: 'pass', dashed: true });
+  f.text(181, 44, 'base: /var/www/uploads', { anchor: 'middle', size: 12.5, bold: true, tone: 'pass' });
+  f.box(40, 62, 280, 30, { tone: 'pass', label: '/var/www/uploads/cat.png', mono: true, size: 11 });
+  f.box(40, 106, 280, 30, { tone: 'muted', label: '/var/www/uploads/2024/a.txt', mono: true, size: 11 });
+  f.box(384, 20, 240, 150, { tone: 'fail' });
+  f.text(504, 44, 'outside the base', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.box(400, 62, 208, 30, { tone: 'fail', solid: true, label: '/etc/passwd', mono: true, size: 11 });
+  f.box(400, 106, 208, 30, { tone: 'fail', dashed: true, label: '/var/www/uploads-old/x', mono: true, size: 10.5 });
+  f.path('M322 77 H398', { arrow: true, tone: 'fail', width: 2 });
+  f.text(360, 182, '../../.. climbs out', { anchor: 'middle', size: 10.5, mono: true, tone: 'fail' });
+  f.text(W / 2, 198, 'resolve first, then check the result is inside the base, segment by segment', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 226, 'A string prefix check wrongly accepts /var/www/uploads-old.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const pollutionFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Prototype pollution. Every plain JavaScript object inherits from one shared Object.prototype. If a merge function copies a key named __proto__ from attacker-controlled JSON, it can add a property such as isAdmin to that shared prototype, and every object in the program suddenly appears to have it.');
+  f.box(200, 16, 240, 60, { tone: 'fail', solid: true });
+  f.text(320, 40, 'Object.prototype', { anchor: 'middle', size: 13, bold: true, mono: true });
+  f.text(320, 62, 'isAdmin: true  (polluted)', { anchor: 'middle', size: 11.5, mono: true });
+  ['user = {}', 'config = {}', 'session = {}'].forEach((n, i) => {
+    const x = 40 + i * 200;
+    f.box(x, 130, 160, 44, { tone: 'muted', label: n, mono: true, size: 11.5 });
+    f.path(`M${x + 80} 128 L320 78`, { arrow: true, tone: 'fail', width: 1.6, dashed: true });
+    f.text(x + 80, 192, 'user.isAdmin → true', { anchor: 'middle', size: 10.5, mono: true, tone: 'fail' });
+  });
+  f.text(W / 2, 226, 'Skip the keys __proto__, constructor and prototype when merging untrusted data.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 250, 'Or merge into objects with no prototype.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const securityFigures: Record<string, FigureBuilder> = {
   'sec-xss-flow': xssFlow,
   'sec-contexts': outputContexts,
   'sec-trust-boundary': trustBoundary,
+  'sec-injection': injectionFigure,
+  'sec-traversal': traversalFigure,
+  'sec-pollution': pollutionFigure,
 };
