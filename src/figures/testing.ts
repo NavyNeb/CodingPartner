@@ -337,6 +337,58 @@ const nondeterminism: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 7 · Test quality ───────────────────────── */
+
+const flakyCauses: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Common causes of flaky tests and their fixes. Real time: use fake timers or an injected clock. Randomness: inject a seeded or fixed random function. Shared state between tests: reset or create fresh state in each test. Order dependence: make every test set up its own world. Unawaited async work: await it, or wait for a visible result.');
+  const rows: [string, string][] = [
+    ['real time and sleeps', 'fake timers / injected clock'],
+    ['randomness', 'injected, fixed random()'],
+    ['state shared between tests', 'fresh state in every test'],
+    ['tests that need a run order', 'each test builds its own world'],
+    ['async work not awaited', 'await it, or findBy / waitFor'],
+  ];
+  f.text(170, 18, 'cause', { anchor: 'middle', size: 12, bold: true, tone: 'fail' });
+  f.text(480, 18, 'fix', { anchor: 'middle', size: 12, bold: true, tone: 'pass' });
+  rows.forEach(([cause, fix], i) => {
+    const y = 28 + i * 44;
+    f.box(16, y, 290, 34, { tone: 'fail', dashed: true, label: cause, size: 12 });
+    f.path(`M310 ${y + 17} H336`, { arrow: true, tone: 'accent', width: 2 });
+    f.box(340, y, 284, 34, { tone: 'pass', solid: true, label: fix, size: 12 });
+  });
+  f.text(W / 2, 252, 'A flaky test is worse than no test: people stop trusting the red.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const coverageLie: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'Coverage versus mutation score. A test that merely runs the code gives one hundred percent line coverage but kills no mutants, because it asserts nothing. A test with real assertions at the boundary kills the mutants, so the mutation score is what measures whether tests would notice bugs.');
+  const col = (x: number, title: string, code: string, a: string, b: string, tone: Tone) => {
+    f.box(x, 20, 296, 170, { tone });
+    f.text(x + 148, 46, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.text(x + 148, 76, code, { anchor: 'middle', size: 11, mono: true });
+    f.text(x + 148, 118, a, { anchor: 'middle', size: 12.5, bold: true });
+    f.text(x + 148, 146, b, { anchor: 'middle', size: 12.5, bold: true, tone });
+  };
+  col(16, 'runs the code', 'isAdult(30);', 'line coverage: 100%', 'mutants killed: 0 / 3', 'fail');
+  col(328, 'asserts at the edge', 'expect(isAdult(18)).toBe(true)', 'line coverage: 100%', 'mutants killed: 3 / 3', 'pass');
+  f.text(W / 2, 224, 'Coverage says the code ran. Only assertions say it was checked.', { anchor: 'middle', size: 12.5, tone: 'muted', italic: true });
+  return f;
+};
+
+const brittleVsRobust: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Brittle versus robust tests when the implementation is refactored. A brittle test checks internals such as a private field or the exact order of internal calls and breaks on a harmless refactor. A robust test checks the observable behaviour and keeps passing, and still fails when behaviour really changes.');
+  const col = (x: number, title: string, lines: string[], verdict: string, tone: Tone) => {
+    f.box(x, 20, 296, 190, { tone });
+    f.text(x + 148, 46, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.lines(x + 14, 78, lines, { size: 11.5, mono: true, gap: 20 });
+    f.text(x + 148, 188, verdict, { anchor: 'middle', size: 12, bold: true, tone });
+  };
+  col(16, 'brittle', ['expect(cart._items.length)', '  .toBe(2);', 'expect(db.save)', '  .toHaveBeenCalledBefore(log)'], 'breaks on a harmless refactor', 'fail');
+  col(328, 'robust', ['cart.add(apple);', 'cart.add(pear);', 'expect(cart.total())', '  .toBe(3);'], 'only breaks when behaviour breaks', 'pass');
+  f.text(W / 2, 240, 'Assert on what callers can observe; leave the inside free to change.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const testingFigures: Record<string, FigureBuilder> = {
   'tst-pyramid': testPyramid,
   'tst-aaa': arrangeActAssert,
@@ -357,4 +409,7 @@ export const testingFigures: Record<string, FigureBuilder> = {
   'tst-red-green': redGreenRefactor,
   'tst-core-shell': coreShell,
   'tst-nondeterminism': nondeterminism,
+  'tst-flaky-causes': flakyCauses,
+  'tst-coverage-lie': coverageLie,
+  'tst-brittle': brittleVsRobust,
 };
