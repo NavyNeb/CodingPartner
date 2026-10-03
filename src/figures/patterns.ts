@@ -190,6 +190,62 @@ const signalGraph: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 4 · Decorators, proxies and middleware ───────────────────────── */
+
+const decoratorFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The decorator pattern. A plain function fn is wrapped by memoize, which is wrapped by withTiming. Each wrapper has exactly the same signature as the function it wraps, so callers cannot tell the difference. Arguments flow down through the layers and the result flows back up, and each layer adds one behaviour: timing, caching, or the real work.');
+  const layers: [string, string, Tone][] = [
+    ['withTiming(…)', 'adds: measure how long it took', 'info'],
+    ['memoize(…)', 'adds: remember results by arguments', 'accent'],
+    ['fn', 'the real work', 'pass'],
+  ];
+  layers.forEach(([name, adds, tone], i) => {
+    const y = 20 + i * 76;
+    f.box(16, y, 300, 56, { tone, solid: i === 2 });
+    f.text(166, y + 26, name, { anchor: 'middle', size: 14, bold: true, mono: true });
+    f.text(166, y + 44, adds, { anchor: 'middle', size: 11 });
+    if (i < 2) {
+      f.path(`M120 ${y + 58} V${y + 74}`, { arrow: true, tone: 'muted', width: 1.8 });
+      f.path(`M212 ${y + 74} V${y + 58}`, { arrow: true, tone: 'muted', width: 1.8 });
+    }
+  });
+  f.text(116, 91, 'args', { anchor: 'end', size: 10, tone: 'muted' });
+  f.text(216, 91, 'result', { anchor: 'start', size: 10, tone: 'muted' });
+  f.lines(350, 70, ['const fast = withTiming(', '  memoize(fn)', ');', '', 'fast(2, 3)  // same call,', '            // more behaviour'], { size: 12, mono: true, gap: 20 });
+  f.text(W / 2, 258, 'Same shape in, same shape out: layers can be added, removed or reordered.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const onionFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'The middleware onion. A request enters the outermost middleware, logging, which runs its before part and calls next to go inwards. It passes through authentication and reaches the handler in the centre. The response then travels back outwards, and each middleware runs its after part in the reverse order.');
+  f.box(16, 16, 608, 240, { tone: 'info' });
+  f.text(32, 38, 'logging', { size: 13, bold: true, tone: 'info' });
+  f.box(96, 56, 448, 176, { tone: 'accent' });
+  f.text(112, 78, 'auth', { size: 13, bold: true, tone: 'accent' });
+  f.box(176, 96, 288, 100, { tone: 'pass', solid: true });
+  f.text(320, 150, 'handler', { anchor: 'middle', size: 14, bold: true });
+  f.text(320, 172, 'produces the response', { anchor: 'middle', size: 11.5 });
+  f.text(560, 38, 'request →', { anchor: 'end', size: 11.5, mono: true, tone: 'info' });
+  f.text(528, 78, 'request →', { anchor: 'end', size: 11.5, mono: true, tone: 'accent' });
+  f.text(600, 250, '← response', { anchor: 'end', size: 11.5, mono: true, tone: 'info' });
+  f.text(520, 224, '← response', { anchor: 'end', size: 11.5, mono: true, tone: 'accent' });
+  return f;
+};
+
+const proxyFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A proxy. Client code talks to a proxy object exactly as if it were the real object. The proxy intercepts get, set and delete operations through traps, can check, log or block them, and then forwards to the real target object.');
+  f.box(16, 80, 120, 60, { tone: 'info', label: 'client', size: 13 });
+  f.path('M138 110 H196', { arrow: true, tone: 'muted', width: 2 });
+  f.box(200, 30, 240, 160, { tone: 'accent', solid: true });
+  f.text(320, 56, 'proxy', { anchor: 'middle', size: 14, bold: true });
+  f.lines(224, 84, ['get(key)', 'set(key, value)', 'deleteProperty(key)'], { size: 12, mono: true, gap: 24 });
+  f.text(320, 170, 'check · log · block · forward', { anchor: 'middle', size: 11.5 });
+  f.path('M442 110 H500', { arrow: true, tone: 'muted', width: 2 });
+  f.box(504, 80, 120, 60, { tone: 'pass', label: 'target', size: 13 });
+  f.text(W / 2, 230, 'The client cannot tell it is not talking to the real object.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const patternFigures: Record<string, FigureBuilder> = {
   'pat-factory': factoryFigure,
   'pat-builder': builderFigure,
@@ -201,4 +257,7 @@ export const patternFigures: Record<string, FigureBuilder> = {
   'pat-pubsub': pubsubFigure,
   'pat-leak': leakFigure,
   'pat-signals': signalGraph,
+  'pat-decorator': decoratorFigure,
+  'pat-onion': onionFigure,
+  'pat-proxy': proxyFigure,
 };
