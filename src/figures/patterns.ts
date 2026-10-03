@@ -304,6 +304,58 @@ const mementoFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 6 · Adapters and facades ───────────────────────── */
+
+const adapterFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'The adapter pattern. Your code expects one interface, read, which returns Celsius. A third party sensor offers a different interface, readFahrenheit. The adapter sits between them, implements the interface your code expects, and translates each call to the sensor. Neither side changes.');
+  f.box(16, 70, 170, 90, { tone: 'info' });
+  f.text(101, 98, 'your code', { anchor: 'middle', size: 14, bold: true, tone: 'info' });
+  f.text(101, 124, 'expects  read() → °C', { anchor: 'middle', size: 11.5, mono: true });
+  f.path('M188 115 H232', { arrow: true, tone: 'muted', width: 2 });
+  f.box(236, 56, 170, 118, { tone: 'accent', solid: true });
+  f.text(321, 84, 'adapter', { anchor: 'middle', size: 14, bold: true });
+  f.lines(252, 112, ['read() {', '  (f - 32) × 5/9', '}'], { size: 11.5, mono: true, gap: 18 });
+  f.path('M408 115 H452', { arrow: true, tone: 'muted', width: 2 });
+  f.box(456, 70, 168, 90, { tone: 'pass' });
+  f.text(540, 98, 'third-party sensor', { anchor: 'middle', size: 12.5, bold: true, tone: 'pass' });
+  f.text(540, 124, 'readFahrenheit()', { anchor: 'middle', size: 11.5, mono: true });
+  f.text(W / 2, 220, 'Translate at the border so the rest of your code stays in its own language.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const facadeFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The facade pattern. A client wants to place an order. Without a facade it has to call the inventory, payments and shipping subsystems in the right order and undo them if something fails. With a facade it calls one method, placeOrder, and the facade coordinates the three subsystems.');
+  f.box(16, 90, 130, 70, { tone: 'info', label: 'client', size: 14 });
+  f.path('M148 125 H196', { arrow: true, tone: 'accent', width: 2.2 });
+  f.box(200, 60, 200, 130, { tone: 'accent', solid: true });
+  f.text(300, 88, 'checkout facade', { anchor: 'middle', size: 13, bold: true });
+  f.text(300, 116, 'placeOrder(order)', { anchor: 'middle', size: 12, mono: true });
+  f.lines(216, 146, ['reserve → charge → ship', 'and undo on failure'], { size: 11.5, gap: 18 });
+  ['inventory', 'payments', 'shipping'].forEach((n, i) => {
+    const y = 24 + i * 76;
+    f.box(500, y, 124, 52, { tone: 'pass', label: n, size: 12.5 });
+    f.path(`M402 125 L496 ${y + 26}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.text(W / 2, 240, 'One simple entry point; the messy coordination lives in one place.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const antiCorruption: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'An anti-corruption layer. An external API returns messy data with odd names and types, such as user underscore id, a roles comma string and is underscore active as the number one. An adapter at the boundary converts it once into your clean model with id, roles as an array and active as a boolean, so the rest of the app never sees the mess.');
+  f.box(16, 30, 220, 150, { tone: 'fail', dashed: true });
+  f.text(126, 54, 'external API', { anchor: 'middle', size: 13, bold: true, tone: 'fail' });
+  f.lines(30, 84, ['user_id: "42"', 'is_active: 1', 'roles: "admin, editor"', 'created: "2024-01-05…"'], { size: 11, mono: true, gap: 20 });
+  f.path('M238 105 H292', { arrow: true, tone: 'accent', width: 2.2 });
+  f.box(296, 72, 70, 66, { tone: 'accent', solid: true, label: 'adapt', size: 12 });
+  f.path('M368 105 H402', { arrow: true, tone: 'accent', width: 2.2 });
+  f.box(406, 30, 218, 150, { tone: 'pass' });
+  f.text(515, 54, 'your domain', { anchor: 'middle', size: 13, bold: true, tone: 'pass' });
+  f.lines(420, 84, ['id: 42', 'active: true', "roles: ['admin','editor']", 'createdAt: Date'], { size: 11, mono: true, gap: 20 });
+  f.text(W / 2, 214, 'Convert once, at the border: names, types, defaults, bad data.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 240, 'If the vendor changes the format, only the adapter changes.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const patternFigures: Record<string, FigureBuilder> = {
   'pat-factory': factoryFigure,
   'pat-builder': builderFigure,
@@ -321,4 +373,7 @@ export const patternFigures: Record<string, FigureBuilder> = {
   'pat-command': commandFigure,
   'pat-undo-stacks': undoStacks,
   'pat-memento': mementoFigure,
+  'pat-adapter': adapterFigure,
+  'pat-facade': facadeFigure,
+  'pat-acl': antiCorruption,
 };
