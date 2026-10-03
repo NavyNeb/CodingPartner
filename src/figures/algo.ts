@@ -199,6 +199,57 @@ const bsAnswer: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 4 · Backtracking ───────────────────────── */
+
+const backtrackCycle: FigureBuilder = () => {
+  const f = new Fig(W, 240, 'The backtracking loop in three steps. Choose: add an option to the current path. Explore: recurse to build the rest of the answer. Un-choose: remove the option again so the next option starts from a clean slate. A dead end simply returns, and that return is the backtrack.');
+  const steps: [string, string, Tone][] = [['1 · choose', 'path.push(option)', 'info'], ['2 · explore', 'backtrack(next)', 'accent'], ['3 · un-choose', 'path.pop()', 'pass']];
+  steps.forEach(([l, sub, tone], i) => {
+    const x = 20 + i * 214;
+    f.box(x, 30, 190, 64, { tone, label: l, sub, mono: true, size: 14 });
+    if (i < 2) f.path(`M${x + 192} 62 H${x + 212}`, { arrow: true, width: 2 });
+  });
+  f.path('M515 98 V130 H115 V100', { arrow: true, tone: 'muted', dashed: true, width: 1.8 });
+  f.text(W / 2, 150, 'repeat for the next option', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  f.lines(24, 184, ['Every choice is undone, so each branch starts from the same clean state.', 'A dead end (no valid option) just returns: that return IS the backtrack.'], { size: 12.5, gap: 20 });
+  f.text(W / 2, 232, 'Backtracking = depth-first search over the tree of all partial answers.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const subsetsTree: FigureBuilder = () => {
+  const f = new Fig(W, 310, 'The decision tree for the subsets of 1, 2, 3. For each element you either take it or skip it, so there are two branches at each of three levels and eight leaves: {1,2,3}, {1,2}, {1,3}, {1}, {2,3}, {2}, {3} and the empty set. Backtracking walks this tree depth first.');
+  const link = (x1: number, y1: number, x2: number, y2: number) => f.line(x1, y1, x2, y2, { tone: 'muted', width: 1.5 });
+  cbox(f, 320, 14, 70, 'start', { tone: 'ink', h: 30 });
+  [[160, 'take 1', 'info'], [480, 'skip 1', 'muted']].forEach(([x, l, tone]) => { cbox(f, x as number, 80, 90, l as string, { tone: tone as Tone, h: 30 }); link(320, 44, x as number, 80); });
+  [[80, 'take 2', 160], [240, 'skip 2', 160], [400, 'take 2', 480], [560, 'skip 2', 480]].forEach(([x, l, px]) => { cbox(f, x as number, 146, 82, l as string, { tone: (l as string).startsWith('take') ? 'info' : 'muted', h: 30 }); link(px as number, 110, x as number, 146); });
+  const leaves = ['{1,2,3}', '{1,2}', '{1,3}', '{1}', '{2,3}', '{2}', '{3}', '{ }'];
+  leaves.forEach((l, i) => {
+    const x = 42 + i * 80;
+    cbox(f, x, 214, 74, l, { tone: 'pass', solid: true, h: 32, size: 11.5 });
+    link([80, 80, 240, 240, 400, 400, 560, 560][i], 176, x, 214);
+  });
+  f.text(W / 2, 276, 'take or skip each of n items → 2ⁿ leaves: backtracking visits every one.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 298, 'Pruning (cutting a branch early) is what makes backtracking practical.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const queensDeadEnd: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A four-queens partial placement with queens in row 0 column 0 and row 1 column 2. Every square in row 2 is attacked: column 0 and column 2 by column, columns 1 and 3 by the diagonal from the row 1 queen. This is a dead end, so the search undoes the row 1 queen and tries its next column.');
+  const x0 = 36, y0 = 24, c = 52;
+  for (let r = 0; r < 4; r++) for (let col = 0; col < 4; col++) {
+    const queen = (r === 0 && col === 0) || (r === 1 && col === 2);
+    const blocked = r === 2;
+    f.box(x0 + col * c, y0 + r * c, c - 4, c - 4, { tone: queen ? 'accent' : blocked ? 'fail' : 'ink', solid: queen, dashed: blocked, label: queen ? 'Q' : blocked ? '×' : '', mono: true, size: 16 });
+  }
+  f.text(x0 + 4 * c + 28, 54, 'queens placed in rows 0 and 1', { size: 12.5, bold: true });
+  f.text(x0 + 4 * c + 28, 112, 'row 2: every square is attacked', { size: 12.5, tone: 'fail', bold: true });
+  f.lines(x0 + 4 * c + 28, 138, ['(same column or same diagonal as a queen)'], { size: 11.5, tone: 'muted' });
+  f.text(x0 + 4 * c + 28, 170, 'dead end → backtrack:', { size: 12.5, tone: 'pass', bold: true });
+  f.lines(x0 + 4 * c + 28, 190, ['undo the row-1 queen, try its next column', 'and keep going from there'], { size: 12, gap: 18 });
+  f.text(W / 2, 260, 'Rejecting a partial answer early prunes the whole subtree below it.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const algoFigures: Record<string, FigureBuilder> = {
   'alg-call-stack': callStack,
   'alg-fib-tree': fibTree,
@@ -211,4 +262,7 @@ export const algoFigures: Record<string, FigureBuilder> = {
   'alg-partition': partitionStep,
   'alg-dutch-flag': dutchFlag,
   'alg-bs-answer': bsAnswer,
+  'alg-backtrack-cycle': backtrackCycle,
+  'alg-subsets-tree': subsetsTree,
+  'alg-queens-deadend': queensDeadEnd,
 };
