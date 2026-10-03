@@ -107,6 +107,59 @@ const tableDriven: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 3 · Test doubles ───────────────────────── */
+
+const doublesKinds: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'The five kinds of test double. A dummy is passed in but never used. A stub returns canned answers. A spy records how it was called. A mock is set up with expectations about its calls. A fake is a simplified but working implementation such as an in-memory repository.');
+  const rows: [string, string, string, Tone][] = [
+    ['dummy', 'passed in, never actually used', 'createNotifier({ api: {} })', 'muted'],
+    ['stub', 'returns canned answers', 'jest.fn(() => 42)', 'info'],
+    ['spy', 'records how it was called', 'jest.fn()   →   fn.mock.calls', 'accent'],
+    ['mock', 'a spy with expectations about the calls', 'expect(fn).toHaveBeenCalledTimes(1)', 'fail'],
+    ['fake', 'a simplified but WORKING implementation', 'an in-memory repository built on a Map', 'pass'],
+  ];
+  rows.forEach(([name, desc, example, tone], i) => {
+    const y = 14 + i * 52;
+    f.box(16, y, 96, 44, { tone, solid: true, label: name, mono: true, size: 14 });
+    f.text(126, y + 19, desc, { size: 12.5, bold: true });
+    f.text(126, y + 37, example, { size: 11.5, mono: true, tone: 'muted' });
+  });
+  f.text(W / 2, 282, 'In Jest, jest.fn() can play stub, spy and mock, depending on how you use it.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const diSeam: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Dependency injection creates a seam for tests. When sendWelcome calls the real emailApi directly, every test would send a real email. When createNotifier receives the api as an argument, production passes the real emailApi and a test passes a fake object whose send is a jest.fn.');
+  f.text(16, 20, 'hard-coded dependency', { size: 12.5, bold: true, tone: 'fail' });
+  f.box(16, 30, 190, 46, { tone: 'ink', label: 'sendWelcome(user)', mono: true, size: 12.5 });
+  f.path('M208 53 H266', { arrow: true, tone: 'fail', width: 2 });
+  f.box(270, 30, 240, 46, { tone: 'fail', dashed: true, label: 'emailApi.send(…)', sub: 'a real network call', mono: true, size: 12.5 });
+  f.text(520, 58, '✗ every test sends email', { size: 12, tone: 'fail', bold: true });
+  f.text(16, 118, 'injected dependency: the "seam"', { size: 12.5, bold: true, tone: 'pass' });
+  f.box(16, 150, 190, 46, { tone: 'ink', label: 'createNotifier({ api })', mono: true, size: 12.5 });
+  f.path('M208 166 L266 146', { arrow: true, tone: 'pass', width: 2 });
+  f.path('M208 180 L266 204', { arrow: true, tone: 'accent', width: 2 });
+  f.box(270, 124, 240, 46, { tone: 'pass', solid: true, label: 'production: real emailApi', mono: true, size: 12 });
+  f.box(270, 184, 240, 46, { tone: 'accent', solid: true, label: 'test: { send: jest.fn() }', mono: true, size: 12 });
+  f.text(W / 2, 258, 'Pass collaborators in (clock, api, random) and a test can swap them for something controllable.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const stateVsInteraction: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'State-based versus interaction-based assertions. State-based tests check the result or the state afterwards, for example the cart total. Interaction-based tests check the calls that were made, for example that the email api was called once with the right address and message. Prefer state, and use interactions for side effects that leave no other trace.');
+  const col = (x: number, title: string, code: string, bullets: string[], tone: Tone) => {
+    f.box(x, 20, 296, 150, { tone });
+    f.text(x + 148, 46, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.text(x + 148, 74, code, { anchor: 'middle', size: 11.5, mono: true });
+    f.lines(x + 16, 104, bullets, { size: 12, gap: 20 });
+  };
+  col(16, 'state-based', 'expect(cart.total()).toBe(3)', ['look at the RESULT or the new state', 'survives refactors of the inside', 'prefer this whenever you can'], 'pass');
+  col(328, 'interaction-based', 'expect(api.send).toHaveBeenCalledWith(…)', ['look at the CALLS that were made', 'right when the call IS the outcome', '(an email sent, an event fired)'], 'accent');
+  f.text(W / 2, 204, 'Too many interaction assertions glue a test to the implementation:', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 226, 'reorder two internal calls and the test fails even though behaviour is unchanged.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const testingFigures: Record<string, FigureBuilder> = {
   'tst-pyramid': testPyramid,
   'tst-aaa': arrangeActAssert,
@@ -114,4 +167,7 @@ export const testingFigures: Record<string, FigureBuilder> = {
   'tst-equivalence': equivalenceClasses,
   'tst-edge-checklist': edgeChecklist,
   'tst-table-driven': tableDriven,
+  'tst-doubles': doublesKinds,
+  'tst-di-seam': diSeam,
+  'tst-state-vs-interaction': stateVsInteraction,
 };
