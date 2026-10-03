@@ -24,8 +24,8 @@ const arrangeActAssert: FigureBuilder = () => {
   const f = new Fig(W, 260, 'The Arrange, Act, Assert structure of a test. Arrange: set up the inputs and objects, for example create a cart and add two apples. Act: do the one thing being tested, for example read the total. Assert: check the result with expect.');
   const parts: [string, string, string[], Tone][] = [
     ['1 · Arrange', 'set the scene', ['const cart = new Cart();', "cart.add('apple', 2);"], 'info'],
-    ['2 · Act', 'do the one thing', ['const total = cart.total();'], 'accent'],
-    ['3 · Assert', 'check the outcome', ['expect(total).toBe(3);'], 'pass'],
+    ['2 · Act', 'do the one thing', ['const t = cart.total();'], 'accent'],
+    ['3 · Assert', 'check the outcome', ['expect(t).toBe(3);'], 'pass'],
   ];
   parts.forEach(([title, sub, code, tone], i) => {
     const x = 16 + i * 208;
@@ -134,7 +134,8 @@ const diSeam: FigureBuilder = () => {
   f.box(16, 30, 190, 46, { tone: 'ink', label: 'sendWelcome(user)', mono: true, size: 12.5 });
   f.path('M208 53 H266', { arrow: true, tone: 'fail', width: 2 });
   f.box(270, 30, 240, 46, { tone: 'fail', dashed: true, label: 'emailApi.send(…)', sub: 'a real network call', mono: true, size: 12.5 });
-  f.text(520, 58, '✗ every test sends email', { size: 12, tone: 'fail', bold: true });
+  f.text(520, 50, '✗ every test', { size: 12, tone: 'fail', bold: true });
+  f.text(520, 68, 'sends email', { size: 12, tone: 'fail', bold: true });
   f.text(16, 118, 'injected dependency: the "seam"', { size: 12.5, bold: true, tone: 'pass' });
   f.box(16, 150, 190, 46, { tone: 'ink', label: 'createNotifier({ api })', mono: true, size: 12.5 });
   f.path('M208 166 L266 146', { arrow: true, tone: 'pass', width: 2 });
@@ -160,6 +161,70 @@ const stateVsInteraction: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 4 · Async and time ───────────────────────── */
+
+const asyncForgotAwait: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A test that forgets to await. Without await, the test function finishes immediately and passes before the promise has settled, so a rejected promise is never noticed. With await, the test waits for the promise and fails when it rejects.');
+  const col = (x: number, title: string, code: string[], verdict: string, tone: Tone) => {
+    f.box(x, 20, 296, 170, { tone });
+    f.text(x + 148, 46, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.lines(x + 16, 76, code, { size: 11.5, mono: true, gap: 20 });
+    f.text(x + 148, 168, verdict, { anchor: 'middle', size: 12, bold: true, tone });
+  };
+  col(16, 'forgot await', ["it('loads', () => {", '  expect(load()).resolves.toBe(1);', '});'], 'passes even if load() rejects', 'fail');
+  col(328, 'awaited', ["it('loads', async () => {", '  await expect(load()).resolves.toBe(1);', '});'], 'fails when it should', 'pass');
+  f.text(W / 2, 224, 'A promise you do not await is a promise you did not test.', { anchor: 'middle', size: 12.5, tone: 'muted', italic: true });
+  return f;
+};
+
+const fakeClock: FigureBuilder = () => {
+  const f = new Fig(W, 240, 'Fake timers. With the real clock a test waits one real second. With fake timers the test controls a pretend clock: calling advanceTimersByTime(1000) jumps forward at once and fires the timer, so the test takes a few milliseconds.');
+  f.text(16, 24, 'real clock', { size: 13, bold: true, tone: 'fail' });
+  f.path('M16 56 H624', { tone: 'muted', width: 2 });
+  f.box(16, 40, 40, 32, { tone: 'ink', label: 'start', size: 11 });
+  f.box(560, 40, 64, 32, { tone: 'fail', dashed: true, label: '1000 ms', size: 11 });
+  f.text(300, 100, 'the test sits and waits for a whole second', { anchor: 'middle', size: 12, tone: 'fail' });
+  f.text(16, 148, 'fake clock', { size: 13, bold: true, tone: 'pass' });
+  f.path('M16 180 H624', { tone: 'muted', width: 2 });
+  f.box(16, 164, 40, 32, { tone: 'ink', label: 'start', size: 11 });
+  f.path('M60 180 C200 140 360 140 556 176', { arrow: true, tone: 'accent', width: 2 });
+  f.box(560, 164, 64, 32, { tone: 'pass', solid: true, label: 'fired', size: 11 });
+  f.text(300, 140, 'jest.advanceTimersByTime(1000)', { anchor: 'middle', size: 12, mono: true, tone: 'accent' });
+  f.text(W / 2, 226, 'You decide when time passes, so the test is instant and the same every run.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const debounceTimeline: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A debounce timeline with a wait of 100 milliseconds. Calls at 0 and 60 milliseconds each restart the timer, so nothing runs until 100 milliseconds after the last call, at 160, and the function runs once with the last arguments. Without the reset it would run at 100.');
+  f.path('M20 120 H620', { tone: 'muted', width: 2 });
+  const tick = (x: number, label: string) => { f.path(`M${x} 112 V128`, { tone: 'muted', width: 2 }); f.text(x, 146, label, { anchor: 'middle', size: 11, tone: 'muted' }); };
+  tick(40, '0'); tick(160, '60'); tick(340, '100'); tick(400, '160');
+  f.box(20, 60, 40, 30, { tone: 'accent', solid: true, label: 'd(b)', mono: true, size: 11 });
+  f.box(140, 60, 40, 30, { tone: 'accent', solid: true, label: 'd(c)', mono: true, size: 11 });
+  f.path('M40 56 C40 30 330 30 340 54', { arrow: true, tone: 'fail', dashed: true, width: 1.5 });
+  f.text(190, 28, 'timer restarted, so no call at 100', { anchor: 'middle', size: 11.5, tone: 'fail' });
+  f.path('M160 56 C160 36 390 36 400 90', { arrow: true, tone: 'pass', width: 2 });
+  f.box(364, 164, 72, 30, { tone: 'pass', solid: true, label: 'fn(c) once', mono: true, size: 11 });
+  f.text(W / 2, 226, 'Debounce waits for quiet: only the last call of a burst gets through.', { anchor: 'middle', size: 12.5, tone: 'muted', italic: true });
+  return f;
+};
+
+const retryBackoff: FigureBuilder = () => {
+  const f = new Fig(W, 230, 'Retry with exponential backoff and three attempts. Attempt one fails, wait 100 milliseconds, attempt two fails, wait 200 milliseconds, attempt three fails and the last error is thrown. There is no wait after the last attempt.');
+  const items: [number, string, Tone][] = [[16, 'try 1 ✗', 'fail'], [200, 'try 2 ✗', 'fail'], [384, 'try 3 ✗', 'fail']];
+  items.forEach(([x, label, tone]) => f.box(x, 60, 100, 40, { tone, label, mono: true, size: 12 }));
+  f.path('M118 80 H196', { arrow: true, tone: 'accent', width: 2 });
+  f.path('M302 80 H380', { arrow: true, tone: 'accent', width: 2 });
+  f.text(157, 70, 'sleep(100)', { anchor: 'middle', size: 11, mono: true, tone: 'accent' });
+  f.text(341, 70, 'sleep(200)', { anchor: 'middle', size: 11, mono: true, tone: 'accent' });
+  f.path('M486 80 H540', { arrow: true, tone: 'fail', width: 2 });
+  f.box(544, 60, 80, 40, { tone: 'fail', solid: true, label: 'throw last', size: 11 });
+  f.text(W / 2, 150, 'wait time doubles: 100 × 2^attempt', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 176, 'the sleep is injected, so a test passes a spy and never really waits', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 210, 'No sleep after the last failure: there is nothing left to wait for.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const testingFigures: Record<string, FigureBuilder> = {
   'tst-pyramid': testPyramid,
   'tst-aaa': arrangeActAssert,
@@ -170,4 +235,8 @@ export const testingFigures: Record<string, FigureBuilder> = {
   'tst-doubles': doublesKinds,
   'tst-di-seam': diSeam,
   'tst-state-vs-interaction': stateVsInteraction,
+  'tst-forgot-await': asyncForgotAwait,
+  'tst-fake-clock': fakeClock,
+  'tst-debounce': debounceTimeline,
+  'tst-retry': retryBackoff,
 };
