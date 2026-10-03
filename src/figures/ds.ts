@@ -217,6 +217,75 @@ const monotonicStack: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 4 · Linked lists ───────────────────────── */
+
+const listShape: FigureBuilder = () => {
+  const f = new Fig(W, 190, 'A singly linked list: a head pointer refers to the first node, each node holds a value and a next pointer to the following node, and the last node points to null.');
+  const vals = ['7', '3', '9'];
+  vals.forEach((v, i) => {
+    const x = 70 + i * 160;
+    f.box(x, 70, 120, 54, { tone: 'info', label: v, sub: 'next →', mono: true, size: 16 });
+    f.path(`M${x + 122} 97 H${x + 158}`, { arrow: true, width: 2 });
+  });
+  f.text(560, 102, 'null', { size: 14, mono: true, bold: true, tone: 'muted' });
+  f.text(130, 34, 'head', { anchor: 'middle', size: 13, mono: true, bold: true, tone: 'accent' });
+  f.path('M130 42 V66', { arrow: true, tone: 'accent', width: 2 });
+  f.text(W / 2, 156, 'Nodes can live anywhere in memory; each one only knows the next.', { anchor: 'middle', size: 12.5, tone: 'muted' });
+  f.text(W / 2, 176, 'Reaching item k means walking k links: O(n). Rewiring links is O(1).', { anchor: 'middle', size: 12.5, bold: true });
+  return f;
+};
+
+const listInsert: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Inserting a node X after A in a linked list takes two pointer changes: first set X.next to what A pointed at (B), then set A.next to X. Doing it in the other order loses the rest of the list.');
+  const node = (x: number, y: number, l: string, tone: Tone = 'info') => f.box(x, y, 100, 42, { tone, label: l, mono: true, size: 15, solid: tone === 'accent' });
+  const arrow = (x: number, y: number) => f.path(`M${x + 102} ${y + 21} H${x + 148}`, { arrow: true, width: 2 });
+  f.text(20, 24, 'before', { size: 12.5, tone: 'muted', bold: true });
+  ['A', 'B', 'C'].forEach((l, i) => { node(20 + i * 150, 34, l); if (i < 2) arrow(20 + i * 150, 34); });
+  f.text(20, 128, 'insert X after A', { size: 12.5, tone: 'muted', bold: true });
+  node(20, 144, 'A'); node(170, 144, 'X', 'accent'); node(320, 144, 'B'); node(470, 144, 'C');
+  f.path('M122 165 H168', { arrow: true, tone: 'accent', width: 2 });
+  f.path('M272 165 H318', { arrow: true, tone: 'accent', width: 2 });
+  f.path('M422 165 H468', { arrow: true, width: 2 });
+  f.num(145, 148, 2);
+  f.num(295, 148, 1);
+  f.text(20, 222, '① X.next = A.next     (X now points at B: nothing is lost yet)', { size: 12.5, mono: true });
+  f.text(20, 244, '② A.next = X          (A now points at X)', { size: 12.5, mono: true });
+  f.text(W / 2, 276, 'Swap the order and A.next = X overwrites the only link to B, losing B and C.', { anchor: 'middle', size: 12, tone: 'fail', bold: true });
+  return f;
+};
+
+const floydCycle: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A linked list of six nodes whose last node points back to node 3, forming a cycle. A slow pointer moving one step and a fast pointer moving two steps both end up on node 5, so they meet, which proves there is a cycle.');
+  for (let i = 0; i < 6; i++) {
+    const x = 20 + i * 100;
+    f.box(x, 72, 70, 40, { tone: i >= 2 ? 'info' : 'ink', label: String(i + 1), mono: true, size: 15, solid: i === 4 });
+    if (i < 5) f.path(`M${x + 72} 92 H${x + 98}`, { arrow: true, width: 2 });
+  }
+  f.path('M555 114 V166 H255 V116', { arrow: true, tone: 'fail', width: 2 });
+  f.text(405, 186, 'last node points back to node 3: a cycle', { anchor: 'middle', size: 12.5, tone: 'fail', bold: true });
+  f.path('M455 42 V68', { arrow: true, tone: 'accent', width: 2 });
+  f.text(455, 34, 'slow = fast: they met', { anchor: 'middle', size: 12.5, tone: 'accent', bold: true });
+  f.lines(20, 208, ['slow moves 1 step, fast moves 2. With no cycle, fast reaches null. Inside a cycle, fast laps slow', 'and they must land on the same node. O(n) time, O(1) memory (no Set of visited nodes).'], { size: 12, tone: 'muted', gap: 18 });
+  return f;
+};
+
+const doublyList: FigureBuilder = () => {
+  const f = new Fig(W, 200, 'A doubly linked list with sentinel nodes: a dummy head, nodes A, B and C, and a dummy tail, each node linked to both its previous and next node. Removing any node needs no walking, because the node knows both neighbours.');
+  const labels: [string, string, Tone][] = [['HEAD', 'sentinel', 'muted'], ['A', '', 'info'], ['B', '', 'info'], ['C', '', 'info'], ['TAIL', 'sentinel', 'muted']];
+  labels.forEach(([l, sub, tone], i) => {
+    const x = 14 + i * 124;
+    f.box(x, 64, 96, 48, { tone, dashed: tone === 'muted', label: l, sub: sub || undefined, mono: true, size: 14 });
+    if (i < 4) {
+      f.path(`M${x + 98} 80 H${x + 122}`, { arrow: true, width: 2 });
+      f.path(`M${x + 122} 98 H${x + 98}`, { arrow: true, width: 2, tone: 'accent' });
+    }
+  });
+  f.text(W / 2, 28, '→ next pointers      ← prev pointers', { anchor: 'middle', size: 12.5, tone: 'muted', mono: true });
+  f.text(W / 2, 148, 'Each node knows both neighbours, so remove(node) is O(1): no walking.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 170, 'The dummy ends mean every real node has a prev and a next: no special cases.', { anchor: 'middle', size: 12.5, tone: 'muted' });
+  return f;
+};
+
 export const dsFigures: Record<string, FigureBuilder> = {
   'ds-array-memory': arrayMemory,
   'ds-array-growth': arrayGrowth,
@@ -230,4 +299,8 @@ export const dsFigures: Record<string, FigureBuilder> = {
   'ds-queue-fifo': queueFifo,
   'ds-ring-buffer': ringBuffer,
   'ds-monotonic-stack': monotonicStack,
+  'ds-list-shape': listShape,
+  'ds-list-insert': listInsert,
+  'ds-floyd-cycle': floydCycle,
+  'ds-doubly-list': doublyList,
 };
