@@ -81,9 +81,62 @@ const fastPow: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 2 · Two pointers & sliding windows ───────────────────────── */
+
+const twoPointers: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Two pointers on the sorted array 1, 3, 4, 6, 8, 11 with target 10. lo starts at the left end and hi at the right end. The sum 1 plus 11 is 12, bigger than the target, so the right value is too big and hi moves left. If the sum were smaller than the target, lo would move right. Each step discards one value for good.');
+  const vals = [1, 3, 4, 6, 8, 11];
+  const x0 = 48, step = 92;
+  f.text(W / 2, 26, 'target = 10        lo + hi = 1 + 11 = 12  >  10  →  too big: move hi left', { anchor: 'middle', size: 12.5, mono: true, bold: true });
+  vals.forEach((v, i) => f.box(x0 + i * step, 46, 80, 44, { tone: i === 0 ? 'accent' : i === 5 ? 'fail' : 'info', solid: i === 0 || i === 5, label: String(v), mono: true, size: 16 }));
+  f.path(`M${x0 + 40} 134 V96`, { arrow: true, tone: 'accent', width: 2 });
+  f.text(x0 + 40, 152, 'lo', { anchor: 'middle', size: 13, mono: true, bold: true, tone: 'accent' });
+  f.path(`M${x0 + 5 * step + 40} 134 V96`, { arrow: true, tone: 'fail', width: 2 });
+  f.text(x0 + 5 * step + 40, 152, 'hi', { anchor: 'middle', size: 13, mono: true, bold: true, tone: 'fail' });
+  f.lines(48, 188, ['sum > target → the right value is too big for any partner: hi--', 'sum < target → the left value is too small for any partner: lo++', 'sum = target → found'], { size: 12.5, gap: 20 });
+  f.text(W / 2, 262, 'Each step discards one value for good, so the scan is O(n), not O(n²).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const windowShape: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'A sliding window over the string abcabcbb. The window is the range between a left pointer and a right pointer. Expanding moves right forward and adds the new item. Shrinking moves left forward while the window breaks the rule. The best valid window seen is recorded.');
+  const letters = 'abcabcbb'.split('');
+  const x0 = 36, step = 74;
+  letters.forEach((c, i) => f.box(x0 + i * step, 56, 66, 44, { tone: i >= 2 && i <= 4 ? 'accent' : 'ink', solid: i >= 2 && i <= 4, label: c, mono: true, size: 17 }));
+  f.box(x0 + 2 * step - 6, 48, 3 * step - 2, 60, { tone: 'accent', dashed: true, r: 12 });
+  f.path(`M${x0 + 2 * step + 33} 146 V112`, { arrow: true, tone: 'accent', width: 2 });
+  f.text(x0 + 2 * step + 33, 164, 'left', { anchor: 'middle', size: 13, mono: true, bold: true, tone: 'accent' });
+  f.path(`M${x0 + 4 * step + 33} 146 V112`, { arrow: true, tone: 'accent', width: 2 });
+  f.text(x0 + 4 * step + 33, 164, 'right', { anchor: 'middle', size: 13, mono: true, bold: true, tone: 'accent' });
+  f.text(W / 2, 32, 'the window = everything from left to right (here "cab")', { anchor: 'middle', size: 12.5, tone: 'muted', bold: true });
+  f.lines(36, 196, ['1. expand: move right forward and add the new item', '2. shrink: while the window breaks the rule, move left forward', '3. record: the window is valid now: update the best answer'], { size: 12.5, gap: 20 });
+  f.text(W / 2, 256, 'left and right only ever move forward: at most 2n moves, so O(n).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const fixedVariable: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'Fixed and variable windows. Fixed size 3 over 2, 1, 5, 1, 3, 2: the first window sums to 8; sliding one step adds 1 and drops 2, giving 8 minus 2 plus 1 equals 7, with no re-adding. Variable size over 2, 3, 1, 2, 4, 3 with target 7: the shortest window reaching 7 is 4 plus 3.');
+  const x0 = 40, step = 70;
+  const row = (y: number, vals: number[], from: number, to: number, note: string, tone: Tone) => {
+    vals.forEach((v, i) => f.box(x0 + i * step, y, 62, 40, { tone: i >= from && i <= to ? tone : 'ink', solid: i >= from && i <= to, label: String(v), mono: true, size: 15 }));
+    f.box(x0 + from * step - 5, y - 5, (to - from) * step + 72, 50, { tone, dashed: true, r: 12 });
+    f.text(x0 + vals.length * step + 8, y + 25, note, { size: 12.5, mono: true, bold: true, tone });
+  };
+  f.text(x0, 24, 'fixed size k = 3: slide by one: add the new item, subtract the one that left', { size: 12, bold: true, tone: 'muted' });
+  row(42, [2, 1, 5, 1, 3, 2], 0, 2, 'sum = 8', 'info');
+  row(108, [2, 1, 5, 1, 3, 2], 1, 3, '8 − 2 + 1 = 7', 'accent');
+  f.text(x0, 192, 'variable size (positive numbers, target 7): the shortest window that reaches 7', { size: 12, bold: true, tone: 'muted' });
+  row(208, [2, 3, 1, 2, 4, 3], 4, 5, '4 + 3 = 7', 'pass');
+  f.text(W / 2, 286, 'Never re-add the whole window: update the running total as items enter and leave.', { anchor: 'middle', size: 12.5, tone: 'ink' });
+  return f;
+};
+
 export const algoFigures: Record<string, FigureBuilder> = {
   'alg-call-stack': callStack,
   'alg-fib-tree': fibTree,
   'alg-merge-split': mergeSplit,
   'alg-fast-pow': fastPow,
+  'alg-two-pointers': twoPointers,
+  'alg-window-shape': windowShape,
+  'alg-fixed-variable': fixedVariable,
 };
