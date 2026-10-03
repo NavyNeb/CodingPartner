@@ -416,6 +416,65 @@ const visitorFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 8 · Capstone ───────────────────────── */
+
+const chooserFigure: FigureBuilder = () => {
+  const f = new Fig(W, 330, 'A guide for choosing a pattern from the problem. Many ways to do one job: strategy. Behaviour depends on the stage of life: state. Tell many parties about a change: observer. Add behaviour around existing code: decorator or middleware. Undo, queue or replay actions: command. A foreign interface you cannot change: adapter. A messy multi-step subsystem: facade. Tree shaped data: composite, iterator, visitor. Many options when creating something: factory or builder.');
+  const rows: [string, string, Tone][] = [
+    ['many ways to do one job', 'strategy', 'accent'],
+    ['behaviour depends on the stage', 'state machine', 'accent'],
+    ['tell many parties about a change', 'observer / pub-sub', 'info'],
+    ['add behaviour around code', 'decorator / middleware', 'info'],
+    ['undo, queue or replay actions', 'command', 'pass'],
+    ['foreign interface or data', 'adapter', 'pass'],
+    ['messy multi-step subsystem', 'facade', 'pass'],
+    ['tree-shaped data', 'composite · iterator · visitor', 'accent'],
+    ['complicated construction', 'factory / builder', 'info'],
+  ];
+  rows.forEach(([problem, pattern, tone], i) => {
+    const y = 14 + i * 34;
+    f.box(16, y, 290, 28, { tone: 'muted', label: problem, size: 12 });
+    f.path(`M308 ${y + 14} H336`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(340, y, 284, 28, { tone, solid: true, label: pattern, size: 12 });
+  });
+  return f;
+};
+
+const pluginFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A plugin host. A small core offers three sockets: services that plugins provide and inject, events they emit and listen to, and hooks they tap. Plugins plug into those sockets, may require other plugins, and are started in dependency order and stopped in reverse order.');
+  f.box(190, 20, 260, 150, { tone: 'accent', solid: true });
+  f.text(320, 46, 'host (small core)', { anchor: 'middle', size: 14, bold: true });
+  f.lines(214, 78, ['services  provide / inject', 'events    on / emit', 'lifecycle setup / teardown'], { size: 12, mono: true, gap: 26 });
+  const plugins: [string, number, number][] = [['logger', 16, 30], ['auth', 16, 100], ['metrics', 490, 30], ['cache', 490, 100]];
+  plugins.forEach(([n, x, y]) => {
+    f.box(x, y, 134, 46, { tone: 'pass', label: n, size: 12.5 });
+    f.path(x < 300 ? `M${x + 136} ${y + 23} L188 ${y + 40}` : `M${x - 2} ${y + 23} L452 ${y + 40}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.text(83, 170, 'auth requires logger', { anchor: 'middle', size: 11, tone: 'muted' });
+  f.text(W / 2, 214, 'start order: logger, auth, metrics, cache   ·   stop order: reverse', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 244, 'The core stays tiny; features arrive as plugins.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const resilientStack: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A stack of async decorators around a fetch function. The outermost layer is the cache: a fresh cached answer returns immediately. Next is dedupe: identical requests in flight share one call. Then retry: failures are tried again with waiting. At the centre is the real fetch. The result travels back out through the same layers.');
+  const layers: [string, string, Tone][] = [
+    ['withCache', 'fresh answer? return it now', 'pass'],
+    ['withDedupe', 'same request in flight? share it', 'info'],
+    ['withRetry', 'failed? wait, then try again', 'accent'],
+    ['fetchUser', 'the real network call', 'muted'],
+  ];
+  layers.forEach(([name, rule, tone], i) => {
+    const y = 14 + i * 58;
+    f.box(16 + i * 18, y, 400 - i * 36, 48, { tone, solid: i === 3 });
+    f.text(32 + i * 18, y + 20, name, { size: 13, bold: true, mono: true });
+    f.text(32 + i * 18, y + 38, rule, { size: 11 });
+  });
+  f.lines(448, 70, ['const client = compose(', '  withCache,', '  withDedupe,', '  withRetry', ')(fetchUser);'], { size: 11.5, mono: true, gap: 20 });
+  f.text(W / 2, 258, 'Order matters: cache outermost means cache hits skip everything inside.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const patternFigures: Record<string, FigureBuilder> = {
   'pat-factory': factoryFigure,
   'pat-builder': builderFigure,
@@ -439,4 +498,7 @@ export const patternFigures: Record<string, FigureBuilder> = {
   'pat-composite': compositeFigure,
   'pat-iterator': iteratorFigure,
   'pat-visitor': visitorFigure,
+  'pat-chooser': chooserFigure,
+  'pat-plugin': pluginFigure,
+  'pat-resilient': resilientStack,
 };
