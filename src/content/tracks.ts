@@ -22,6 +22,11 @@ export const trackMeta: TrackMeta[] = [
     blurb: 'The handful of problem-solving patterns behind most interview questions: recursion, two pointers, sliding windows, backtracking, dynamic programming and greedy choices.',
   },
   {
+    id: 'test',
+    title: 'Testing, properly',
+    blurb: 'Write tests that catch real bugs: cases and edge cases, test doubles, async code and timers, React Testing Library, TDD and design for testability. Many exercises grade the tests you write against deliberately broken implementations.',
+  },
+  {
     id: 'react',
     title: 'React, under the hood',
     blurb: 'Components, state, effects, custom hooks and architecture patterns — tested through the DOM, the way you would in a real codebase.',
