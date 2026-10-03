@@ -280,6 +280,63 @@ const rtlFlow: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 6 · TDD and testability ───────────────────────── */
+
+const redGreenRefactor: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The red, green, refactor cycle of test-driven development. Red: write a small failing test. Green: write the simplest code that makes it pass. Refactor: clean up while the tests stay green. Then repeat with the next small behaviour.');
+  const node = (x: number, y: number, title: string, sub: string, tone: Tone) => {
+    f.box(x, y, 160, 64, { tone, solid: true });
+    f.text(x + 80, y + 28, title, { anchor: 'middle', size: 15, bold: true });
+    f.text(x + 80, y + 48, sub, { anchor: 'middle', size: 11.5 });
+  };
+  node(240, 16, 'RED', 'a failing test', 'fail');
+  node(430, 120, 'GREEN', 'simplest code', 'pass');
+  node(50, 120, 'REFACTOR', 'tidy up', 'info');
+  f.path('M400 52 C470 52 500 80 510 116', { arrow: true, tone: 'muted', width: 2 });
+  f.path('M430 168 C360 220 280 220 210 176', { arrow: true, tone: 'muted', width: 2 });
+  f.path('M130 116 C140 80 170 52 236 52', { arrow: true, tone: 'muted', width: 2 });
+  f.text(320, 120, 'small steps,', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(320, 138, 'minutes each', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 250, 'The failing test proves the test can fail; the green proves the code works.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const coreShell: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Functional core, imperative shell. The shell is a thin outer layer that talks to the clock, network and database. Inside it sits a pure core of functions that only compute from their inputs. Test the core with plain inputs and outputs, and the shell with a few fake collaborators.');
+  f.box(16, 16, 608, 200, { tone: 'accent', dashed: true });
+  f.text(36, 40, 'imperative shell: clock, network, database, logging', { size: 12.5, bold: true, tone: 'accent' });
+  f.box(150, 62, 340, 120, { tone: 'pass', solid: true });
+  f.text(320, 92, 'pure core', { anchor: 'middle', size: 15, bold: true });
+  f.text(320, 118, 'summarize(orders) → { count, total }', { anchor: 'middle', size: 11.5, mono: true });
+  f.text(320, 144, 'no clock, no network, no surprises', { anchor: 'middle', size: 12 });
+  f.text(320, 166, 'tested with plain inputs and outputs', { anchor: 'middle', size: 12, bold: true });
+  f.text(70, 130, 'fakes', { anchor: 'middle', size: 12, tone: 'accent', bold: true });
+  f.text(70, 148, 'for a few', { anchor: 'middle', size: 11, tone: 'muted' });
+  f.text(70, 164, 'tests', { anchor: 'middle', size: 11, tone: 'muted' });
+  f.text(W / 2, 246, 'Most logic lives in the core, so most tests are fast and need no doubles.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const nondeterminism: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'Sources of non-determinism and how to tame them. Time: inject a clock. Randomness: inject a random function. Network: inject a fetcher. Environment and files: pass them in as arguments. Each one becomes a parameter the test can control.');
+  const rows: [string, string][] = [
+    ['new Date()', 'clock.now()'],
+    ['Math.random()', 'random()'],
+    ['fetch(url)', 'fetcher(url)'],
+    ['process.env.X', 'config.x'],
+  ];
+  f.text(150, 20, 'hidden in the code', { anchor: 'middle', size: 12, bold: true, tone: 'fail' });
+  f.text(500, 20, 'passed in', { anchor: 'middle', size: 12, bold: true, tone: 'pass' });
+  rows.forEach(([bad, good], i) => {
+    const y = 32 + i * 46;
+    f.box(30, y, 240, 34, { tone: 'fail', dashed: true, label: bad, mono: true, size: 12 });
+    f.path(`M274 ${y + 17} H356`, { arrow: true, tone: 'accent', width: 2 });
+    f.box(360, y, 240, 34, { tone: 'pass', solid: true, label: good, mono: true, size: 12 });
+  });
+  f.text(W / 2, 236, 'Wherever the world leaks in, add a parameter. Production passes the real thing.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const testingFigures: Record<string, FigureBuilder> = {
   'tst-pyramid': testPyramid,
   'tst-aaa': arrangeActAssert,
@@ -297,4 +354,7 @@ export const testingFigures: Record<string, FigureBuilder> = {
   'tst-query-ladder': queryLadder,
   'tst-query-kinds': queryKinds,
   'tst-rtl-flow': rtlFlow,
+  'tst-red-green': redGreenRefactor,
+  'tst-core-shell': coreShell,
+  'tst-nondeterminism': nondeterminism,
 };
