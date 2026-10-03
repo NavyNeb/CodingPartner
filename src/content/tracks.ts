@@ -17,6 +17,11 @@ export const trackMeta: TrackMeta[] = [
     blurb: 'How arrays, hash tables, lists, trees, heaps and graphs actually work — build each one yourself, then use it to solve real problems.',
   },
   {
+    id: 'algo',
+    title: 'Algorithm patterns',
+    blurb: 'The handful of problem-solving patterns behind most interview questions: recursion, two pointers, sliding windows, backtracking, dynamic programming and greedy choices.',
+  },
+  {
     id: 'react',
     title: 'React, under the hood',
     blurb: 'Components, state, effects, custom hooks and architecture patterns — tested through the DOM, the way you would in a real codebase.',
