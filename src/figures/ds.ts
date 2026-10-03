@@ -81,7 +81,7 @@ const binarySearchHalving: FigureBuilder = () => {
 
 const hashPipeline: FigureBuilder = () => {
   const f = new Fig(W, 170, 'A hash table turns a key into a bucket number in two steps: a hash function turns the key into a big number, then modulo the number of buckets picks a bucket. The key "ant" has character codes summing to 323, and 323 mod 4 is 3, so it goes in bucket 3.');
-  const steps: [string, string, Tone][] = [['"ant"', 'the key', 'ink'], ['hash(key)', 'chars add up to 323', 'info'], ['323 mod 4', '= 3', 'accent'], ['bucket 3', 'store it here', 'pass']];
+  const steps: [string, string, Tone][] = [['"ant"', 'the key', 'ink'], ['hash(key)', 'sum = 323', 'info'], ['323 mod 4', '= 3', 'accent'], ['bucket 3', 'store it here', 'pass']];
   steps.forEach(([label, sub, tone], i) => {
     const x = 20 + i * 150;
     f.box(x, 24, 126, 62, { tone, label, sub, mono: true, size: 14 });
@@ -439,6 +439,96 @@ const heapCosts: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 7 · Graphs ───────────────────────── */
+
+const darrow = (f: Fig, [x1, y1]: Pt, [x2, y2]: Pt, tone: Tone = 'muted', width = 1.8) => {
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+  const ux = dx / len, uy = dy / len;
+  f.path(`M${(x1 + ux * R).toFixed(1)} ${(y1 + uy * R).toFixed(1)} L${(x2 - ux * (R + 4)).toFixed(1)} ${(y2 - uy * (R + 4)).toFixed(1)}`, { arrow: true, tone, width });
+};
+
+const graphVocab: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Three small graphs. An undirected graph of three connected nodes, like friendships. A directed graph where edges are one-way arrows, like follows. A weighted graph where each edge carries a cost, like distances between cities.');
+  const tri = (ox: number): Pt[] => [[ox + 36, 70], [ox + 136, 70], [ox + 86, 150]];
+  const a = tri(10), b = tri(223), c = tri(436);
+  tedge(f, a[0], a[1]); tedge(f, a[1], a[2]); tedge(f, a[0], a[2]);
+  a.forEach((p, i) => tnode(f, p, 'ABC'[i]));
+  darrow(f, b[0], b[1], 'ink'); darrow(f, b[1], b[2], 'ink'); darrow(f, b[0], b[2], 'ink');
+  b.forEach((p, i) => tnode(f, p, 'ABC'[i]));
+  tedge(f, c[0], c[1]); tedge(f, c[1], c[2]); tedge(f, c[0], c[2]);
+  c.forEach((p, i) => tnode(f, p, 'ABC'[i]));
+  f.text((c[0][0] + c[1][0]) / 2, 60, '4', { anchor: 'middle', size: 13, mono: true, bold: true, tone: 'accent' });
+  f.text((c[1][0] + c[2][0]) / 2 + 14, 116, '2', { anchor: 'middle', size: 13, mono: true, bold: true, tone: 'accent' });
+  f.text((c[0][0] + c[2][0]) / 2 - 14, 116, '7', { anchor: 'middle', size: 13, mono: true, bold: true, tone: 'accent' });
+  [['undirected', 'edges go both ways (friends)'], ['directed', 'edges are one-way (follows)'], ['weighted', 'edges carry a cost (distance)']].forEach(([t, sub], i) => {
+    f.text(96 + i * 213, 196, t, { anchor: 'middle', size: 13, bold: true });
+    f.text(96 + i * 213, 214, sub, { anchor: 'middle', size: 11.5, tone: 'muted' });
+  });
+  f.text(W / 2, 252, 'A graph = vertices (nodes) + edges. A cycle is a path that returns to its start.', { anchor: 'middle', size: 12.5, tone: 'ink' });
+  return f;
+};
+
+const graphRepresentations: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'One four-node graph stored two ways. As an adjacency list: A lists B and C, B lists A and C, C lists A, B and D, D lists C. As an adjacency matrix: a four by four grid with 1 where an edge exists. The list uses memory proportional to nodes plus edges; the matrix uses nodes squared.');
+  const A: Pt = [50, 60], B: Pt = [160, 60], C: Pt = [50, 160], D: Pt = [160, 160];
+  [[A, B], [A, C], [B, C], [C, D]].forEach(([u, v]) => tedge(f, u, v));
+  [[A, 'A'], [B, 'B'], [C, 'C'], [D, 'D']].forEach(([p, l]) => tnode(f, p as Pt, l as string));
+  f.text(106, 218, 'the graph', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  f.text(240, 24, 'adjacency list', { size: 13, bold: true, tone: 'accent' });
+  const lists: [string, string][] = [['A', 'B, C'], ['B', 'A, C'], ['C', 'A, B, D'], ['D', 'C']];
+  lists.forEach(([n, ns], i) => {
+    const y = 38 + i * 40;
+    f.box(240, y, 34, 32, { tone: 'info', solid: true, label: n, mono: true, size: 13 });
+    f.text(286, y + 21, '→  ' + ns, { size: 13, mono: true });
+  });
+  f.text(430, 24, 'adjacency matrix', { size: 13, bold: true, tone: 'accent' });
+  const M = [[0, 1, 1, 0], [1, 0, 1, 0], [1, 1, 0, 1], [0, 0, 1, 0]];
+  'ABCD'.split('').forEach((l, i) => { f.text(471 + i * 36, 44, l, { anchor: 'middle', size: 12, mono: true, bold: true, tone: 'muted' }); f.text(446, 70 + i * 36, l, { anchor: 'middle', size: 12, mono: true, bold: true, tone: 'muted' }); });
+  M.forEach((row, r) => row.forEach((v, c) => f.box(454 + c * 36, 52 + r * 36, 34, 32, { tone: v ? 'pass' : 'muted', solid: !!v, dashed: !v, label: String(v), mono: true, size: 13 })));
+  f.lines(20, 244, ['list: memory O(V + E), fast to loop over neighbours  ·  matrix: memory O(V²), "is there an edge?" in O(1)', 'Most real graphs are sparse (E far below V²), so the adjacency list is the default.'], { size: 12, tone: 'muted', gap: 20 });
+  return f;
+};
+
+const bfsLayers: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Breadth-first search from S on a five-node graph. S is at distance 0; A and B, its neighbours, are at distance 1; C, reached through A or B, is at distance 2; D is at distance 3. BFS explores in rings of increasing distance, so the first time it reaches a node is along a shortest path.');
+  const S: Pt = [70, 130], A: Pt = [200, 74], B: Pt = [200, 186], C: Pt = [340, 130], D: Pt = [480, 130];
+  [[S, A], [S, B], [A, C], [B, C], [C, D]].forEach(([u, v]) => tedge(f, u, v));
+  tnode(f, S, 'S', 'accent'); tnode(f, A, 'A'); tnode(f, B, 'B'); tnode(f, C, 'C', 'info'); tnode(f, D, 'D', 'pass');
+  [[70, 'dist 0'], [200, 'dist 1'], [340, 'dist 2'], [480, 'dist 3']].forEach(([x, t], i) => f.text(x as number, 232, t as string, { anchor: 'middle', size: 12.5, mono: true, bold: true, tone: (['accent', 'info', 'info', 'pass'] as Tone[])[i] }));
+  f.text(W / 2, 24, 'queue: [S]  →  [A, B]  →  [B, C]  →  [C]  →  [D]', { anchor: 'middle', size: 12.5, mono: true });
+  f.text(W / 2, 258, 'Rings of increasing distance: the first visit to a node is along a shortest path (unweighted).', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const gridIslands: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A grid of land and water cells treated as a graph where each cell is a node joined to its up, down, left and right neighbours. Connected land cells form islands; this grid has five islands. A flood fill from each unvisited land cell marks a whole island.');
+  const grid = ['110001', '100111', '001000', '100011'];
+  const ids: number[][] = [[1, 1, 0, 0, 0, 2], [1, 0, 0, 2, 2, 2], [0, 0, 3, 0, 0, 0], [4, 0, 0, 0, 5, 5]];
+  const tones: Tone[] = ['accent', 'info', 'pass', 'fail', 'ink'];
+  grid.forEach((row, r) => row.split('').forEach((cell, c) => {
+    const id = ids[r][c];
+    f.box(20 + c * 58, 28 + r * 48, 54, 42, { tone: id ? tones[id - 1] : 'muted', solid: !!id, dashed: !id, label: id ? String(id) : '', mono: true, size: 15 });
+  }));
+  f.text(20, 18, 'each cell is a node; its 4 neighbours (up, down, left, right) are its edges', { size: 11.5, tone: 'muted' });
+  f.text(400, 70, '5 islands', { size: 20, bold: true, tone: 'accent' });
+  f.lines(400, 100, ['Flood fill: from every', 'unvisited land cell, DFS or BFS', 'marks its whole island.', 'Count how many times you', 'have to start a new one.'], { size: 12.5, tone: 'ink', gap: 20 });
+  f.text(W / 2, 238, 'Any grid problem (mazes, flood fill, shortest steps) is a graph problem in disguise.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const topoSort: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A course prerequisite graph: A, intro, comes before B, data structures, and C, discrete maths; both B and C come before D, algorithms; D comes before E, the capstone. A valid study order is A, C, B, D, E: every arrow points forward. This ordering is a topological sort, and it exists only if there is no cycle.');
+  const A: Pt = [60, 100], B: Pt = [190, 50], C: Pt = [190, 150], D: Pt = [330, 100], E: Pt = [470, 100];
+  [[A, B], [A, C], [B, D], [C, D], [D, E]].forEach(([u, v]) => darrow(f, u, v, 'ink'));
+  tnode(f, A, 'A', 'accent'); tnode(f, B, 'B'); tnode(f, C, 'C'); tnode(f, D, 'D'); tnode(f, E, 'E', 'pass');
+  f.text(490, 44, 'A intro   B data structures', { anchor: 'end', size: 11.5, tone: 'muted' });
+  f.text(490, 62, 'C discrete maths   D algorithms', { anchor: 'end', size: 11.5, tone: 'muted' });
+  f.text(20, 196, 'one valid order:', { size: 12.5, tone: 'muted', bold: true });
+  ['A', 'C', 'B', 'D', 'E'].forEach((l, i) => f.box(20 + i * 56, 206, 48, 34, { tone: 'pass', solid: true, label: l, mono: true, size: 14 }));
+  f.lines(310, 212, ['Kahn: repeatedly take a node with no unmet', 'prerequisites (in-degree 0), then free its successors.', 'A cycle means some nodes never reach in-degree 0.'], { size: 12, tone: 'ink', gap: 18 });
+  return f;
+};
+
 export const dsFigures: Record<string, FigureBuilder> = {
   'ds-array-memory': arrayMemory,
   'ds-array-growth': arrayGrowth,
@@ -464,4 +554,9 @@ export const dsFigures: Record<string, FigureBuilder> = {
   'ds-heap-sift-up': heapSiftUp,
   'ds-heap-sift-down': heapSiftDown,
   'ds-heap-costs': heapCosts,
+  'ds-graph-vocab': graphVocab,
+  'ds-graph-reps': graphRepresentations,
+  'ds-bfs-layers': bfsLayers,
+  'ds-grid-islands': gridIslands,
+  'ds-topo-sort': topoSort,
 };
