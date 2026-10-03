@@ -1234,11 +1234,25 @@
     var registry = makeRegistry();
     var expect = makeExpect(mode);
     var kit = null;
+    var savedGlobals = {};
     var report = function (extra) { return Object.assign({ tests: results }, extra || {}); };
 
     try {
       var req = makeReq(mode);
       if (mode === 'react') kit = createReactKit();
+
+      // The test helpers are also put on globalThis while the run lasts, so a learner can write real
+      // test code (expect, jest, render, screen...) inside functions that the hidden tests call.
+      var base = Object.assign({
+        describe: registry.describe, it: registry.it, test: registry.test, expect: expect, jest: jest,
+        beforeEach: registry.beforeEach, afterEach: registry.afterEach,
+        createFakeSocket: createFakeSocket, createFakeChannelHub: createFakeChannelHub, createFakePorts: createFakePorts,
+        flushPromises: flushPromises,
+      }, kit || {});
+      Object.keys(base).forEach(function (n) {
+        savedGlobals[n] = Object.getOwnPropertyDescriptor(g, n);
+        try { Object.defineProperty(g, n, { value: base[n], configurable: true, writable: true }); } catch (e) { /* a read-only global stays as it is */ }
+      });
 
       var userExports;
       try { userExports = evalModule(opts.userCode, req, 'solution.js'); }
@@ -1249,12 +1263,7 @@
         return report({ fatal: 'Missing export' + (missing.length > 1 ? 's' : '') + ': ' + missing.map(function (m) { return '`' + m + '`'; }).join(', ') + '\nThe tests import these names from your code, so keep the `export` keyword.' });
       }
 
-      var scope = Object.assign({
-        describe: registry.describe, it: registry.it, test: registry.test, expect: expect, jest: jest,
-        beforeEach: registry.beforeEach, afterEach: registry.afterEach,
-        createFakeSocket: createFakeSocket, createFakeChannelHub: createFakeChannelHub, createFakePorts: createFakePorts,
-        flushPromises: flushPromises,
-      }, kit || {}, userExports);
+      var scope = Object.assign({}, base, userExports);
       delete scope.default;
       delete scope.__esModule;
       var names = Object.keys(scope).filter(function (n) { return /^[A-Za-z_$][\w$]*$/.test(n); });
@@ -1299,6 +1308,12 @@
     } finally {
       useRealTimers();
       reactCleanups.length = 0;
+      Object.keys(savedGlobals).forEach(function (n) {
+        try {
+          if (savedGlobals[n]) Object.defineProperty(g, n, savedGlobals[n]);
+          else delete g[n];
+        } catch (e) { /* best effort */ }
+      });
       g.console = realConsole;
     }
   }
