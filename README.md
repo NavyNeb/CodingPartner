@@ -4,7 +4,7 @@
 in interviews, then live coding against real tests — from warm-ups to senior-level problems. Built for getting your
 fundamentals back after leaning on AI.
 
-- **371 exercises** in **65 lessons** — every lesson is illustrated (labelled diagrams, step-through walkthroughs, runnable snippets, quick checks), every exercise has a worked example, a plain-English test explanation and a nudge, and each lesson starts with a guided warm-up, four difficulty tiers (Warm-up → Core → Hard → Interview)
+- **415 exercises** in **73 lessons** — every lesson is illustrated (labelled diagrams, step-through walkthroughs, runnable snippets, quick checks), every exercise has a worked example, a plain-English test explanation and a nudge, and each lesson starts with a guided warm-up, four difficulty tiers (Warm-up → Core → Hard → Interview)
 - **A real editor** (CodeMirror 6) with `Ctrl/⌘ + Enter` to run, autosaved drafts, and optional autocomplete
 - **Real tests**, run in your browser — your code never leaves your machine
 - **Interview mode**: per-exercise countdown, no hints, no solution, no autocomplete
@@ -68,6 +68,7 @@ No email, name, IP address or analytics. "Delete my synced data" removes the pro
 | **Algorithm patterns** | recursion & divide and conquer · two pointers & sliding windows · sorting, selection & binary search on the answer · backtracking · dynamic programming (1-D, then grids, strings & knapsack) · greedy choices & intervals · spotting the pattern | 48 |
 | **Testing, properly** | your first tests · choosing cases & edges · test doubles & dependency injection · async code & fake timers · React Testing Library · TDD & testability · flaky, brittle & weak tests · a capstone. Most exercises ask you to *write the tests*, graded against deliberately broken implementations | 38 |
 | **Design patterns in JS/TS** | factories, builders & shared instances · strategy & state · observer, events & signals · decorators, proxies & middleware · command, undo & snapshots · adapters, facades & repositories · composite, iterator & visitor · a capstone (plugin host, pricing engine, undoable store, resilient client) | 34 |
+| **Web security** | XSS & output encoding · injection, paths & untrusted input · passwords, sessions & tokens · cookies, CORS & CSRF · security headers, CSP & integrity · validation, uploads, rate limits & logs · dependencies, secrets & the supply chain · a capstone (threat modelling, authorisation, a secure request pipeline). Many exercises grade the security tests you write against vulnerable implementations | 36 |
 | **React, under the hood** | rendering · state & forms · effects · custom hooks · performance · architecture · composition & a11y | 32 |
 | **Production scenarios** | case studies from a live-betting platform: update firehose · 20 000-event screens · reconnects & sequence gaps · stale prices & idempotent bets · memory leaks · Web Worker RPC · multi-tab sync & leader election | 21 |
 | **Interview gauntlet** | data structures & algorithms · frontend classics | 15 |
@@ -115,7 +116,7 @@ Lessons are Markdown files in `src/content/lessons/` — theory first, then exer
 ````md
 ---
 id: my-lesson
-track: js          # js | ts | ds | algo | test | pat | react | prod | interview | web | system
+track: js          # js | ts | ds | algo | test | pat | sec | react | prod | interview | web | system
 title: My lesson
 summary: One sentence.
 ---
