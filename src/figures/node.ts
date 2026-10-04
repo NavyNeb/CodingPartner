@@ -125,6 +125,62 @@ const errorFlowFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 3 · DTOs, validation and serialization ───────────────────────── */
+
+const dtoFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Input becomes a trusted object in four steps. Raw request data from the client goes through whitelisting, which drops unknown fields, then coercion, which turns strings into numbers or booleans where allowed, then validation of every rule. If any rule fails the request is rejected with a four hundred error listing every problem. Otherwise the handler receives a clean, typed data transfer object.');
+  f.box(12, 20, 120, 52, { tone: 'fail', label: 'raw JSON', size: 12, mono: true });
+  const steps: [string, string][] = [['1 whitelist', 'drop extras'], ['2 coerce', '"5" → 5'], ['3 validate', 'every rule']];
+  steps.forEach(([t, sub], i) => {
+    const x = 160 + i * 150;
+    f.box(x, 20, 126, 52, { tone: 'accent' });
+    f.text(x + 63, 42, t, { anchor: 'middle', size: 12, bold: true });
+    f.text(x + 63, 60, sub, { anchor: 'middle', size: 10.5 });
+    f.path(`M${x - 26} 46 H${x - 2}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.box(540, 108, 88, 52, { tone: 'pass', solid: true, label: 'DTO', size: 13, mono: true });
+  f.path('M541 72 L580 106', { arrow: true, tone: 'pass', width: 1.6 });
+  f.box(260, 108, 150, 52, { tone: 'fail', label: '400 + every error', size: 11.5 });
+  f.path('M370 74 L340 106', { arrow: true, tone: 'fail', width: 1.6 });
+  f.text(W / 2, 200, 'The handler only ever sees the DTO: known fields, right types, valid values.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 228, 'Whitelisting also stops mass assignment: { "role": "admin" } is dropped.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 254, 'Report all errors at once so the client fixes the form in one go.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const serializeFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Serialization controls what leaves the server. A user entity from the database has an id, a name, an email, a password hash and a role. The serializer removes the password hash always, and shows the email only to the admin or the user themselves. A public viewer gets only id and name. An admin gets id, name, email and role.');
+  f.box(12, 24, 170, 132, { tone: 'muted' });
+  f.text(97, 46, 'User entity', { anchor: 'middle', size: 12.5, bold: true });
+  ['id', 'name', 'email', 'passwordHash', 'role'].forEach((k, i) => f.text(32, 68 + i * 17, k, { size: 11.5, mono: true, tone: k === 'passwordHash' ? 'fail' : undefined }));
+  f.path('M184 90 H236', { arrow: true, tone: 'muted', width: 1.8 });
+  f.box(238, 62, 130, 56, { tone: 'accent', solid: true });
+  f.text(303, 86, 'serializer', { anchor: 'middle', size: 13, bold: true });
+  f.text(303, 104, 'exclude · groups', { anchor: 'middle', size: 10.5 });
+  f.path('M370 80 L424 56', { arrow: true, tone: 'pass', width: 1.6 });
+  f.path('M370 100 L424 126', { arrow: true, tone: 'info', width: 1.6 });
+  f.box(426, 30, 200, 48, { tone: 'pass', label: 'public: id, name', size: 11.5 });
+  f.box(426, 104, 200, 48, { tone: 'info', label: 'admin: id, name, email, role', size: 11 });
+  f.text(W / 2, 190, 'passwordHash never leaves, for any audience.', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.text(W / 2, 218, 'Decide what to SHOW per audience, not what to hide by hand in each handler.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 246, 'Apply it at one choke point (an interceptor) so a new field is private by default.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const paginationFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'Offset pagination. Twelve rows are split into pages of four. With page three and limit four, the offset is eight, so the query skips eight rows and returns rows nine to twelve. The page number is clamped to at least one and the limit is clamped between one and a maximum.');
+  for (let i = 0; i < 12; i++) {
+    const pg = Math.floor(i / 4);
+    f.box(16 + i * 51, 54, 46, 40, { tone: pg === 2 ? 'pass' : 'muted', solid: pg === 2, label: String(i + 1), size: 12, mono: true });
+  }
+  ['page 1', 'page 2', 'page 3'].forEach((t, i) => f.text(16 + i * 204 + 98, 38, t, { anchor: 'middle', size: 11.5, bold: true, tone: i === 2 ? 'pass' : 'muted' }));
+  f.text(W / 2, 134, '?page=3&limit=4   →   offset = (page − 1) × limit = 8', { anchor: 'middle', size: 13, bold: true, mono: true });
+  f.text(W / 2, 166, 'Never trust the numbers: page ≥ 1, 1 ≤ limit ≤ max, junk falls back to defaults.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 194, 'Return the metadata too: total, totalPages, hasNext, hasPrev.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 222, 'Only sort by fields on an allow-list; never put raw input in an ORDER BY.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-di': diFigure,
   'nd-modules': modulesFigure,
@@ -132,4 +188,7 @@ export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-lifecycle': lifecycleFigure,
   'nd-interceptors': interceptorOnion,
   'nd-errors': errorFlowFigure,
+  'nd-dto': dtoFigure,
+  'nd-serialize': serializeFigure,
+  'nd-pagination': paginationFigure,
 };
