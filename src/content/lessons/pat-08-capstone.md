@@ -17,6 +17,14 @@ Patterns are **names for solutions to recurring problems**, so start from the **
 
 Use it as a prompt, not a rulebook: if the problem on the left isn't actually hurting you today, you probably don't need the pattern on the right yet.
 
+```js try
+// Patterns are often just small functions: here "stack decorators" is one reduceRight
+const compose = (...decorators) => (fn) => decorators.reduceRight((inner, d) => d(inner), fn);
+const loud = (fn) => (...a) => String(fn(...a)).toUpperCase();
+const exclaim = (fn) => (...a) => fn(...a) + '!';
+console.log(compose(loud, exclaim)((name) => 'hi ' + name)('ada'));
+```
+
 ## When patterns go wrong
 
 - **Golden hammer**: having learned the visitor pattern, seeing visitors everywhere.

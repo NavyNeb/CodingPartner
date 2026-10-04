@@ -91,7 +91,7 @@ target[key]: Object.prototype
 ---
 line: 4
 say: It then **assigns `isAdmin = true` onto `Object.prototype`**. Now `({}).isAdmin` is `true`, and so is `user.isAdmin` for every user object. A permission check like `if (user.isAdmin)` has just been bypassed.
-({}).isAdmin: true
+empty object isAdmin: true
 ```
 
 Defences: **skip** the dangerous keys (`__proto__`, `constructor`, `prototype`), merge into **`Object.create(null)`** objects, use **`Map`**, check `hasOwnProperty`, and validate untrusted JSON against a schema.
