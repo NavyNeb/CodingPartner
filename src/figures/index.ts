@@ -9,6 +9,9 @@ import { systemFigures } from './system';
 import { dsFigures } from './ds';
 import { algoFigures } from './algo';
 import { testingFigures } from './testing';
+import { patternFigures } from './patterns';
+import { securityFigures } from './security';
+import { nodeFigures } from './node';
 
 /* Figure registry. Lesson Markdown references these ids: ![alt](fig:closure-backpack "Caption") */
 
@@ -329,6 +332,9 @@ export const figureBuilders: Record<string, FigureBuilder> = {
   ...dsFigures,
   ...algoFigures,
   ...testingFigures,
+  ...patternFigures,
+  ...securityFigures,
+  ...nodeFigures,
   'closure-backpack': closureBackpack,
   'closure-alive': closureAlive,
   'scope-chain': scopeChain,

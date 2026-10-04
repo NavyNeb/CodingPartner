@@ -1,0 +1,504 @@
+import { Fig, type FigureBuilder, type Tone } from './kit';
+
+const W = 640;
+
+/* ───────────────────────── 1 · Factories and builders ───────────────────────── */
+
+const factoryFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'A factory. The caller asks for a shape by name and arguments, for example createShape circle with radius 2. The factory looks up the right constructor in its registry and returns a circle, rectangle or square object that all share the same area and perimeter methods. The caller never uses new or knows the concrete types.');
+  f.box(16, 90, 190, 56, { tone: 'info', label: "createShape('circle', 2)", mono: true, size: 11 });
+  f.text(111, 78, 'caller', { anchor: 'middle', size: 12, bold: true, tone: 'info' });
+  f.path('M208 118 H262', { arrow: true, tone: 'accent', width: 2 });
+  f.box(266, 50, 140, 136, { tone: 'accent', solid: true });
+  f.text(336, 76, 'factory', { anchor: 'middle', size: 14, bold: true });
+  f.lines(280, 102, ['registry:', ' circle → …', ' rect → …', ' square → …'], { size: 11.5, mono: true, gap: 18 });
+  const prods = ['circle', 'rect', 'square'];
+  prods.forEach((p, i) => {
+    const y = 30 + i * 62;
+    f.path(`M408 ${118} L452 ${y + 22}`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(456, y, 168, 44, { tone: 'pass', label: `{ ${p}, area() }`, mono: true, size: 11 });
+  });
+  f.text(W / 2, 240, 'The caller depends on the shared shape, not on how each one is made.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const builderFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'An immutable builder. Each call such as from or where returns a brand new builder holding the settings so far, and leaves the old one unchanged. The last call, build, turns the settings into a finished SQL string. Two queries can branch from the same earlier builder without affecting each other.');
+  const steps: [string, string, Tone][] = [
+    ['query()', 'v1: select *', 'info'],
+    ['.from("users")', 'v2: + table', 'info'],
+    ['.where("age > 18")', 'v3: + filter', 'info'],
+    ['.build()', 'the finished SQL', 'pass'],
+  ];
+  steps.forEach(([call, sub, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 40, 146, 80, { tone, solid: i === 3 });
+    f.text(x + 73, 70, call, { anchor: 'middle', size: 11, mono: true, bold: true });
+    f.text(x + 73, 98, sub, { anchor: 'middle', size: 11.5 });
+    if (i < 3) f.path(`M${x + 148} 80 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 154, 'SELECT * FROM users WHERE age > 18', { anchor: 'middle', size: 12.5, mono: true, bold: true, tone: 'pass' });
+  f.text(W / 2, 190, 'Every step returns a NEW builder: v2 still works after v3 exists.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 218, 'So a shared base query can branch safely into many variations.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const singletonRisk: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A global singleton versus an injected shared instance. With a global singleton every module reaches for the same hidden object, so tests and modules affect each other. With injection the one instance is created once at the top and passed to the modules that need it, so tests can pass a different one.');
+  const col = (x: number, title: string, tone: Tone, note: string[]) => {
+    f.box(x, 16, 296, 200, { tone });
+    f.text(x + 148, 40, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.lines(x + 16, 192, note, { size: 11.5, gap: 16 });
+  };
+  col(16, 'global singleton', 'fail', ['hidden coupling: any module', 'can reach it and change it']);
+  col(328, 'created once, passed in', 'pass', ['same sharing, but visible:', 'a test passes its own']);
+  ['A', 'B', 'C'].forEach((m, i) => {
+    f.box(32 + i * 90, 62, 70, 30, { tone: 'muted', label: `module ${m}`, size: 10.5 });
+    f.path(`M${67 + i * 90} 94 L160 138`, { arrow: true, tone: 'fail', width: 1.5 });
+  });
+  f.box(100, 140, 120, 36, { tone: 'fail', solid: true, label: 'config (global)', mono: true, size: 11 });
+  ['A', 'B', 'C'].forEach((m, i) => {
+    f.box(344 + i * 90, 62, 70, 30, { tone: 'muted', label: `module ${m}`, size: 10.5 });
+    f.path(`M480 150 L${379 + i * 90} 94`, { arrow: true, tone: 'pass', width: 1.5 });
+  });
+  f.box(420, 140, 120, 36, { tone: 'pass', solid: true, label: 'config', mono: true, size: 11 });
+  f.text(W / 2, 250, 'One instance is fine. A hidden, reachable-from-anywhere one is the problem.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+/* ───────────────────────── 2 · Strategy and state ───────────────────────── */
+
+const strategyFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The strategy pattern. A checkout has one slot for a pricing strategy. Any of several interchangeable functions, such as percent off, flat off or no discount, can be plugged into that slot, and the checkout code does not change. The percent off strategy is currently plugged in.');
+  f.box(190, 16, 260, 56, { tone: 'info' });
+  f.text(320, 40, 'checkout(items, discount)', { anchor: 'middle', size: 12.5, mono: true, bold: true });
+  f.text(320, 60, 'the algorithm that stays the same', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.box(250, 100, 140, 40, { tone: 'accent', dashed: true, label: 'discount slot', size: 12 });
+  f.path('M320 74 V98', { arrow: true, tone: 'muted', width: 1.8 });
+  const opts: [string, boolean][] = [['percentOff(10)', true], ['flatOff(5)', false], ['noDiscount', false]];
+  opts.forEach(([label, on], i) => {
+    const x = 28 + i * 204;
+    f.box(x, 190, 184, 44, { tone: on ? 'pass' : 'muted', solid: on, dashed: !on, label, mono: true, size: 11.5 });
+    f.path(`M${x + 92} 188 L320 142`, { arrow: on, tone: on ? 'pass' : 'muted', dashed: !on, width: on ? 2.2 : 1.3 });
+  });
+  f.text(W / 2, 258, 'Swap the function, keep the code around it. No if/else chain to edit.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const stateDiagram: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A state diagram of an order. Pending goes to paid with pay, paid goes to shipped with ship, shipped goes to delivered with deliver. A pending or paid order can be cancelled with cancel. Delivered and cancelled are final: nothing leaves them.');
+  const names = ['pending', 'paid', 'shipped', 'delivered'];
+  names.forEach((n, i) => {
+    const x = 16 + i * 160;
+    f.box(x, 40, 120, 52, { tone: i === 3 ? 'pass' : 'info', solid: i === 3, label: n, mono: true, size: 12.5 });
+  });
+  ['pay()', 'ship()', 'deliver()'].forEach((a, i) => {
+    const x = 16 + i * 160 + 122;
+    f.path(`M${x} 66 H${x + 36}`, { arrow: true, tone: 'accent', width: 2 });
+    f.text(x + 18, 112, a, { anchor: 'middle', size: 10.5, mono: true, tone: 'accent' });
+  });
+  f.box(96, 150, 150, 52, { tone: 'fail', solid: true, label: 'cancelled', mono: true, size: 12.5 });
+  f.path('M76 94 L130 148', { arrow: true, tone: 'fail', width: 1.8 });
+  f.path('M236 94 L210 148', { arrow: true, tone: 'fail', width: 1.8 });
+  f.text(70, 138, 'cancel()', { anchor: 'middle', size: 10.5, mono: true, tone: 'fail' });
+  f.text(262, 138, 'cancel()', { anchor: 'middle', size: 10.5, mono: true, tone: 'fail' });
+  f.text(470, 160, 'delivered and cancelled are final', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 236, 'Only the arrows drawn are allowed. Everything else is an error by design.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const flagsVsState: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'Boolean flags versus a single state. Three booleans, isPaid, isShipped and isCancelled, allow eight combinations, and many of them make no sense, such as shipped but not paid. A single status field with five values allows only meaningful situations.');
+  f.box(16, 20, 296, 170, { tone: 'fail' });
+  f.text(164, 46, 'three booleans', { anchor: 'middle', size: 14, bold: true, tone: 'fail' });
+  f.lines(40, 76, ['isPaid, isShipped, isCancelled', '2 × 2 × 2 = 8 combinations', 'shipped but not paid?', 'cancelled and delivered?', '…you must guard every one'], { size: 12, gap: 20 });
+  f.box(328, 20, 296, 170, { tone: 'pass' });
+  f.text(476, 46, 'one status', { anchor: 'middle', size: 14, bold: true, tone: 'pass' });
+  f.lines(352, 76, ['status = pending | paid |', '  shipped | delivered | cancelled', '5 states, all meaningful', 'illegal combos cannot exist', 'transitions are one table'], { size: 12, gap: 20 });
+  f.text(W / 2, 226, 'Make illegal states unrepresentable.', { anchor: 'middle', size: 12.5, tone: 'muted', italic: true });
+  return f;
+};
+
+/* ───────────────────────── 3 · Observer and pub/sub ───────────────────────── */
+
+const observerFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'The observer pattern. A subject, here a stock price, keeps a list of subscribers. When the price changes it notifies every subscriber, such as a chart, an alert check and a log writer, and none of them are known by name to the subject. Subscribers can join and leave at any time.');
+  f.box(16, 80, 170, 80, { tone: 'accent', solid: true });
+  f.text(101, 110, 'price', { anchor: 'middle', size: 15, bold: true });
+  f.text(101, 132, 'the subject', { anchor: 'middle', size: 12 });
+  const subs = ['chart.update', 'alert.check', 'log.write'];
+  subs.forEach((s, i) => {
+    const y = 24 + i * 70;
+    f.box(380, y, 240, 44, { tone: 'info', label: s + '(price)', mono: true, size: 11.5 });
+    f.path(`M188 120 L376 ${y + 22}`, { arrow: true, tone: 'accent', width: 1.8 });
+  });
+  f.text(282, 118, 'notify', { anchor: 'middle', size: 11.5, tone: 'accent', bold: true });
+  f.text(101, 190, 'subscribe(fn) adds a listener', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(101, 208, 'the returned function removes it', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(W / 2, 240, 'The subject knows a list of functions, not who they belong to.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const pubsubFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Publish and subscribe. Publishers send messages to named topics on a bus. Subscribers listen to topics. Publishers and subscribers never reference each other: the bus is the only thing they share, so either side can change independently.');
+  ['cart', 'checkout'].forEach((p, i) => {
+    const y = 40 + i * 90;
+    f.box(16, y, 150, 50, { tone: 'info', label: p, size: 12.5 });
+    f.path(`M168 ${y + 25} L236 120`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(91, 24, 'publishers', { anchor: 'middle', size: 12, bold: true, tone: 'info' });
+  f.box(240, 50, 160, 140, { tone: 'accent', solid: true });
+  f.text(320, 78, 'event bus', { anchor: 'middle', size: 14, bold: true });
+  f.lines(262, 108, ['"item:added"', '"order:paid"', '"user:logout"'], { size: 11.5, mono: true, gap: 20 });
+  ['badge', 'analytics'].forEach((p, i) => {
+    const y = 40 + i * 90;
+    f.box(474, y, 150, 50, { tone: 'pass', label: p, size: 12.5 });
+    f.path(`M402 120 L470 ${y + 25}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(549, 24, 'subscribers', { anchor: 'middle', size: 12, bold: true, tone: 'pass' });
+  f.text(W / 2, 236, 'Neither side imports the other. Add a subscriber without touching a publisher.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const leakFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A listener leak. A long-lived emitter keeps a list of listener functions. A widget subscribed to it but was removed from the page without unsubscribing. The emitter still holds the widget listener, so the widget and everything it references can never be freed, and the stale listener keeps running.');
+  f.box(16, 30, 250, 150, { tone: 'accent' });
+  f.text(141, 56, 'emitter (lives forever)', { anchor: 'middle', size: 13, bold: true });
+  f.lines(36, 84, ['listeners = [', '  fnFromWidget1,', '  fnFromWidget2,', '  fnFromWidget3 ]'], { size: 11.5, mono: true, gap: 20 });
+  f.box(380, 40, 244, 56, { tone: 'muted', dashed: true, label: 'widget 2 (removed from page)', size: 11.5 });
+  f.path('M268 110 C330 110 340 90 376 82', { arrow: true, tone: 'fail', width: 2 });
+  f.text(322, 130, 'still holds it', { anchor: 'middle', size: 11.5, tone: 'fail', bold: true });
+  f.box(380, 130, 244, 50, { tone: 'fail', solid: true, label: 'never freed, still runs', size: 12 });
+  f.text(W / 2, 210, 'Every subscribe needs a matching unsubscribe when its owner goes away.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 236, 'Return an unsubscribe function and keep it in a scope you dispose.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const signalGraph: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A signal dependency graph. Two signals, a and b, feed a computed value sum equals a plus b, which feeds an effect that renders. Setting a re-evaluates the computed and re-runs the effect. A signal nothing depends on triggers nothing.');
+  f.box(16, 30, 120, 44, { tone: 'info', label: 'a = signal(1)', mono: true, size: 11 });
+  f.box(16, 110, 120, 44, { tone: 'info', label: 'b = signal(2)', mono: true, size: 11 });
+  f.box(236, 70, 170, 54, { tone: 'accent', solid: true, label: 'sum = a + b', mono: true, size: 12 });
+  f.box(500, 70, 124, 54, { tone: 'pass', solid: true, label: 'render()', mono: true, size: 12 });
+  f.path('M138 52 L234 88', { arrow: true, tone: 'muted', width: 1.8 });
+  f.path('M138 132 L234 106', { arrow: true, tone: 'muted', width: 1.8 });
+  f.path('M408 97 H496', { arrow: true, tone: 'muted', width: 1.8 });
+  f.text(321, 56, 'computed (cached)', { anchor: 'middle', size: 11, tone: 'accent' });
+  f.text(562, 56, 'effect', { anchor: 'middle', size: 11, tone: 'pass' });
+  f.text(W / 2, 190, 'a.set(5): sum is marked stale, then render() re-runs and reads the new sum', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 218, 'Dependencies are discovered automatically by watching what each function reads.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+/* ───────────────────────── 4 · Decorators, proxies and middleware ───────────────────────── */
+
+const decoratorFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The decorator pattern. A plain function fn is wrapped by memoize, which is wrapped by withTiming. Each wrapper has exactly the same signature as the function it wraps, so callers cannot tell the difference. Arguments flow down through the layers and the result flows back up, and each layer adds one behaviour: timing, caching, or the real work.');
+  const layers: [string, string, Tone][] = [
+    ['withTiming(…)', 'adds: measure how long it took', 'info'],
+    ['memoize(…)', 'adds: remember results by arguments', 'accent'],
+    ['fn', 'the real work', 'pass'],
+  ];
+  layers.forEach(([name, adds, tone], i) => {
+    const y = 20 + i * 76;
+    f.box(16, y, 300, 56, { tone, solid: i === 2 });
+    f.text(166, y + 26, name, { anchor: 'middle', size: 14, bold: true, mono: true });
+    f.text(166, y + 44, adds, { anchor: 'middle', size: 11 });
+    if (i < 2) {
+      f.path(`M120 ${y + 58} V${y + 74}`, { arrow: true, tone: 'muted', width: 1.8 });
+      f.path(`M212 ${y + 74} V${y + 58}`, { arrow: true, tone: 'muted', width: 1.8 });
+    }
+  });
+  f.text(116, 91, 'args', { anchor: 'end', size: 10, tone: 'muted' });
+  f.text(216, 91, 'result', { anchor: 'start', size: 10, tone: 'muted' });
+  f.lines(350, 70, ['const fast = withTiming(', '  memoize(fn)', ');', '', 'fast(2, 3)  // same call,', '            // more behaviour'], { size: 12, mono: true, gap: 20 });
+  f.text(W / 2, 258, 'Same shape in, same shape out: layers can be added, removed or reordered.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const onionFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'The middleware onion. A request enters the outermost middleware, logging, which runs its before part and calls next to go inwards. It passes through authentication and reaches the handler in the centre. The response then travels back outwards, and each middleware runs its after part in the reverse order.');
+  f.box(16, 16, 608, 240, { tone: 'info' });
+  f.text(32, 38, 'logging', { size: 13, bold: true, tone: 'info' });
+  f.box(96, 56, 448, 176, { tone: 'accent' });
+  f.text(112, 78, 'auth', { size: 13, bold: true, tone: 'accent' });
+  f.box(176, 96, 288, 100, { tone: 'pass', solid: true });
+  f.text(320, 150, 'handler', { anchor: 'middle', size: 14, bold: true });
+  f.text(320, 172, 'produces the response', { anchor: 'middle', size: 11.5 });
+  f.text(560, 38, 'request →', { anchor: 'end', size: 11.5, mono: true, tone: 'info' });
+  f.text(528, 78, 'request →', { anchor: 'end', size: 11.5, mono: true, tone: 'accent' });
+  f.text(600, 250, '← response', { anchor: 'end', size: 11.5, mono: true, tone: 'info' });
+  f.text(520, 224, '← response', { anchor: 'end', size: 11.5, mono: true, tone: 'accent' });
+  return f;
+};
+
+const proxyFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A proxy. Client code talks to a proxy object exactly as if it were the real object. The proxy intercepts get, set and delete operations through traps, can check, log or block them, and then forwards to the real target object.');
+  f.box(16, 80, 120, 60, { tone: 'info', label: 'client', size: 13 });
+  f.path('M138 110 H196', { arrow: true, tone: 'muted', width: 2 });
+  f.box(200, 30, 240, 160, { tone: 'accent', solid: true });
+  f.text(320, 56, 'proxy', { anchor: 'middle', size: 14, bold: true });
+  f.lines(224, 84, ['get(key)', 'set(key, value)', 'deleteProperty(key)'], { size: 12, mono: true, gap: 24 });
+  f.text(320, 170, 'check · log · block · forward', { anchor: 'middle', size: 11.5 });
+  f.path('M442 110 H500', { arrow: true, tone: 'muted', width: 2 });
+  f.box(504, 80, 120, 60, { tone: 'pass', label: 'target', size: 13 });
+  f.text(W / 2, 230, 'The client cannot tell it is not talking to the real object.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+/* ───────────────────────── 5 · Command, undo and snapshots ───────────────────────── */
+
+const commandFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The command pattern. An action is turned into an object that knows how to do itself and how to undo itself. The invoker, such as a toolbar, a history or a job queue, holds and runs these command objects without knowing the details, and each command acts on the receiver, such as the document.');
+  f.box(16, 70, 150, 90, { tone: 'info' });
+  f.text(91, 98, 'invoker', { anchor: 'middle', size: 14, bold: true, tone: 'info' });
+  f.lines(30, 122, ['toolbar, history,', 'job queue…'], { size: 11.5, gap: 16 });
+  const cmds = ['AddText', 'DeleteRange', 'Indent'];
+  cmds.forEach((c, i) => {
+    const y = 20 + i * 68;
+    f.box(236, y, 170, 52, { tone: 'accent', solid: true });
+    f.text(321, y + 22, c, { anchor: 'middle', size: 12.5, bold: true, mono: true });
+    f.text(321, y + 40, 'do()   undo()', { anchor: 'middle', size: 11, mono: true });
+    f.path(`M168 115 L232 ${y + 26}`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.path(`M408 ${y + 26} L472 115`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.box(474, 70, 150, 90, { tone: 'pass' });
+  f.text(549, 98, 'receiver', { anchor: 'middle', size: 14, bold: true, tone: 'pass' });
+  f.text(549, 124, 'the document', { anchor: 'middle', size: 11.5 });
+  f.text(W / 2, 244, 'An action as an object can be stored, queued, logged, undone and replayed.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const undoStacks: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Undo and redo with two stacks. Executing a command pushes it on the undo stack and empties the redo stack. Undo pops the top of the undo stack, reverses it, and pushes it on the redo stack. Redo moves it back. Any new command clears the redo stack because the future it described no longer exists.');
+  const stack = (x: number, title: string, items: string[], tone: Tone) => {
+    f.text(x + 80, 22, title, { anchor: 'middle', size: 13, bold: true, tone });
+    f.box(x, 32, 160, 150, { tone, dashed: true });
+    items.forEach((it, i) => {
+      const y = 36 + (3 - items.length + i) * 36;
+      f.box(x + 12, y, 136, 30, { tone, solid: i === items.length - 1, label: it, mono: true, size: 11.5 });
+    });
+  };
+  stack(30, 'undo stack', ['type "a"', 'type "b"', 'type "c"'], 'info');
+  stack(450, 'redo stack', ['type "d"'], 'accent');
+  f.path('M194 90 C260 60 380 60 446 90', { arrow: true, tone: 'info', width: 2 });
+  f.text(320, 56, 'undo(): top moves right', { anchor: 'middle', size: 11.5, tone: 'info' });
+  f.path('M446 130 C380 160 260 160 194 130', { arrow: true, tone: 'accent', width: 2 });
+  f.text(320, 176, 'redo(): top moves back', { anchor: 'middle', size: 11.5, tone: 'accent' });
+  f.text(W / 2, 214, 'execute(command): push on undo, EMPTY redo', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.text(W / 2, 240, 'A new action rewrites history, so the old future is gone.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const mementoFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Two ways to support undo. Command based: store the action and its inverse, which is small but every action needs a correct undo. Snapshot based, also called memento: store a complete copy of the state at each step, which is simple and reliable but uses more memory for large state.');
+  const col = (x: number, title: string, tone: Tone, lines: string[], verdict: string) => {
+    f.box(x, 20, 296, 190, { tone });
+    f.text(x + 148, 46, title, { anchor: 'middle', size: 14, bold: true, tone });
+    f.lines(x + 18, 78, lines, { size: 12, gap: 22 });
+    f.text(x + 148, 190, verdict, { anchor: 'middle', size: 11.5, bold: true, tone });
+  };
+  col(16, 'command + inverse', 'accent', ['stores: "inserted \'x\' at 4"', 'undo: remove it again', 'tiny memory per step', 'every action needs a', 'correct inverse'], 'good for big state, fine edits');
+  col(328, 'snapshots (memento)', 'info', ['stores: a copy of the state', 'undo: restore that copy', 'trivially correct', 'memory grows with size', 'x number of steps'], 'good for small or immutable state');
+  f.text(W / 2, 240, 'Immutable state makes snapshots cheap: old versions share unchanged parts.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+/* ───────────────────────── 6 · Adapters and facades ───────────────────────── */
+
+const adapterFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'The adapter pattern. Your code expects one interface, read, which returns Celsius. A third party sensor offers a different interface, readFahrenheit. The adapter sits between them, implements the interface your code expects, and translates each call to the sensor. Neither side changes.');
+  f.box(16, 70, 170, 90, { tone: 'info' });
+  f.text(101, 98, 'your code', { anchor: 'middle', size: 14, bold: true, tone: 'info' });
+  f.text(101, 124, 'expects  read() → °C', { anchor: 'middle', size: 11.5, mono: true });
+  f.path('M188 115 H232', { arrow: true, tone: 'muted', width: 2 });
+  f.box(236, 56, 170, 118, { tone: 'accent', solid: true });
+  f.text(321, 84, 'adapter', { anchor: 'middle', size: 14, bold: true });
+  f.lines(252, 112, ['read() {', '  (f - 32) × 5/9', '}'], { size: 11.5, mono: true, gap: 18 });
+  f.path('M408 115 H452', { arrow: true, tone: 'muted', width: 2 });
+  f.box(456, 70, 168, 90, { tone: 'pass' });
+  f.text(540, 98, 'third-party sensor', { anchor: 'middle', size: 12.5, bold: true, tone: 'pass' });
+  f.text(540, 124, 'readFahrenheit()', { anchor: 'middle', size: 11.5, mono: true });
+  f.text(W / 2, 220, 'Translate at the border so the rest of your code stays in its own language.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const facadeFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The facade pattern. A client wants to place an order. Without a facade it has to call the inventory, payments and shipping subsystems in the right order and undo them if something fails. With a facade it calls one method, placeOrder, and the facade coordinates the three subsystems.');
+  f.box(16, 90, 130, 70, { tone: 'info', label: 'client', size: 14 });
+  f.path('M148 125 H196', { arrow: true, tone: 'accent', width: 2.2 });
+  f.box(200, 60, 200, 130, { tone: 'accent', solid: true });
+  f.text(300, 88, 'checkout facade', { anchor: 'middle', size: 13, bold: true });
+  f.text(300, 116, 'placeOrder(order)', { anchor: 'middle', size: 12, mono: true });
+  f.lines(216, 146, ['reserve → charge → ship', 'and undo on failure'], { size: 11.5, gap: 18 });
+  ['inventory', 'payments', 'shipping'].forEach((n, i) => {
+    const y = 24 + i * 76;
+    f.box(500, y, 124, 52, { tone: 'pass', label: n, size: 12.5 });
+    f.path(`M402 125 L496 ${y + 26}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.text(W / 2, 240, 'One simple entry point; the messy coordination lives in one place.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const antiCorruption: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'An anti-corruption layer. An external API returns messy data with odd names and types, such as user underscore id, a roles comma string and is underscore active as the number one. An adapter at the boundary converts it once into your clean model with id, roles as an array and active as a boolean, so the rest of the app never sees the mess.');
+  f.box(16, 30, 220, 150, { tone: 'fail', dashed: true });
+  f.text(126, 54, 'external API', { anchor: 'middle', size: 13, bold: true, tone: 'fail' });
+  f.lines(30, 84, ['user_id: "42"', 'is_active: 1', 'roles: "admin, editor"', 'created: "2024-01-05…"'], { size: 11, mono: true, gap: 20 });
+  f.path('M238 105 H292', { arrow: true, tone: 'accent', width: 2.2 });
+  f.box(296, 72, 70, 66, { tone: 'accent', solid: true, label: 'adapt', size: 12 });
+  f.path('M368 105 H402', { arrow: true, tone: 'accent', width: 2.2 });
+  f.box(406, 30, 218, 150, { tone: 'pass' });
+  f.text(515, 54, 'your domain', { anchor: 'middle', size: 13, bold: true, tone: 'pass' });
+  f.lines(420, 84, ['id: 42', 'active: true', "roles: ['admin','editor']", 'createdAt: Date'], { size: 11, mono: true, gap: 20 });
+  f.text(W / 2, 214, 'Convert once, at the border: names, types, defaults, bad data.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 240, 'If the vendor changes the format, only the adapter changes.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+/* ───────────────────────── 7 · Composite, iterator and visitor ───────────────────────── */
+
+const compositeFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The composite pattern. A folder can contain files and other folders, and both files and folders answer the same call, size. A file returns its own size. A folder asks each child for its size and adds them up. The caller treats a single file and a whole tree of folders the same way.');
+  const node = (x: number, y: number, w: number, label: string, folder: boolean) =>
+    f.box(x, y, w, 38, { tone: folder ? 'accent' : 'pass', solid: folder, label, mono: true, size: 11.5 });
+  node(250, 16, 140, 'root/ (folder)', true);
+  node(110, 96, 110, 'a.txt  10', false);
+  node(330, 96, 150, 'docs/ (folder)', true);
+  node(260, 176, 100, 'b.txt  5', false);
+  node(400, 176, 100, 'c.txt  7', false);
+  f.path('M300 56 L170 94', { tone: 'muted', width: 1.6 });
+  f.path('M340 56 L400 94', { tone: 'muted', width: 1.6 });
+  f.path('M380 136 L310 174', { tone: 'muted', width: 1.6 });
+  f.path('M430 136 L450 174', { tone: 'muted', width: 1.6 });
+  f.box(16, 60, 76, 26, { tone: 'pass', solid: true, label: 'leaf', size: 11 });
+  f.box(16, 94, 76, 26, { tone: 'accent', solid: true, label: 'composite', size: 11 });
+  f.text(560, 58, 'size() = 22', { anchor: 'middle', size: 12.5, mono: true, bold: true, tone: 'accent' });
+  f.text(W / 2, 252, 'Leaf and composite share one interface, so callers never check which they have.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const iteratorFigure: FigureBuilder = () => {
+  const f = new Fig(W, 250, 'A lazy iterator pipeline. A source produces natural numbers without end. A map step doubles each one, a filter keeps those above four, and take stops after three. Values flow through the pipeline one at a time and only when the consumer asks, so the infinite source is never fully produced.');
+  const steps: [string, string, Tone][] = [
+    ['naturals()', '1, 2, 3, 4 …', 'info'],
+    ['map(x → x*2)', '2, 4, 6, 8 …', 'accent'],
+    ['filter(> 4)', '6, 8, 10 …', 'accent'],
+    ['take(3)', '6, 8, 10', 'pass'],
+  ];
+  steps.forEach(([name, vals, tone], i) => {
+    const x = 12 + i * 158;
+    f.box(x, 40, 146, 76, { tone, solid: i === 3 });
+    f.text(x + 73, 68, name, { anchor: 'middle', size: 11.5, mono: true, bold: true });
+    f.text(x + 73, 96, vals, { anchor: 'middle', size: 11.5, mono: true });
+    if (i < 3) f.path(`M${x + 148} 78 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.8 });
+  });
+  f.text(W / 2, 156, 'pull-based: the consumer asks for the next value, each step does just enough', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 184, 'The source never runs out of numbers, but take(3) ends the whole chain.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 226, 'for…of and the iterator protocol are how JavaScript lets you build this.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const visitorFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'The visitor pattern. A syntax tree has a few node kinds: num, add and mul. Many different operations, such as evaluate, stringify and simplify, each walk the same tree with their own handler for each node kind. A new operation is a new visitor, and the node definitions never change.');
+  f.box(16, 30, 200, 170, { tone: 'info' });
+  f.text(116, 54, 'the tree (stable)', { anchor: 'middle', size: 12.5, bold: true, tone: 'info' });
+  ['num', 'add', 'mul'].forEach((n, i) => f.box(46, 70 + i * 40, 140, 30, { tone: 'muted', label: `{ type: '${n}' }`, mono: true, size: 11 }));
+  const ops: [string, string][] = [['evaluate', 'num → value, add → a + b'], ['stringify', 'num → "3", add → "(a + b)"'], ['simplify', 'add(x, 0) → x']];
+  ops.forEach(([name, rule], i) => {
+    const y = 28 + i * 58;
+    f.box(330, y, 294, 48, { tone: 'accent', solid: i === 0 });
+    f.text(346, y + 20, name, { size: 12.5, bold: true, mono: true });
+    f.text(346, y + 38, rule, { size: 11 });
+    f.path(`M328 ${y + 24} L220 115`, { arrow: true, tone: 'muted', width: 1.4 });
+  });
+  f.text(W / 2, 236, 'New operation = one new visitor. No node type is edited.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+/* ───────────────────────── 8 · Capstone ───────────────────────── */
+
+const chooserFigure: FigureBuilder = () => {
+  const f = new Fig(W, 330, 'A guide for choosing a pattern from the problem. Many ways to do one job: strategy. Behaviour depends on the stage of life: state. Tell many parties about a change: observer. Add behaviour around existing code: decorator or middleware. Undo, queue or replay actions: command. A foreign interface you cannot change: adapter. A messy multi-step subsystem: facade. Tree shaped data: composite, iterator, visitor. Many options when creating something: factory or builder.');
+  const rows: [string, string, Tone][] = [
+    ['many ways to do one job', 'strategy', 'accent'],
+    ['behaviour depends on the stage', 'state machine', 'accent'],
+    ['tell many parties about a change', 'observer / pub-sub', 'info'],
+    ['add behaviour around code', 'decorator / middleware', 'info'],
+    ['undo, queue or replay actions', 'command', 'pass'],
+    ['foreign interface or data', 'adapter', 'pass'],
+    ['messy multi-step subsystem', 'facade', 'pass'],
+    ['tree-shaped data', 'composite · iterator · visitor', 'accent'],
+    ['complicated construction', 'factory / builder', 'info'],
+  ];
+  rows.forEach(([problem, pattern, tone], i) => {
+    const y = 14 + i * 34;
+    f.box(16, y, 290, 28, { tone: 'muted', label: problem, size: 12 });
+    f.path(`M308 ${y + 14} H336`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(340, y, 284, 28, { tone, solid: true, label: pattern, size: 12 });
+  });
+  return f;
+};
+
+const pluginFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A plugin host. A small core offers three sockets: services that plugins provide and inject, events they emit and listen to, and hooks they tap. Plugins plug into those sockets, may require other plugins, and are started in dependency order and stopped in reverse order.');
+  f.box(190, 20, 260, 150, { tone: 'accent', solid: true });
+  f.text(320, 46, 'host (small core)', { anchor: 'middle', size: 14, bold: true });
+  f.lines(214, 78, ['services  provide / inject', 'events    on / emit', 'lifecycle setup / teardown'], { size: 12, mono: true, gap: 26 });
+  const plugins: [string, number, number][] = [['logger', 16, 30], ['auth', 16, 100], ['metrics', 490, 30], ['cache', 490, 100]];
+  plugins.forEach(([n, x, y]) => {
+    f.box(x, y, 134, 46, { tone: 'pass', label: n, size: 12.5 });
+    f.path(x < 300 ? `M${x + 136} ${y + 23} L188 ${y + 40}` : `M${x - 2} ${y + 23} L452 ${y + 40}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.text(83, 170, 'auth requires logger', { anchor: 'middle', size: 11, tone: 'muted' });
+  f.text(W / 2, 214, 'start order: logger, auth, metrics, cache   ·   stop order: reverse', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 244, 'The core stays tiny; features arrive as plugins.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const resilientStack: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A stack of async decorators around a fetch function. The outermost layer is the cache: a fresh cached answer returns immediately. Next is dedupe: identical requests in flight share one call. Then retry: failures are tried again with waiting. At the centre is the real fetch. The result travels back out through the same layers.');
+  const layers: [string, string, Tone][] = [
+    ['withCache', 'fresh answer? return it now', 'pass'],
+    ['withDedupe', 'same request in flight? share it', 'info'],
+    ['withRetry', 'failed? wait, then try again', 'accent'],
+    ['fetchUser', 'the real network call', 'muted'],
+  ];
+  layers.forEach(([name, rule, tone], i) => {
+    const y = 14 + i * 58;
+    f.box(16 + i * 18, y, 400 - i * 36, 48, { tone, solid: i === 3 });
+    f.text(32 + i * 18, y + 20, name, { size: 13, bold: true, mono: true });
+    f.text(32 + i * 18, y + 38, rule, { size: 11 });
+  });
+  f.lines(448, 70, ['const client = compose(', '  withCache,', '  withDedupe,', '  withRetry', ')(fetchUser);'], { size: 11.5, mono: true, gap: 20 });
+  f.text(W / 2, 258, 'Order matters: cache outermost means cache hits skip everything inside.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+export const patternFigures: Record<string, FigureBuilder> = {
+  'pat-factory': factoryFigure,
+  'pat-builder': builderFigure,
+  'pat-singleton': singletonRisk,
+  'pat-strategy': strategyFigure,
+  'pat-state-diagram': stateDiagram,
+  'pat-flags-vs-state': flagsVsState,
+  'pat-observer': observerFigure,
+  'pat-pubsub': pubsubFigure,
+  'pat-leak': leakFigure,
+  'pat-signals': signalGraph,
+  'pat-decorator': decoratorFigure,
+  'pat-onion': onionFigure,
+  'pat-proxy': proxyFigure,
+  'pat-command': commandFigure,
+  'pat-undo-stacks': undoStacks,
+  'pat-memento': mementoFigure,
+  'pat-adapter': adapterFigure,
+  'pat-facade': facadeFigure,
+  'pat-acl': antiCorruption,
+  'pat-composite': compositeFigure,
+  'pat-iterator': iteratorFigure,
+  'pat-visitor': visitorFigure,
+  'pat-chooser': chooserFigure,
+  'pat-plugin': pluginFigure,
+  'pat-resilient': resilientStack,
+};
