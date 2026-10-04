@@ -62,8 +62,74 @@ const scopesFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 2 · The request lifecycle ───────────────────────── */
+
+const lifecycleFigure: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'The request lifecycle. A request passes through middleware, then guards, then the before part of interceptors, then pipes, and reaches the handler. The response travels back through the after part of the interceptors and then the middleware. If anything throws, exception filters turn the error into a response.');
+  const steps: [string, string, Tone][] = [
+    ['1 middleware', 'logging, parsing, ids', 'info'],
+    ['2 guards', 'may this request continue?', 'accent'],
+    ['3 interceptors', 'before: timing, cache', 'info'],
+    ['4 pipes', 'transform + validate input', 'accent'],
+    ['5 handler', 'the actual work', 'pass'],
+  ];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 8 + i * 126;
+    f.box(x, 30, 118, 86, { tone, solid: i === 4 });
+    f.text(x + 59, 58, t, { anchor: 'middle', size: 11.5, bold: true });
+    f.text(x + 59, 84, sub.slice(0, 18), { anchor: 'middle', size: 9.5 });
+    f.text(x + 59, 98, sub.slice(18), { anchor: 'middle', size: 9.5 });
+    if (i < 4) f.path(`M${x + 119} 73 H${x + 125}`, { arrow: true, tone: 'muted', width: 1.4 });
+  });
+  f.path('M570 118 V150 H60 V120', { arrow: true, tone: 'pass', width: 1.8 });
+  f.text(315, 142, 'response: interceptors (after), then middleware', { anchor: 'middle', size: 11.5, tone: 'pass' });
+  f.box(130, 176, 380, 44, { tone: 'fail', solid: true, label: 'any error → exception filter → { status, body }', size: 12 });
+  f.text(W / 2, 252, 'Remember it as: M G I P H  (middleware, guards, interceptors, pipes, handler).', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 278, 'Guards say yes or no. Pipes reshape data. Interceptors wrap the whole call.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
+const interceptorOnion: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Interceptors wrap the handler like layers of an onion. Each interceptor runs code before calling next, which runs the inner layers and the handler, and then runs code after next returns, in the reverse order. An interceptor can change the result, time the call, return a cached value without calling next at all, or catch the error.');
+  f.box(16, 16, 608, 190, { tone: 'info' });
+  f.text(32, 38, 'timing interceptor', { size: 12.5, bold: true, tone: 'info' });
+  f.box(96, 50, 448, 140, { tone: 'accent' });
+  f.text(112, 72, 'cache interceptor', { size: 12.5, bold: true, tone: 'accent' });
+  f.box(176, 84, 288, 90, { tone: 'pass', solid: true });
+  f.text(320, 118, 'pipes → handler', { anchor: 'middle', size: 14, bold: true });
+  f.text(320, 142, 'produces the result', { anchor: 'middle', size: 11.5 });
+  f.text(560, 38, 'before →', { anchor: 'end', size: 11, mono: true, tone: 'info' });
+  f.text(528, 72, 'before →', { anchor: 'end', size: 11, mono: true, tone: 'accent' });
+  f.text(452, 166, '← after', { anchor: 'end', size: 11, mono: true, tone: 'accent' });
+  f.text(600, 194, '← after', { anchor: 'end', size: 11, mono: true, tone: 'info' });
+  f.text(W / 2, 234, 'Before runs in registration order; after runs in reverse. Not calling next skips the rest.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const errorFlowFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'How errors become responses. A guard denial, a pipe validation failure, a handler error or a middleware error is thrown as an exception. Exception filters pick the first one that matches the error type and build the response. Known HTTP errors keep their status and message. Unknown errors become a generic five hundred response, and the real message is logged, never sent to the client.');
+  const thrown: [string, Tone][] = [['guard denies', 'fail'], ['pipe rejects input', 'fail'], ['handler throws', 'fail'], ['middleware throws', 'fail']];
+  thrown.forEach(([t, tone], i) => {
+    f.box(12, 20 + i * 52, 150, 40, { tone, label: t, size: 11.5 });
+    f.path(`M164 ${40 + i * 52} L230 120`, { arrow: true, tone: 'muted', width: 1.4 });
+  });
+  f.box(232, 80, 170, 80, { tone: 'accent', solid: true });
+  f.text(317, 108, 'exception filters', { anchor: 'middle', size: 13, bold: true });
+  f.text(317, 132, 'first match wins', { anchor: 'middle', size: 11.5 });
+  f.path('M404 120 L470 80', { arrow: true, tone: 'pass', width: 1.6 });
+  f.path('M404 120 L470 160', { arrow: true, tone: 'muted', width: 1.6 });
+  f.box(472, 56, 156, 48, { tone: 'pass', label: 'HttpError → its status', size: 11 });
+  f.box(472, 136, 156, 48, { tone: 'muted', label: 'unknown → 500 generic', size: 11 });
+  f.text(W / 2, 226, 'Log the details, send a generic message.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 252, 'One place maps errors to responses, so handlers can simply throw.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-di': diFigure,
   'nd-modules': modulesFigure,
   'nd-scopes': scopesFigure,
+  'nd-lifecycle': lifecycleFigure,
+  'nd-interceptors': interceptorOnion,
+  'nd-errors': errorFlowFigure,
 };
