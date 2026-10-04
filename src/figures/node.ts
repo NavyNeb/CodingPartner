@@ -240,6 +240,61 @@ const windowFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 5 · HTTP and REST ───────────────────────── */
+
+const statusFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'HTTP status code families. Two hundred codes mean success: 200 OK, 201 Created, 204 No Content. Three hundred codes mean redirect or not modified, such as 301 and 304. Four hundred codes mean the client made a mistake: 400 bad request, 401 not authenticated, 403 forbidden, 404 not found, 409 conflict, 422 unprocessable, 429 too many requests. Five hundred codes mean the server failed: 500, 502, 503.');
+  const cols: [string, string, string[], Tone][] = [
+    ['2xx', 'it worked', ['200 OK', '201 Created', '204 No Content'], 'pass'],
+    ['3xx', 'look elsewhere', ['301 Moved', '304 Not Modified'], 'info'],
+    ['4xx', 'you got it wrong', ['400 · 401 · 403', '404 · 409 · 422', '429 Too Many'], 'accent'],
+    ['5xx', 'we got it wrong', ['500 Server Error', '502 Bad Gateway', '503 Unavailable'], 'fail'],
+  ];
+  cols.forEach(([code, sub, items, tone], i) => {
+    const x = 8 + i * 158;
+    f.box(x, 20, 142, 150, { tone });
+    f.text(x + 71, 50, code, { anchor: 'middle', size: 20, bold: true, mono: true });
+    f.text(x + 71, 72, sub, { anchor: 'middle', size: 11, tone: 'muted' });
+    items.forEach((t, j) => f.text(x + 71, 100 + j * 22, t, { anchor: 'middle', size: 11, mono: true }));
+  });
+  f.text(W / 2, 204, 'Pick the code that tells the client what to DO next: retry, fix input, log in, or give up.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 232, '401 vs 403, 400 vs 422, 404 vs 410: the details are the interview.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const conditionalFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Conditional requests. A first GET returns the resource with an ETag header that identifies this version. A later GET with If-None-Match set to that ETag returns 304 Not Modified with no body, saving bandwidth. A PUT with If-Match set to the ETag is only applied if the resource has not changed meanwhile; otherwise the server answers 412 Precondition Failed, which prevents lost updates.');
+  const rows: [string, string, Tone][] = [
+    ['GET /post/1', '200 + ETag: "v1"', 'pass'],
+    ['GET /post/1  If-None-Match: "v1"', '304 Not Modified, no body', 'info'],
+    ['PUT /post/1  If-Match: "v1"', '412 if it changed meanwhile', 'fail'],
+  ];
+  rows.forEach(([req, res, tone], i) => {
+    const y = 20 + i * 70;
+    f.box(8, y, 296, 50, { tone: 'muted', label: req, size: 11, mono: true });
+    f.path(`M306 ${y + 25} H330`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(332, y, 296, 50, { tone, label: res, size: 11, mono: true });
+  });
+  f.text(W / 2, 244, 'ETag = a fingerprint of the current version. Same fingerprint, nothing to send.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 266, 'If-Match turns "last write wins" into "write only if nobody else did".', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const cursorFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Offset versus cursor pagination. With offset pagination, page two is the items at positions four to six. If a new item is inserted at the top between requests, everything shifts and item three appears again on page two. With cursor pagination the client asks for items after id three, so the answer is items four, five and six no matter what was inserted before.');
+  const row = (y: number, label: string, items: string[], hi: number[], tone: Tone) => {
+    f.text(16, y + 25, label, { size: 11.5, bold: true });
+    items.forEach((t, i) => f.box(176 + i * 56, y, 48, 38, { tone: hi.includes(i) ? tone : 'muted', solid: hi.includes(i), label: t, size: 12, mono: true }));
+  };
+  row(20, 'before', ['1', '2', '3', '4', '5', '6', '7'], [3, 4, 5], 'info');
+  row(88, 'after insert', ['N', '1', '2', '3', '4', '5', '6'], [3, 4, 5], 'fail');
+  f.text(W / 2, 154, 'offset page 2 (skip 3): after the insert it shows 3 again, a duplicate.', { anchor: 'middle', size: 12, bold: true, tone: 'fail' });
+  row(176, 'after id=3', ['3', '4', '5', '6', '7'], [1, 2, 3], 'pass');
+  f.text(W / 2, 244, 'cursor "after id 3": always 4, 5, 6, however much was inserted before.', { anchor: 'middle', size: 12, bold: true, tone: 'pass' });
+  f.text(W / 2, 270, 'Cursors are stable and fast on big tables; offsets are simple but drift.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-di': diFigure,
   'nd-modules': modulesFigure,
@@ -253,4 +308,7 @@ export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-rotation': rotationFigure,
   'nd-guard': guardDecisionFigure,
   'nd-window': windowFigure,
+  'nd-status': statusFigure,
+  'nd-conditional': conditionalFigure,
+  'nd-cursor': cursorFigure,
 };
