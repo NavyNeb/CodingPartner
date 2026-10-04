@@ -43,7 +43,9 @@ docker build -t whetstone . && docker run -p 8080:8080 -v whetstone-data:/data w
 - Environment variables: `PORT` (default 8787), `DATA_DIR` (where `whetstone.db` lives), `DIST_DIR`, `TRUST_PROXY`.
 - Back up with `npm run backup` (a consistent SQLite copy, safe while running).
 
-**2 · Static only (Vercel, Netlify, GitHub Pages).** Import the repo — `vercel.json` already sets the Vite build and `dist/` output. Everything works except sync and share links: the site probes `/api/health`, finds nothing, and hides those controls. Progress stays in the browser.
+**2 · Site on Vercel, API on Fly.** Deploy the API to Fly (above), then `vercel.json` proxies `/api/*` to it with a rewrite, so the browser stays same-origin and `src/lib/sync.ts` needs no change. If your Fly app is not named `whetstone-restless-fern-369`, edit the `destination` hostname in `vercel.json`.
+
+**3 · Static only (Vercel, Netlify, GitHub Pages).** Import the repo — `vercel.json` already sets the Vite build and `dist/` output. Everything works except sync and share links: the site probes `/api/health`, finds nothing, and hides those controls. Progress stays in the browser.
 
 ### What the server stores
 
