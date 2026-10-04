@@ -181,6 +181,65 @@ const paginationFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 4 · Auth, guards and throttling ───────────────────────── */
+
+const rotationFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Refresh token rotation with reuse detection. Login returns an access token A1 and a refresh token R1. Refreshing with R1 returns A2 and R2 and marks R1 as used. If an attacker later replays the used R1, the server knows the token family is compromised and revokes the whole family, so A2 and R2 stop working too and the user must log in again.');
+  const steps: [string, string, Tone][] = [
+    ['1 login', 'A1 · R1', 'pass'],
+    ['2 refresh with R1', 'A2 · R2, R1 used', 'info'],
+    ['3 replay of R1', 'already used!', 'fail'],
+    ['4 family revoked', 'A2, R2 die too', 'fail'],
+  ];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 8 + i * 158;
+    f.box(x, 30, 142, 70, { tone, solid: i === 3 });
+    f.text(x + 71, 58, t, { anchor: 'middle', size: 11.5, bold: true });
+    f.text(x + 71, 82, sub, { anchor: 'middle', size: 10.5 });
+    if (i < 3) f.path(`M${x + 144} 65 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.text(W / 2, 148, 'A refresh token works exactly ONCE. Each use hands out a new pair.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 178, 'Two clients holding the same refresh token means one of them stole it.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 206, 'Revoke the whole family: the honest user logs in again, the thief is out.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 236, 'Access tokens stay short-lived (minutes); refresh tokens live longer (days).', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const guardDecisionFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A metadata driven guard. The handler is tagged with metadata such as public, allowed roles or an owner parameter. The guard reads that metadata and decides. Public routes are allowed. With no user the answer is not authenticated. Otherwise a matching role allows the request, or the owner of the resource is allowed, or any signed in user if no restriction is set, and everything else is forbidden.');
+  const steps: [string, string, string][] = [
+    ['public?', 'yes → allow', 'pass'],
+    ['signed in?', 'no → 401', 'fail'],
+    ['role match?', 'yes → allow', 'pass'],
+    ['owner?', 'yes → allow', 'pass'],
+  ];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 8 + i * 158;
+    f.box(x, 30, 142, 56, { tone: 'accent', label: t, size: 12.5 });
+    f.text(x + 71, 114, sub, { anchor: 'middle', size: 11.5, bold: true, tone: tone as Tone });
+    if (i < 3) f.path(`M${x + 144} 58 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.box(246, 138, 148, 44, { tone: 'fail', solid: true, label: 'otherwise 403', size: 12 });
+  f.text(W / 2, 214, '401 = who are you?   403 = I know you, and the answer is no.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 242, 'Routes carry their own rules as metadata; the guard stays generic.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const windowFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'A sliding window rate limiter with a limit of three requests per window. Timestamps of recent requests are remembered. Old ones fall out of the window as time passes. Three requests are inside the current window, so the fourth is denied until the oldest one leaves the window.');
+  f.path('M24 116 H616', { tone: 'muted', width: 1.6, arrow: true });
+  f.box(220, 56, 340, 108, { tone: 'info' });
+  f.text(390, 80, 'window = the last 1000 ms', { anchor: 'middle', size: 12, bold: true, tone: 'info' });
+  f.box(112, 108, 16, 16, { tone: 'muted', solid: true });
+  f.text(120, 146, 'expired', { anchor: 'middle', size: 10.5, tone: 'muted' });
+  [260, 350, 440].forEach((x) => f.box(x - 8, 108, 16, 16, { tone: 'pass', solid: true }));
+  f.box(512, 108, 16, 16, { tone: 'fail', solid: true });
+  f.text(520, 148, 'denied', { anchor: 'middle', size: 10.5, tone: 'fail' });
+  f.text(W / 2, 198, 'limit 3: the 4th request in the window is refused.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 226, 'Retry after = oldest timestamp + window − now.', { anchor: 'middle', size: 12, tone: 'muted' });
+  return f;
+};
+
 export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-di': diFigure,
   'nd-modules': modulesFigure,
@@ -191,4 +250,7 @@ export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-dto': dtoFigure,
   'nd-serialize': serializeFigure,
   'nd-pagination': paginationFigure,
+  'nd-rotation': rotationFigure,
+  'nd-guard': guardDecisionFigure,
+  'nd-window': windowFigure,
 };
