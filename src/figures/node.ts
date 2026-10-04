@@ -295,6 +295,57 @@ const cursorFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 6 · Async, streams and shutdown ───────────────────────── */
+
+const eventLoopFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The Node event loop. Each turn of the loop runs phases in order: timers, pending callbacks, poll for input and output, check for setImmediate callbacks, and close callbacks. Between every callback, the microtask queue is emptied completely: process.nextTick callbacks first, then promise callbacks. That is why a promise callback always runs before the next timer.');
+  const phases: [string, string][] = [['timers', 'setTimeout'], ['pending', 'system errors'], ['poll', 'I/O callbacks'], ['check', 'setImmediate'], ['close', 'socket close']];
+  phases.forEach(([t, sub], i) => {
+    const x = 8 + i * 126;
+    f.box(x, 24, 118, 66, { tone: i === 2 ? 'accent' : 'info', solid: i === 2 });
+    f.text(x + 59, 50, t, { anchor: 'middle', size: 13, bold: true, mono: true });
+    f.text(x + 59, 72, sub, { anchor: 'middle', size: 10.5 });
+    if (i < 4) f.path(`M${x + 120} 57 H${x + 124}`, { arrow: true, tone: 'muted', width: 1.4 });
+  });
+  f.box(8, 112, 624, 44, { tone: 'pass', solid: true, label: 'between EVERY callback: nextTick queue, then promise microtasks, until empty', size: 12 });
+  f.text(W / 2, 192, 'Promise callbacks (.then, await) beat timers: they run before the loop moves on.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 220, 'One long synchronous task blocks every phase: no timers, no I/O, no requests.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 246, 'Node is fast at waiting, slow at heavy CPU work on the main thread.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const backpressureFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Backpressure. A fast producer writes into a bounded queue that feeds a slow consumer. When the queue is full at its high water mark, the push call does not finish, so the producer waits. When the consumer takes an item, a slot opens and the producer continues. Memory use stays bounded.');
+  f.box(8, 40, 110, 64, { tone: 'info', label: 'producer', size: 13, mono: true });
+  f.path('M120 72 H142', { arrow: true, tone: 'muted', width: 1.8 });
+  f.box(146, 24, 296, 96, { tone: 'accent' });
+  f.text(294, 44, 'bounded queue (high water mark 4)', { anchor: 'middle', size: 11.5, bold: true });
+  [0, 1, 2, 3].forEach((i) => f.box(162 + i * 68, 60, 56, 40, { tone: 'fail', solid: true, label: String(i + 1), size: 13, mono: true }));
+  f.path('M444 72 H466', { arrow: true, tone: 'muted', width: 1.8 });
+  f.box(470, 40, 110, 64, { tone: 'pass', label: 'consumer', size: 13, mono: true });
+  f.text(W / 2, 158, 'Full queue: push() stays pending, so the producer is paused.', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.text(W / 2, 186, 'The consumer takes one: a slot opens, the producer resumes.', { anchor: 'middle', size: 12.5, bold: true, tone: 'pass' });
+  f.text(W / 2, 220, 'Without a limit, a slow consumer makes memory grow until the process dies.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 246, 'Node streams call this the high water mark; async iterables get it for free.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const shutdownFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Graceful shutdown. On a termination signal the process stops accepting new work, lets in flight requests finish, closes resources in reverse order of creation, and then exits. If it takes too long, a timeout forces the exit so the orchestrator is not left waiting.');
+  const steps: [string, string][] = [['1 signal', 'SIGTERM'], ['2 stop', 'no new work'], ['3 drain', 'finish in-flight'], ['4 close', 'reverse order'], ['5 exit', 'code 0']];
+  steps.forEach(([t, sub], i) => {
+    const x = 8 + i * 126;
+    f.box(x, 24, 118, 66, { tone: i === 4 ? 'pass' : 'info', solid: i === 4 });
+    f.text(x + 59, 50, t, { anchor: 'middle', size: 12.5, bold: true });
+    f.text(x + 59, 72, sub, { anchor: 'middle', size: 10.5 });
+    if (i < 4) f.path(`M${x + 120} 57 H${x + 124}`, { arrow: true, tone: 'muted', width: 1.4 });
+  });
+  f.box(130, 118, 380, 40, { tone: 'fail', label: 'too slow? timeout → force exit', size: 12 });
+  f.text(W / 2, 192, 'Close in REVERSE order: the HTTP server before the database it uses.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 220, 'One failing closer must not stop the others from running.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-di': diFigure,
   'nd-modules': modulesFigure,
@@ -311,4 +362,7 @@ export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-status': statusFigure,
   'nd-conditional': conditionalFigure,
   'nd-cursor': cursorFigure,
+  'nd-loop': eventLoopFigure,
+  'nd-backpressure': backpressureFigure,
+  'nd-shutdown': shutdownFigure,
 };
