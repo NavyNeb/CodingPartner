@@ -402,6 +402,64 @@ const optimisticFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 8 · Config, logging, health and resilience ───────────────────────── */
+
+const configFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Configuration flows one way. Environment variables, which are all strings, are read once at startup and validated against a spec: required keys, types, allowed values. If anything is wrong the process fails immediately and lists every problem. Otherwise the result is a frozen, typed config object that is passed to the parts that need it.');
+  const steps: [string, string, Tone][] = [['env', 'strings only', 'muted'], ['validate', 'types, required', 'accent'], ['config', 'frozen + typed', 'pass'], ['services', 'receive it', 'info']];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 8 + i * 158;
+    f.box(x, 24, 142, 62, { tone, solid: i === 2 });
+    f.text(x + 71, 50, t, { anchor: 'middle', size: 13, bold: true, mono: true });
+    f.text(x + 71, 70, sub, { anchor: 'middle', size: 10.5 });
+    if (i < 3) f.path(`M${x + 144} 55 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.box(166, 106, 142, 44, { tone: 'fail', label: 'crash at boot', size: 12 });
+  f.path('M237 88 V104', { arrow: true, tone: 'fail', width: 1.6 });
+  f.text(W / 2, 186, 'Fail fast, list every problem at once, never at 3 a.m. on the first request.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 214, 'Parse once at the edge; the rest of the code never touches process.env.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const healthFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Liveness and readiness. A liveness probe says the process is alive and should not be restarted. A readiness probe runs every dependency check in parallel, for example the database as critical and the cache as optional, and reports up, degraded when only an optional dependency is down, or down when a critical one is down, which tells the load balancer to stop sending traffic.');
+  f.box(8, 20, 200, 60, { tone: 'info' });
+  f.text(108, 44, 'liveness', { anchor: 'middle', size: 13, bold: true, mono: true });
+  f.text(108, 64, 'is the process alive?', { anchor: 'middle', size: 10.5 });
+  f.box(232, 20, 396, 60, { tone: 'accent' });
+  f.text(430, 44, 'readiness', { anchor: 'middle', size: 13, bold: true, mono: true });
+  f.text(430, 64, 'can it serve traffic right now?', { anchor: 'middle', size: 10.5 });
+  const probes: [string, string, Tone][] = [['db (critical)', 'up', 'pass'], ['cache (optional)', 'down', 'fail'], ['queue (critical)', 'up', 'pass']];
+  probes.forEach(([name, st, tone], i) => {
+    const x = 232 + i * 134;
+    f.box(x, 100, 126, 44, { tone, label: name + ': ' + st, size: 9.5, mono: true });
+  });
+  f.box(280, 168, 300, 38, { tone: 'accent', solid: true, label: 'overall: degraded', size: 13 });
+  f.text(108, 120, 'restart if it fails', { anchor: 'middle', size: 11, tone: 'muted' });
+  f.text(W / 2, 238, 'Probes run in parallel with a timeout: a hung dependency must not hang the probe.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 262, 'critical down → down · only optional down → degraded · all up → up', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const breakerFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'A circuit breaker has three states. Closed lets calls through and counts consecutive failures. After the threshold it opens and rejects calls immediately without calling the failing service. After a reset time it becomes half open and lets one trial call through. If the trial succeeds the breaker closes; if it fails the breaker opens again and the timer restarts.');
+  const st: [string, string, number, Tone][] = [['closed', 'calls pass through', 20, 'pass'], ['open', 'calls rejected fast', 245, 'fail'], ['half-open', 'one trial call', 470, 'accent']];
+  st.forEach(([t, sub, x, tone]) => {
+    f.box(x, 24, 150, 64, { tone, solid: true });
+    f.text(x + 75, 50, t, { anchor: 'middle', size: 13, bold: true, mono: true });
+    f.text(x + 75, 72, sub, { anchor: 'middle', size: 10.5 });
+  });
+  f.path('M172 46 H243', { arrow: true, tone: 'muted', width: 1.8 });
+  f.path('M397 46 H468', { arrow: true, tone: 'muted', width: 1.8 });
+  f.path('M468 68 H399', { arrow: true, tone: 'muted', width: 1.8 });
+  f.path('M545 90 V120 H95 V92', { arrow: true, tone: 'pass', width: 1.8 });
+  f.text(W / 2, 156, 'closed → open: N failures in a row   ·   open → half-open: after resetMs', { anchor: 'middle', size: 11.5, bold: true });
+  f.text(W / 2, 180, 'half-open → closed: the trial succeeds   ·   half-open → open: the trial fails', { anchor: 'middle', size: 11.5, bold: true });
+  f.text(W / 2, 218, 'Stop hammering a service that is already down; give it room to recover.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 246, 'Callers fail fast instead of waiting on a timeout for every request.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-di': diFigure,
   'nd-modules': modulesFigure,
@@ -424,4 +482,7 @@ export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-nplus1': nPlusOneFigure,
   'nd-transaction': transactionFigure,
   'nd-optimistic': optimisticFigure,
+  'nd-config': configFigure,
+  'nd-health': healthFigure,
+  'nd-breaker': breakerFigure,
 };
