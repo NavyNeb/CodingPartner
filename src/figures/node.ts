@@ -346,6 +346,62 @@ const shutdownFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 7 · Data access ───────────────────────── */
+
+const nPlusOneFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'The N plus one problem. Loading ten posts and then fetching each author with its own query makes eleven queries: one for the posts and ten for authors. A batch loader collects the ten author ids requested in the same tick and fetches them with a single query, so the total is two queries.');
+  f.text(160, 24, 'naive: 1 + N queries', { anchor: 'middle', size: 12.5, bold: true, tone: 'fail' });
+  f.box(16, 38, 288, 34, { tone: 'info', label: 'SELECT posts  (1 query)', size: 11.5, mono: true });
+  for (let i = 0; i < 5; i++) f.box(16 + i * 58, 86, 52, 30, { tone: 'fail', label: 'user ' + (i + 1), size: 9.5, mono: true });
+  f.text(160, 142, '… and 5 more: 11 round trips', { anchor: 'middle', size: 11.5, tone: 'fail' });
+  f.text(480, 24, 'batched: 2 queries', { anchor: 'middle', size: 12.5, bold: true, tone: 'pass' });
+  f.box(336, 38, 288, 34, { tone: 'info', label: 'SELECT posts  (1 query)', size: 11.5, mono: true });
+  f.box(336, 86, 288, 30, { tone: 'pass', solid: true, label: 'WHERE id IN (1,2,3…)  (1 query)', size: 11, mono: true });
+  f.text(480, 142, 'same data, 2 round trips', { anchor: 'middle', size: 11.5, tone: 'pass' });
+  f.text(W / 2, 196, 'Collect the keys asked for in one tick, dedupe them, fetch once, hand each caller its own value.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 224, 'Each query costs a network round trip, so the count matters more than the SQL.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 252, 'This is what DataLoader does, and why GraphQL resolvers need it.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const transactionFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Transactions and savepoints. A transaction begins, runs several statements, and either commits them all or rolls them all back. A nested step inside it uses a savepoint, so if only the inner step fails the work can roll back to the savepoint and the outer transaction can still commit the rest.');
+  f.box(8, 30, 90, 50, { tone: 'info', label: 'begin', size: 12, mono: true });
+  f.path('M100 55 H116', { arrow: true, tone: 'muted', width: 1.6 });
+  f.box(118, 20, 330, 150, { tone: 'accent' });
+  f.text(283, 42, 'one atomic unit of work', { anchor: 'middle', size: 11.5, bold: true });
+  f.box(134, 56, 120, 34, { tone: 'muted', label: 'debit A', size: 11, mono: true });
+  f.box(270, 56, 120, 34, { tone: 'muted', label: 'credit B', size: 11, mono: true });
+  f.box(134, 108, 256, 44, { tone: 'info', label: 'savepoint sp1: send email log', size: 11, mono: true });
+  f.path('M450 70 L476 52', { arrow: true, tone: 'pass', width: 1.6 });
+  f.path('M450 120 L476 140', { arrow: true, tone: 'fail', width: 1.6 });
+  f.box(478, 30, 148, 44, { tone: 'pass', solid: true, label: 'commit: all or nothing', size: 10.5 });
+  f.box(478, 118, 148, 44, { tone: 'fail', solid: true, label: 'rollback: undo all', size: 10.5 });
+  f.text(W / 2, 206, 'Money moves in pairs: either both writes happen or neither does.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 234, 'A failed inner step rolls back to its savepoint; the outer work can carry on.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 260, 'Never let a rollback error hide the real error that caused it.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const optimisticFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Optimistic locking. Two users read a row at version one. The first saves, which succeeds and moves the row to version two. The second saves with the stale version one, so the update matches zero rows and is rejected as a conflict. The second user must reload the row, reapply the change, and try again.');
+  const rows: [string, string, Tone][] = [
+    ['A reads v1', 'B reads v1', 'muted'],
+    ['A saves (expects v1)', 'ok, row is now v2', 'pass'],
+    ['B saves (expects v1)', 'conflict: row is v2', 'fail'],
+    ['B reloads v2, retries', 'ok, row is now v3', 'pass'],
+  ];
+  rows.forEach(([l, r, tone], i) => {
+    const y = 16 + i * 52;
+    f.box(8, y, 286, 40, { tone: 'muted', label: l, size: 11.5, mono: true });
+    f.path(`M296 ${y + 20} H320`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(322, y, 306, 40, { tone, label: r, size: 11.5, mono: true });
+  });
+  f.text(W / 2, 244, 'UPDATE … SET …, version = version + 1 WHERE id = ? AND version = ?', { anchor: 'middle', size: 11.5, bold: true, mono: true });
+  f.text(W / 2, 266, 'No locks held while the user thinks; conflicts are detected, not prevented.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-di': diFigure,
   'nd-modules': modulesFigure,
@@ -365,4 +421,7 @@ export const nodeFigures: Record<string, FigureBuilder> = {
   'nd-loop': eventLoopFigure,
   'nd-backpressure': backpressureFigure,
   'nd-shutdown': shutdownFigure,
+  'nd-nplus1': nPlusOneFigure,
+  'nd-transaction': transactionFigure,
+  'nd-optimistic': optimisticFigure,
 };
