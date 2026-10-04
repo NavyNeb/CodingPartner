@@ -27,6 +27,8 @@ Three flavours, one cause:
 
 The cause is always the same: **untrusted data crossed into a markup/code context without encoding**.
 
+![Validate on the way in, encode on the way out](fig:sec-trust-boundary "Validate shape when data enters, then encode for the specific destination when it leaves.")
+
 ## Encode for the destination
 
 ![Output contexts](fig:sec-contexts "The place the data lands decides which escaping rule applies.")
