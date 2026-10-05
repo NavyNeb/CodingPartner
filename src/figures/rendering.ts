@@ -289,6 +289,61 @@ const hintsFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 6 · CDN, HTTP caching and traffic ───────────────────────── */
+
+const cdnFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'A CDN sits between browsers and the origin server. A request that finds a fresh copy at the nearby edge location is a hit and is answered immediately. A request with no fresh copy is a miss: the edge fetches from the origin once, stores the response for its time to live, and answers. Most traffic should end at the edge so the origin sees only a small fraction.');
+  f.box(8, 40, 110, 56, { tone: 'info', label: 'browsers', size: 12.5, mono: true });
+  f.path('M120 68 H178', { arrow: true, tone: 'muted', width: 1.8 });
+  f.box(180, 24, 150, 88, { tone: 'accent', solid: true });
+  f.text(255, 52, 'edge (CDN)', { anchor: 'middle', size: 13, bold: true });
+  f.text(255, 74, 'near the user', { anchor: 'middle', size: 11 });
+  f.text(255, 94, 'keeps copies for a TTL', { anchor: 'middle', size: 10.5 });
+  f.path('M332 56 H398', { arrow: true, tone: 'fail', width: 1.8 });
+  f.text(365, 46, 'miss', { anchor: 'middle', size: 11, bold: true, tone: 'fail' });
+  f.box(400, 24, 110, 88, { tone: 'muted', label: 'origin', size: 13, mono: true });
+  f.text(120, 146, 'hit: answered at the edge, in milliseconds', { anchor: 'start', size: 12, bold: true, tone: 'pass' });
+  f.text(W / 2, 192, 'Hit ratio = hits ÷ requests. Raising it is the cheapest scaling you can buy.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 220, 'Cacheable: static files, public pages, public API reads. Not cacheable: per-user data.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 248, 'Anything that varies by cookie or user must be marked private or not cached at the edge.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const policyFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Cache control policy by kind of response. Fingerprinted static files with a hash in the name are cached for a year and marked immutable. HTML pages use no-cache so the browser always revalidates, or a short shared cache time with stale while revalidate. Images and fonts without hashes get a day or so. Anything personal or authenticated is private and not stored.');
+  const rows: [string, string, Tone][] = [
+    ['app.3f9a1c.js (hashed)', 'public, max-age=31536000, immutable', 'pass'],
+    ['index.html', 'no-cache  (or s-maxage=60, swr=300)', 'info'],
+    ['/logo.png (not hashed)', 'public, max-age=86400', 'accent'],
+    ['/api/me (per user)', 'private, no-store', 'fail'],
+  ];
+  rows.forEach(([what, header, tone], i) => {
+    const y = 16 + i * 52;
+    f.box(8, y, 250, 42, { tone: 'muted', label: what, size: 11.5, mono: true });
+    f.path(`M260 ${y + 21} H284`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(286, y, 346, 42, { tone, label: header, size: 11, mono: true });
+  });
+  f.text(W / 2, 244, 'A hash in the file name lets you cache forever: a change means a new URL.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 270, 'The HTML is the pointer; keep it fresh so it points at the newest hashed files.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const herdFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Request coalescing. When a popular cached item expires, hundreds of requests can arrive at once. Without coalescing they all miss and all hit the origin together, a thundering herd. With coalescing the edge sends one request to the origin and makes the rest wait for that single answer.');
+  f.text(8, 28, 'no coalescing', { size: 12, bold: true, tone: 'fail' });
+  for (let i = 0; i < 6; i++) f.box(8 + i * 44, 38, 38, 26, { tone: 'fail', solid: true, label: 'GET', size: 9, mono: true });
+  f.path('M144 66 V84', { arrow: true, tone: 'fail', width: 1.8 });
+  f.box(8, 86, 272, 30, { tone: 'fail', label: 'origin: 6 requests at once', size: 11 });
+  f.text(344, 28, 'coalescing', { size: 12, bold: true, tone: 'pass' });
+  for (let i = 0; i < 6; i++) f.box(344 + i * 44, 38, 38, 26, { tone: 'pass', solid: true, label: 'GET', size: 9, mono: true });
+  f.path('M480 66 V84', { arrow: true, tone: 'pass', width: 1.8 });
+  f.box(344, 86, 272, 30, { tone: 'pass', label: 'origin: 1 request, 5 wait', size: 11 });
+  f.text(W / 2, 160, 'Only share the result when it is cacheable: a private response must never reach another user.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 188, 'Related: stale-while-revalidate (serve old, refresh once) and an origin shield tier.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 216, 'Vary tells the cache which request headers produce different responses.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-strategies': strategiesFigure,
   'rd-timeline': timelineFigure,
@@ -305,4 +360,7 @@ export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-images': imagesFigure,
   'rd-critical': criticalPathFigure,
   'rd-hints': hintsFigure,
+  'rd-cdn': cdnFigure,
+  'rd-policy': policyFigure,
+  'rd-herd': herdFigure,
 };
