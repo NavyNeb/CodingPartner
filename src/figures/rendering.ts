@@ -66,8 +66,65 @@ const isrFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 2 · Hydration, streaming and Server Components ───────────────────────── */
+
+const hydrationFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Hydration. The server sends finished HTML, so the page is visible at once, but buttons do nothing yet. The JavaScript bundle then downloads and runs, React walks the existing HTML and attaches event handlers to it, and only then is the page interactive. The span between visible and interactive is the dead zone where clicks are ignored. If the first client render differs from the server HTML, that is a hydration mismatch.');
+  const steps: [string, string, Tone][] = [['HTML arrives', 'visible', 'pass'], ['JS downloads', 'still dead', 'fail'], ['JS runs', 'still dead', 'fail'], ['hydrated', 'interactive', 'pass']];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 8 + i * 158;
+    f.box(x, 24, 142, 62, { tone, solid: i === 3 });
+    f.text(x + 71, 50, t, { anchor: 'middle', size: 12.5, bold: true });
+    f.text(x + 71, 70, sub, { anchor: 'middle', size: 11 });
+    if (i < 3) f.path(`M${x + 144} 55 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.box(166, 104, 308, 36, { tone: 'fail', label: 'the dead zone: looks ready, ignores clicks', size: 11.5 });
+  f.text(W / 2, 176, 'Hydration reuses the server HTML: the FIRST client render must produce the same markup.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 204, 'Dates, random ids, window checks and locale formatting are the usual mismatch sources.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 232, 'Fix: render the same thing first, then change it in an effect after mount.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const streamingFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Streaming server rendering. Instead of waiting for the slowest data before sending anything, the server sends the page shell at once with fallbacks in the slots, then streams each section as its data resolves, in completion order. The browser paints the shell immediately and fills the slots as the chunks arrive.');
+  f.text(12, 40, 'server', { size: 11.5, bold: true, mono: true });
+  f.box(70, 22, 90, 30, { tone: 'info', solid: true, label: 'shell', size: 11 });
+  f.box(168, 22, 120, 30, { tone: 'pass', solid: true, label: 'fill: reviews', size: 10.5 });
+  f.box(296, 22, 150, 30, { tone: 'accent', solid: true, label: 'fill: recommendations', size: 10.5 });
+  f.text(12, 100, 'browser', { size: 11.5, bold: true, mono: true });
+  f.box(70, 80, 90, 44, { tone: 'info', label: 'paints now', size: 10.5 });
+  f.box(168, 80, 120, 44, { tone: 'pass', label: 'reviews appear', size: 10.5 });
+  f.box(296, 80, 150, 44, { tone: 'accent', label: 'recs appear', size: 10.5 });
+  f.path('M115 54 V78', { arrow: true, tone: 'muted', width: 1.4 });
+  f.path('M228 54 V78', { arrow: true, tone: 'muted', width: 1.4 });
+  f.path('M371 54 V78', { arrow: true, tone: 'muted', width: 1.4 });
+  f.text(W / 2, 168, 'Time to first byte no longer waits for the slowest query.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 196, 'Each Suspense boundary is a slot: a fallback first, the real content when ready.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 224, 'One failing section shows its error state; it must not take down the page.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const rscFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Server and client components. A page and a product list run only on the server and ship no JavaScript. A like button marked as a client component, and everything it imports, is sent to the browser. A server component passed into the client component as children stays on the server.');
+  f.box(8, 18, 624, 36, { tone: 'info', label: 'Page (server)  ·  0 KB of JS', size: 12 });
+  f.path('M160 56 V74', { arrow: true, tone: 'muted', width: 1.4 });
+  f.path('M470 56 V74', { arrow: true, tone: 'muted', width: 1.4 });
+  f.box(8, 76, 300, 36, { tone: 'info', label: 'ProductList (server)  ·  0 KB', size: 11.5 });
+  f.box(332, 76, 300, 36, { tone: 'accent', solid: true, label: 'LikeButton ("use client")  ·  8 KB', size: 11 });
+  f.path('M482 114 V132', { arrow: true, tone: 'muted', width: 1.4 });
+  f.box(332, 134, 300, 36, { tone: 'accent', label: 'Icon (imported by it)  ·  2 KB', size: 11 });
+  f.box(8, 134, 300, 36, { tone: 'pass', label: 'Reviews (server, passed as children)', size: 10.5 });
+  f.text(W / 2, 208, 'A "use client" file pulls its whole import subtree into the bundle.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 236, 'Push the boundary DOWN: make the small interactive leaf a client component, not the page.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 262, 'Server components can await data directly; they cannot use state, effects or browser APIs.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-strategies': strategiesFigure,
   'rd-timeline': timelineFigure,
   'rd-isr': isrFigure,
+  'rd-hydration': hydrationFigure,
+  'rd-streaming': streamingFigure,
+  'rd-rsc': rscFigure,
 };
