@@ -4,7 +4,7 @@
 in interviews, then live coding against real tests — from warm-ups to senior-level problems. Built for getting your
 fundamentals back after leaning on AI.
 
-- **459 exercises** in **81 lessons** — every lesson is illustrated (labelled diagrams, step-through walkthroughs, runnable snippets, quick checks), every exercise has a worked example, a plain-English test explanation and a nudge, and each lesson starts with a guided warm-up, four difficulty tiers (Warm-up → Core → Hard → Interview)
+- **500 exercises** in **89 lessons** — every lesson is illustrated (labelled diagrams, step-through walkthroughs, runnable snippets, quick checks), every exercise has a worked example, a plain-English test explanation and a nudge, and each lesson starts with a guided warm-up, four difficulty tiers (Warm-up → Core → Hard → Interview)
 - **A real editor** (CodeMirror 6) with `Ctrl/⌘ + Enter` to run, autosaved drafts, and optional autocomplete
 - **Real tests**, run in your browser — your code never leaves your machine
 - **Interview mode**: per-exercise countdown, no hints, no solution, no autocomplete
@@ -72,6 +72,7 @@ No email, name, IP address or analytics. "Delete my synced data" removes the pro
 | **Design patterns in JS/TS** | factories, builders & shared instances · strategy & state · observer, events & signals · decorators, proxies & middleware · command, undo & snapshots · adapters, facades & repositories · composite, iterator & visitor · a capstone (plugin host, pricing engine, undoable store, resilient client) | 34 |
 | **Web security** | XSS & output encoding · injection, paths & untrusted input · passwords, sessions & tokens · cookies, CORS & CSRF · security headers, CSP & integrity · validation, uploads, rate limits & logs · dependencies, secrets & the supply chain · a capstone (threat modelling, authorisation, a secure request pipeline). Many exercises grade the security tests you write against vulnerable implementations | 36 |
 | **Node & backend** | modules, providers & dependency injection · the request lifecycle (middleware, guards, interceptors, pipes, filters) · DTOs, validation & serialization · auth, guards & throttling · HTTP & REST semantics (routing, ETags, idempotency) · async, streams & graceful shutdown · data access (repositories, transactions, batching, migrations) · a capstone (config, logging, health, circuit breaker). Framework-neutral: no decorators, no Nest imports | 44 |
+| **Rendering & delivery** | CSR, SSR, SSG & ISR · hydration, streaming & Server Components · Next.js essentials (routing, rendering mode, caching layers) · bundles, code splitting & tree shaking · images, fonts & the critical path · CDNs, HTTP caching & traffic reduction · client data layers (query cache, optimistic updates, prefetching) · a capstone (diagnosing a slow page, a CI performance gate). Framework-neutral: no Next.js imports | 41 |
 | **React, under the hood** | rendering · state & forms · effects · custom hooks · performance · architecture · composition & a11y | 32 |
 | **Production scenarios** | case studies from a live-betting platform: update firehose · 20 000-event screens · reconnects & sequence gaps · stale prices & idempotent bets · memory leaks · Web Worker RPC · multi-tab sync & leader election | 21 |
 | **Interview gauntlet** | data structures & algorithms · frontend classics | 15 |
