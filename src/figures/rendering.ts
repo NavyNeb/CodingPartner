@@ -401,6 +401,64 @@ const prefetchFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 8 · Performance review capstone ───────────────────────── */
+
+const reviewLoopFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The performance review loop. Measure with real user data and a repeatable lab run, identify which phase is the bottleneck, apply the fix that matches that phase, then verify with the same measurement and add a guard so the improvement cannot silently regress.');
+  const steps: [string, string, Tone][] = [['1 measure', 'field + lab', 'info'], ['2 locate', 'which phase?', 'accent'], ['3 fix', 'match the cause', 'pass'], ['4 guard', 'budget in CI', 'fail']];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 8 + i * 158;
+    f.box(x, 24, 142, 66, { tone, solid: i === 2 });
+    f.text(x + 71, 50, t, { anchor: 'middle', size: 13, bold: true, mono: true });
+    f.text(x + 71, 72, sub, { anchor: 'middle', size: 11 });
+    if (i < 3) f.path(`M${x + 144} 57 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.path('M550 92 V124 H79 V92', { arrow: true, tone: 'muted', width: 1.4 });
+  f.text(W / 2, 148, 'repeat: the next bottleneck is always hiding behind the current one', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(W / 2, 190, 'Never optimise without a number; never trust a single run.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 218, 'Field data (real users, p75) tells you IF there is a problem; lab data tells you WHY.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 246, 'Take the median of several runs: one noisy run must not fail or pass a build.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const bottleneckFigure: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'Mapping a symptom to a cause and a fix. A slow first byte points to the server, the cache or the rendering strategy. A late largest element points to the image or font priority and size. A long gap between paint and interactivity points to too much JavaScript or long tasks. A low cache hit ratio points to headers and the Vary header. Layout shifts point to missing dimensions.');
+  const rows: [string, string, string, Tone][] = [
+    ['slow first byte (TTFB)', 'server, no cache, SSR cost', 'CDN, ISR/SSG, streaming', 'info'],
+    ['late LCP', 'big/lazy/late image or font', 'size, priority, preload', 'accent'],
+    ['slow to interact', 'too much JS, long tasks', 'split, defer, server components', 'fail'],
+    ['origin overloaded', 'low hit ratio, Vary: Cookie', 'Cache-Control, coalescing', 'pass'],
+  ];
+  rows.forEach(([a, b, c, tone], i) => {
+    const y = 14 + i * 56;
+    f.box(8, y, 180, 46, { tone: 'muted', label: a, size: 11 });
+    f.path(`M190 ${y + 23} H208`, { arrow: true, tone: 'muted', width: 1.4 });
+    f.box(210, y, 200, 46, { tone: 'muted', label: b, size: 10.5 });
+    f.path(`M412 ${y + 23} H430`, { arrow: true, tone: 'muted', width: 1.4 });
+    f.box(432, y, 200, 46, { tone, solid: true, label: c, size: 10.5 });
+  });
+  f.text(W / 2, 254, 'Name the phase first; the fix then follows from the lesson on that phase.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 280, 'Symptom → cause → fix → number: the shape of a good interview answer.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const gateFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A performance gate in continuous integration. Each pull request runs the page several times in a lab. The median of each metric is compared with the baseline from the main branch. A metric fails if it regresses by more than its allowed percentage or crosses an absolute limit, or if it is missing. Improvements always pass. The pull request is blocked on any failure.');
+  const steps: [string, string, Tone][] = [['PR build', 'N lab runs', 'info'], ['median', 'per metric', 'accent'], ['compare', 'vs baseline + limits', 'accent'], ['verdict', 'pass / fail', 'pass']];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 8 + i * 158;
+    f.box(x, 24, 142, 66, { tone, solid: i === 3 });
+    f.text(x + 71, 50, t, { anchor: 'middle', size: 13, bold: true, mono: true });
+    f.text(x + 71, 72, sub, { anchor: 'middle', size: 10.5 });
+    if (i < 3) f.path(`M${x + 144} 57 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.text(W / 2, 130, 'regression = (median − baseline) ÷ baseline  >  allowed %', { anchor: 'middle', size: 12.5, bold: true, mono: true });
+  f.text(W / 2, 166, 'Medians shrug off one noisy run; exactly at the limit still passes.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 194, 'A missing metric is a failure: a broken measurement must not look like a pass.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 222, 'The baseline moves forward only when a change is merged on purpose.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-strategies': strategiesFigure,
   'rd-timeline': timelineFigure,
@@ -423,4 +481,7 @@ export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-querycache': queryCacheFigure,
   'rd-optimistic': optimisticFigure2,
   'rd-prefetch': prefetchFigure,
+  'rd-loop': reviewLoopFigure,
+  'rd-bottleneck': bottleneckFigure,
+  'rd-gate': gateFigure,
 };
