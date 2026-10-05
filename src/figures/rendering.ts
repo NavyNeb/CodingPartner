@@ -182,6 +182,59 @@ const dynamicFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 4 · Bundles ───────────────────────── */
+
+const splitFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Code splitting. One monolithic bundle makes every page download all the code. Splitting by route gives each page only its own chunk plus a common chunk shared by every page, and a shared chunk for code used by only some pages. The browser downloads the common chunk once and caches it.');
+  f.text(16, 24, 'one bundle', { size: 12, bold: true, mono: true });
+  f.box(16, 34, 608, 36, { tone: 'fail', solid: true, label: 'app.js: home + shop + admin + chart lib + everything', size: 11.5 });
+  f.text(16, 106, 'split', { size: 12, bold: true, mono: true });
+  f.box(16, 116, 150, 40, { tone: 'pass', solid: true, label: 'common', size: 12, mono: true });
+  f.box(176, 116, 100, 40, { tone: 'info', label: 'route:/home', size: 10.5, mono: true });
+  f.box(286, 116, 100, 40, { tone: 'info', label: 'route:/shop', size: 10.5, mono: true });
+  f.box(396, 116, 110, 40, { tone: 'info', label: 'route:/admin', size: 10.5, mono: true });
+  f.box(516, 116, 108, 40, { tone: 'accent', label: 'shared:chart', size: 10.5, mono: true });
+  f.text(W / 2, 198, '/home loads: common + route:/home. Nothing else.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 226, 'Code used by several pages goes in a shared chunk, cached once, never duplicated.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 254, 'Chunk file names carry a content hash so they can be cached forever.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const shakeFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Tree shaking. A library module exports three functions. The app imports and uses only one. The bundler follows what is used and drops the other two, unless the module is marked as having side effects, in which case all of it must stay because importing it runs code.');
+  f.box(8, 22, 190, 120, { tone: 'muted' });
+  f.text(103, 44, 'utils.js', { anchor: 'middle', size: 12.5, bold: true, mono: true });
+  f.box(24, 56, 158, 24, { tone: 'pass', solid: true, label: 'formatDate (used)', size: 10.5, mono: true });
+  f.box(24, 86, 158, 24, { tone: 'fail', label: 'parseCsv (unused)', size: 10.5, mono: true });
+  f.box(24, 114, 158, 24, { tone: 'fail', label: 'debounce (unused)', size: 10.5, mono: true });
+  f.path('M200 82 H236', { arrow: true, tone: 'muted', width: 1.8 });
+  f.box(238, 52, 110, 60, { tone: 'accent', solid: true, label: 'bundler', size: 12 });
+  f.path('M350 82 H386', { arrow: true, tone: 'muted', width: 1.8 });
+  f.box(388, 56, 160, 52, { tone: 'pass', label: 'bundle: formatDate', size: 11, mono: true });
+  f.text(W / 2, 178, 'Works on ES modules (import / export). CommonJS require() cannot be shaken reliably.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 206, '"sideEffects": false in package.json tells the bundler unused imports are safe to drop.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 234, 'A barrel file (index.js re-exporting everything) can drag in the lot.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const lazyFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Lazy loading. Code that is not needed for the first view is loaded later: a route when it is visited, a heavy component when it scrolls into view or is first opened, and a library only when the user triggers the feature. Loading can start early, on hover or when the browser is idle, so the user rarely waits.');
+  const rows: [string, string, Tone][] = [
+    ['route', 'load when the page is visited', 'info'],
+    ['component', 'load when opened or scrolled into view', 'accent'],
+    ['library', 'load when the feature is used (import())', 'pass'],
+  ];
+  rows.forEach(([t, d, tone], i) => {
+    const y = 18 + i * 52;
+    f.box(8, y, 130, 42, { tone, solid: true, label: t, size: 12, mono: true });
+    f.path(`M140 ${y + 21} H164`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(166, y, 466, 42, { tone: 'muted', label: d, size: 11.5 });
+  });
+  f.text(W / 2, 198, 'Prefetch on hover, on idle, or when a link enters the viewport: load before the click.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 226, 'A failed chunk load (a deploy replaced the file) needs a retry or a page reload.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-strategies': strategiesFigure,
   'rd-timeline': timelineFigure,
@@ -192,4 +245,7 @@ export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-approuter': appRouterFigure,
   'rd-caches': cacheLayersFigure,
   'rd-dynamic': dynamicFigure,
+  'rd-split': splitFigure,
+  'rd-shake': shakeFigure,
+  'rd-lazy': lazyFigure,
 };
