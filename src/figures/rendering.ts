@@ -120,6 +120,68 @@ const rscFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 3 · Next.js essentials ───────────────────────── */
+
+const appRouterFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'File system routing. Folders become URL segments. A folder in square brackets is a dynamic segment, a folder in parentheses is a group that does not appear in the URL, and special files such as layout, loading and error wrap the pages beneath them. A page inside blog and slug folders gets the layout of the root and of blog, nested outside in.');
+  const rows: [string, string][] = [
+    ['app/page.js', '/'],
+    ['app/blog/page.js', '/blog'],
+    ['app/blog/[slug]/page.js', '/blog/:slug'],
+    ['app/(shop)/cart/page.js', '/cart'],
+    ['app/docs/[...path]/page.js', '/docs/*'],
+  ];
+  rows.forEach(([file, url], i) => {
+    const y = 16 + i * 38;
+    f.box(8, y, 330, 30, { tone: 'muted', label: file, size: 11, mono: true });
+    f.path(`M340 ${y + 15} H366`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(368, y, 264, 30, { tone: 'pass', label: url, size: 11.5, mono: true });
+  });
+  f.text(W / 2, 226, 'layouts nest outside in: root layout → blog layout → page', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 252, 'loading.js, error.js and not-found.js apply to the nearest folder and everything below it.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 276, '(group) folders organise files without changing the URL.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const cacheLayersFigure: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'Four caches in a Next.js app. Request memoization removes duplicate fetches inside a single render. The data cache stores fetch results across requests until they expire or are revalidated by tag. The full route cache stores the rendered HTML and server component payload of static routes. The router cache holds already visited pages in the browser for instant navigation.');
+  const layers: [string, string, string, Tone][] = [
+    ['request memoization', 'one render', 'same fetch called twice = one request', 'muted'],
+    ['data cache', 'across requests', 'fetch results; revalidate by time or tag', 'info'],
+    ['full route cache', 'build / revalidate', 'rendered HTML + payload of static routes', 'accent'],
+    ['router cache', 'in the browser', 'visited pages: instant back and forward', 'pass'],
+  ];
+  layers.forEach(([name, scope, what, tone], i) => {
+    const y = 16 + i * 56;
+    f.box(8, y, 616, 46, { tone });
+    f.text(22, y + 20, name, { size: 12.5, bold: true, mono: true });
+    f.text(22, y + 37, what, { size: 11 });
+    f.text(612, y + 28, scope, { anchor: 'end', size: 11, tone: 'muted' });
+  });
+  f.text(W / 2, 252, 'Stale data bugs are usually "which cache?" bugs.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 278, 'Know the knob for each: revalidate, tags, dynamic APIs, router refresh.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const dynamicFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'What makes a route dynamic. Reading cookies or headers, reading search parameters, fetching with no store, or forcing dynamic all make a route render on every request. Otherwise, if any fetch or the segment sets a positive revalidate time, the route is statically generated and refreshed on that interval. With none of these it is fully static.');
+  const qs: [string, string, Tone][] = [
+    ['cookies / headers / searchParams?', 'dynamic', 'fail'],
+    ['fetch with no-store, or revalidate = 0?', 'dynamic', 'fail'],
+    ['a positive revalidate anywhere?', 'static + refresh (ISR)', 'accent'],
+    ['none of the above', 'fully static', 'pass'],
+  ];
+  qs.forEach(([q, out, tone], i) => {
+    const y = 16 + i * 52;
+    f.box(8, y, 372, 42, { tone: 'muted', label: q, size: 11.5 });
+    f.path(`M382 ${y + 21} H416`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(418, y, 214, 42, { tone, solid: i === 3, label: out, size: 11.5 });
+  });
+  f.text(W / 2, 244, 'One cookies() call anywhere in the tree makes the whole route dynamic.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 268, 'force-static and force-dynamic override the inference.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-strategies': strategiesFigure,
   'rd-timeline': timelineFigure,
@@ -127,4 +189,7 @@ export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-hydration': hydrationFigure,
   'rd-streaming': streamingFigure,
   'rd-rsc': rscFigure,
+  'rd-approuter': appRouterFigure,
+  'rd-caches': cacheLayersFigure,
+  'rd-dynamic': dynamicFigure,
 };
