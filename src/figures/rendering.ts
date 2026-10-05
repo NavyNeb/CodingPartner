@@ -235,6 +235,60 @@ const lazyFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 5 · Assets and the critical path ───────────────────────── */
+
+const imagesFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Responsive images. A page offers the browser several widths of the same image. The browser multiplies the displayed CSS width by the device pixel ratio and picks the smallest candidate that is at least that wide. A 300 pixel wide slot on a normal screen picks the 320 pixel file, and on a 2x phone screen it needs 600 pixels so it picks the 640 pixel file.');
+  const widths = [320, 640, 1280];
+  widths.forEach((w, i) => {
+    const bw = 60 + i * 50;
+    f.box(8, 24 + i * 52, bw + 40, 42, { tone: i === 0 ? 'pass' : i === 1 ? 'accent' : 'muted', solid: i < 2, label: w + 'w', size: 12, mono: true });
+  });
+  f.box(250, 24, 380, 42, { tone: 'pass', label: '300 CSS px × 1x  = 300 → picks 320w', size: 11.5, mono: true });
+  f.box(250, 76, 380, 42, { tone: 'accent', label: '300 CSS px × 2x  = 600 → picks 640w', size: 11.5, mono: true });
+  f.box(250, 128, 380, 42, { tone: 'muted', label: '2000 CSS px × 1x = 2000 → picks 1280w (largest)', size: 10.5, mono: true });
+  f.text(W / 2, 208, 'srcset lists the files; sizes tells the browser how wide the slot is BEFORE layout.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 234, 'Also set width and height (no layout shift), AVIF or WebP first, JPEG as the fallback.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 260, 'lazy-load below the fold; never lazy-load the LCP image.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const criticalPathFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'A request waterfall. The HTML must arrive first. It references a stylesheet, which must download before the font it references is even discovered, which means text is delayed by a chain of three requests. A script discovered in the HTML starts another chain that ends with an API call. The longest chain is the critical path and sets how early the page can render. Preloading the font removes it from the chain.');
+  const bar = (y: number, label: string, x: number, w: number, tone: Tone) => {
+    f.text(8, y + 20, label, { size: 11, mono: true });
+    f.box(x, y, w, 28, { tone, solid: true });
+  };
+  bar(16, 'html', 70, 80, 'info');
+  bar(52, 'css', 150, 90, 'accent');
+  bar(88, 'font', 240, 120, 'fail');
+  bar(124, 'js', 150, 150, 'accent');
+  bar(160, 'api', 300, 110, 'fail');
+  f.text(W / 2, 222, 'Each bar can only start when what references it has arrived: that is the critical path.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 248, 'Shorten it: preload the font, inline critical CSS, defer the script, fetch early.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 274, 'Parallel requests are free; chains are expensive.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const hintsFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Resource hints. Preconnect opens the connection to a third party origin early, which saves the DNS lookup, TCP connection and TLS handshake. Preload fetches a critical resource the parser would discover late, such as a font or the largest image, at high priority. Prefetch fetches something the next page will need, at low priority, while the browser is idle.');
+  const hints: [string, string, string, Tone][] = [
+    ['preconnect', 'third-party origin', 'saves DNS + TCP + TLS', 'info'],
+    ['preload', 'critical, found late', 'font, LCP image · high priority', 'accent'],
+    ['prefetch', 'next page needs it', 'idle · low priority', 'pass'],
+  ];
+  hints.forEach(([name, when, what, tone], i) => {
+    const y = 16 + i * 56;
+    f.box(8, y, 150, 46, { tone, solid: true, label: name, size: 13, mono: true });
+    f.box(166, y, 190, 46, { tone: 'muted', label: when, size: 11.5 });
+    f.box(364, y, 264, 46, { tone: 'muted', label: what, size: 11.5 });
+  });
+  f.text(W / 2, 208, 'Hints are a budget, not a spray: too many preloads fight each other for bandwidth.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 234, 'A preloaded font needs crossorigin even on your own domain, or it is fetched twice.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 260, 'The LCP image gets fetchpriority="high"; never loading="lazy".', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-strategies': strategiesFigure,
   'rd-timeline': timelineFigure,
@@ -248,4 +302,7 @@ export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-split': splitFigure,
   'rd-shake': shakeFigure,
   'rd-lazy': lazyFigure,
+  'rd-images': imagesFigure,
+  'rd-critical': criticalPathFigure,
+  'rd-hints': hintsFigure,
 };
