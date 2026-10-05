@@ -344,6 +344,63 @@ const herdFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 7 · Client data layers ───────────────────────── */
+
+const queryCacheFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'A client query cache. Data fetched for a key is stored with the time it arrived. While it is younger than the stale time it is fresh and is returned without any request. After that it is stale: it can still be shown at once, but a refetch is triggered in the background. Two components asking for the same key at the same time share one request.');
+  const steps: [string, string, Tone][] = [['fetch', 'key → data', 'info'], ['fresh', 'age < staleTime: no request', 'pass'], ['stale', 'show now, refetch', 'accent'], ['gc', 'unused: removed after gcTime', 'muted']];
+  steps.forEach(([t, sub, tone], i) => {
+    const x = 8 + i * 158;
+    f.box(x, 24, 142, 70, { tone, solid: i === 1 });
+    f.text(x + 71, 50, t, { anchor: 'middle', size: 13, bold: true, mono: true });
+    f.text(x + 71, 74, sub, { anchor: 'middle', size: 10 });
+    if (i < 3) f.path(`M${x + 144} 59 H${x + 156}`, { arrow: true, tone: 'muted', width: 1.6 });
+  });
+  f.text(W / 2, 134, 'The key is the identity: ["todos", { page: 1 }] and ["todos", { page: 2 }] are different entries.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 164, 'Same key at the same moment = one request. A mutation invalidates by key prefix.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 192, 'Refetch triggers: mount, window focus, reconnect, interval, invalidation.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 224, 'Server state is a cache of someone else\'s data, not state you own: do not copy it into useState.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const optimisticFigure2: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Optimistic update. The interface changes immediately, before the server answers, so the app feels instant. If the request succeeds, the cache is refetched to match the server. If it fails, the change is rolled back to the saved previous value, unless another update has changed the data meanwhile, in which case the cache is simply refetched.');
+  const rows: [string, string, Tone][] = [
+    ['click Like', 'UI shows 11 at once (was 10)', 'info'],
+    ['request sent', 'POST /like  in flight', 'muted'],
+    ['server says OK', 'refetch → 11 confirmed', 'pass'],
+    ['server says 500', 'roll back to 10 + show error', 'fail'],
+  ];
+  rows.forEach(([a, b, tone], i) => {
+    const y = 16 + i * 52;
+    f.box(8, y, 190, 42, { tone: 'muted', label: a, size: 11.5, mono: true });
+    f.path(`M200 ${y + 21} H224`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(226, y, 406, 42, { tone, label: b, size: 11.5 });
+  });
+  f.text(W / 2, 244, 'Save the previous value first; it is what you roll back to.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 268, 'Rollback must not overwrite a newer change made while the request was in flight.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const prefetchFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Deciding whether to prefetch. Never prefetch when the user has asked to save data or is on a slow connection. Skip what is already cached. Skip when too many requests are already in flight. Otherwise prefetch only when there is a sign of intent, such as hovering for a moment or the link being visible. Each skipped case saves bandwidth for the page the user is actually on.');
+  const qs: [string, string, Tone][] = [
+    ['save-data on, or a 2g connection?', 'never', 'fail'],
+    ['already cached or too many in flight?', 'skip', 'muted'],
+    ['no hover or visibility signal yet?', 'wait', 'muted'],
+    ['hovered 100 ms+, or in the viewport', 'prefetch now', 'pass'],
+  ];
+  qs.forEach(([q, out, tone], i) => {
+    const y = 16 + i * 52;
+    f.box(8, y, 380, 42, { tone: 'muted', label: q, size: 11.5 });
+    f.path(`M390 ${y + 21} H416`, { arrow: true, tone: 'muted', width: 1.6 });
+    f.box(418, y, 214, 42, { tone, solid: i === 3, label: out, size: 12, mono: true });
+  });
+  f.text(W / 2, 244, 'Prefetching is a bet on the user\'s next click: place it only when the odds are good.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 268, 'A wasted prefetch costs the user data; a missing one costs a few hundred milliseconds.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-strategies': strategiesFigure,
   'rd-timeline': timelineFigure,
@@ -363,4 +420,7 @@ export const renderingFigures: Record<string, FigureBuilder> = {
   'rd-cdn': cdnFigure,
   'rd-policy': policyFigure,
   'rd-herd': herdFigure,
+  'rd-querycache': queryCacheFigure,
+  'rd-optimistic': optimisticFigure2,
+  'rd-prefetch': prefetchFigure,
 };
