@@ -169,6 +169,58 @@ const undoFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 4 · Team workflows and conventions ───────────────────────── */
+
+const workflowsFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Two branching workflows. In trunk based development everyone merges small, short lived branches into main many times a day, hiding unfinished work behind feature flags, and releases from main. In Gitflow there are long lived develop and release branches, with features merged into develop and releases cut and stabilised on their own branches, which suits scheduled releases but adds merge overhead.');
+  f.text(8, 24, 'trunk-based', { size: 12, bold: true, mono: true, tone: 'pass' });
+  f.box(8, 34, 616, 32, { tone: 'pass', solid: true, label: 'main  ·  always releasable  ·  merged many times a day', size: 11.5 });
+  [60, 180, 300, 420, 540].forEach((x) => f.box(x, 74, 70, 24, { tone: 'info', label: 'short', size: 10, mono: true }));
+  f.text(8, 138, 'gitflow', { size: 12, bold: true, mono: true, tone: 'accent' });
+  f.box(8, 148, 616, 26, { tone: 'muted', solid: true, label: 'main  ·  tagged releases only', size: 11 });
+  f.box(8, 178, 616, 26, { tone: 'accent', solid: true, label: 'develop  ·  integration branch', size: 11 });
+  f.box(60, 208, 160, 24, { tone: 'info', label: 'feature/*  (days)', size: 10, mono: true });
+  f.box(250, 208, 160, 24, { tone: 'info', label: 'release/*  (stabilise)', size: 10, mono: true });
+  f.box(440, 208, 160, 24, { tone: 'fail', label: 'hotfix/*', size: 10, mono: true });
+  f.text(W / 2, 258, 'Short-lived branches + feature flags + fast CI beat long-lived branches for most teams.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 280, 'The longer a branch lives, the more painful (and risky) its merge.', { anchor: 'middle', size: 11.5, tone: 'muted', italic: true });
+  return f;
+};
+
+const conventionalFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'A conventional commit message and what it drives. The header has a type, an optional scope in parentheses, an optional exclamation mark for breaking changes, and a subject. An optional body and footers follow. Tools read the type to decide the next semantic version: breaking changes bump the major number, features the minor number, and fixes the patch number.');
+  f.box(8, 14, 624, 46, { tone: 'accent' });
+  f.text(24, 44, 'feat(api)!: drop the v1 login endpoint', { size: 14, mono: true, bold: true });
+  const parts: [number, number, string][] = [[24, 40, 'type'], [70, 40, 'scope'], [140, 14, '!'], [168, 130, 'subject']];
+  parts.forEach(([x, w, l], i) => f.text(x + (i === 3 ? 0 : 0), 80, l, { size: 10.5, tone: 'muted', mono: true }));
+  const rows: [string, string, Tone][] = [['BREAKING CHANGE or !', 'major  1.4.7 → 2.0.0', 'fail'], ['feat', 'minor  1.4.7 → 1.5.0', 'accent'], ['fix · perf', 'patch  1.4.7 → 1.4.8', 'info'], ['docs · chore · refactor · test', 'no release', 'muted']];
+  rows.forEach(([a, b, tone], i) => {
+    const y = 104 + i * 36;
+    f.box(8, y, 290, 30, { tone, label: a, size: 11, mono: true });
+    f.path(`M300 ${y + 15} H322`, { arrow: true, tone: 'muted', width: 1.4 });
+    f.box(324, y, 308, 30, { tone: 'muted', label: b, size: 11, mono: true });
+  });
+  f.text(W / 2, 266, 'The highest bump among the commits since the last release wins.', { anchor: 'middle', size: 12, bold: true });
+  return f;
+};
+
+const protectionFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Branch protection as a set of gates. A pull request into main must have the required number of approvals from people other than its author, an approval from a code owner for the files it touches, passing required status checks, an up to date branch, and optionally a linear history. If any gate is closed, the merge button is disabled.');
+  const gates: [string, string][] = [['approvals', '2, not the author'], ['code owner', 'owns the touched files'], ['required checks', 'build · test · lint'], ['up to date', 'not behind main'], ['linear history', 'no merge commits']];
+  gates.forEach(([t, sub], i) => {
+    const x = 8 + i * 126;
+    f.box(x, 22, 118, 70, { tone: 'accent' });
+    f.text(x + 59, 48, t, { anchor: 'middle', size: 11.5, bold: true });
+    f.text(x + 59, 72, sub, { anchor: 'middle', size: 9.5 });
+  });
+  f.path('M320 94 V124', { arrow: true, tone: 'muted', width: 1.6 });
+  f.box(190, 126, 260, 44, { tone: 'pass', solid: true, label: 'all open  →  merge allowed', size: 12.5 });
+  f.text(W / 2, 208, 'Stale approvals can be dismissed when new commits are pushed.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 234, 'CODEOWNERS: the LAST matching rule decides who must review a path.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 260, 'Rules apply to everyone, admins included, if "enforce for administrators" is on.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const gitFigures: Record<string, FigureBuilder> = {
   'gt-objects': objectsFigure,
   'gt-dag': dagFigure,
@@ -179,4 +231,7 @@ export const gitFigures: Record<string, FigureBuilder> = {
   'gt-diff': diffFigure,
   'gt-bisect': bisectFigure,
   'gt-undo': undoFigure,
+  'gt-workflows': workflowsFigure,
+  'gt-conventional': conventionalFigure,
+  'gt-protection': protectionFigure,
 };
