@@ -221,6 +221,66 @@ const protectionFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 5 · CI fundamentals ───────────────────────── */
+
+const pipelineFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'A CI pipeline as a graph of jobs. Lint and test have no dependencies and start at once in parallel. Build needs lint. Deploy needs both test and build, so it waits for the slowest of them. A notify job is set to always run, so it runs even when something upstream failed. The total time is the length of the longest chain, the critical path, not the sum of all jobs.');
+  const job = (x: number, y: number, label: string, sub: string, tone: Tone) => {
+    f.box(x, y, 120, 48, { tone, solid: false });
+    f.text(x + 60, y + 21, label, { anchor: 'middle', size: 12.5, bold: true, mono: true });
+    f.text(x + 60, y + 38, sub, { anchor: 'middle', size: 10 });
+  };
+  job(8, 30, 'lint', '2 min', 'info');
+  job(8, 100, 'test', '5 min', 'info');
+  job(190, 30, 'build', '3 min · needs lint', 'accent');
+  job(372, 64, 'deploy', '1 min · needs test, build', 'pass');
+  job(520, 64, 'notify', 'always', 'muted');
+  f.path('M130 54 H188', { arrow: true, tone: 'muted', width: 1.6 });
+  f.path('M312 54 L370 84', { arrow: true, tone: 'muted', width: 1.6 });
+  f.path('M130 124 L370 100', { arrow: true, tone: 'muted', width: 1.6 });
+  f.path('M494 88 H518', { arrow: true, tone: 'muted', width: 1.6 });
+  f.text(W / 2, 192, 'Critical path: lint → build → deploy = 6 min. The sum of all jobs is 11 min.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 220, 'Speed up the pipeline by shortening the critical path, not the biggest job.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 248, 'maxParallel (runner count) can stretch it: with one runner the jobs run one after another.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  f.text(W / 2, 274, 'A failed job skips whatever needs it, unless that job says "always".', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const matrixFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'A build matrix. Two operating systems and three Node versions expand into six jobs, one for every combination. An exclude entry removes a combination, and an include entry either adds a property to the combinations it matches or creates a new combination.');
+  const oss = ['ubuntu', 'windows'];
+  const nodes = ['18', '20', '22'];
+  nodes.forEach((n, j) => f.text(150 + j * 110 + 45, 30, 'node ' + n, { anchor: 'middle', size: 11.5, bold: true, mono: true }));
+  oss.forEach((o, i) => {
+    f.text(8, 70 + i * 50, o, { size: 11.5, bold: true, mono: true });
+    nodes.forEach((n, j) => {
+      const excluded = i === 1 && j === 0;
+      f.box(150 + j * 110, 44 + i * 50, 90, 38, { tone: excluded ? 'fail' : 'pass', solid: !excluded, label: excluded ? 'excluded' : 'job', size: 11 });
+    });
+  });
+  f.box(150 + 3 * 110, 44, 90, 38, { tone: 'accent', label: '+ include', size: 10.5 });
+  f.text(W / 2, 166, '2 × 3 = 6 combinations, minus 1 excluded = 5, plus 1 included = 6 jobs.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 194, 'Order: exclude is applied first, then include.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 222, 'Use fail-fast to stop the rest of the matrix early, and max-parallel to limit runner use.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 250, 'Do not matrix what you do not need to: every cell costs minutes.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const cacheFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Dependency caching. The cache key is built from the operating system and a hash of the lock file, so the key changes exactly when the dependencies change. An exact key match restores the cache and nothing needs saving. If there is no exact match, restore keys are tried in order as prefixes and the most recent match is restored, then the job saves a new cache under the exact key at the end.');
+  f.box(8, 20, 624, 40, { tone: 'info', label: 'key: linux-npm-<hash of package-lock.json>', size: 12, mono: true });
+  const rows: [string, string, Tone][] = [['exact match', 'restore it, skip saving', 'pass'], ['restore-keys: linux-npm-', 'newest prefix match, then save new', 'accent'], ['no match at all', 'cold install, then save', 'fail']];
+  rows.forEach(([a, b, tone], i) => {
+    const y = 80 + i * 46;
+    f.box(8, y, 250, 36, { tone: 'muted', label: a, size: 11, mono: true });
+    f.path(`M260 ${y + 18} H284`, { arrow: true, tone: 'muted', width: 1.4 });
+    f.box(286, y, 346, 36, { tone, label: b, size: 11 });
+  });
+  f.text(W / 2, 236, 'Cache = speed (safe to lose). Artifact = output you want to keep or pass to another job.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 262, 'Never put secrets in a cache or an artifact.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const gitFigures: Record<string, FigureBuilder> = {
   'gt-objects': objectsFigure,
   'gt-dag': dagFigure,
@@ -234,4 +294,7 @@ export const gitFigures: Record<string, FigureBuilder> = {
   'gt-workflows': workflowsFigure,
   'gt-conventional': conventionalFigure,
   'gt-protection': protectionFigure,
+  'gt-pipeline': pipelineFigure,
+  'gt-matrix': matrixFigure,
+  'gt-cache': cacheFigure,
 };
