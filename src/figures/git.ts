@@ -332,6 +332,52 @@ const concurrencyFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 7 · Continuous delivery and release safety ───────────────────────── */
+
+const strategiesFigure: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'Three ways to ship a new version. Blue green runs two full copies and flips all traffic at once, so rollback is flipping back. Rolling replaces instances one at a time, so old and new run together for a while. Canary sends a small share of real traffic to the new version first and widens it only while the metrics stay healthy.');
+  const row = (y: number, title: string, boxes: [string, Tone][], note: string) => {
+    f.text(8, y + 22, title, { size: 12, bold: true });
+    boxes.forEach(([l, tone], i) => f.box(120 + i * 126, y, 116, 34, { tone, solid: tone === 'pass', label: l, size: 11, mono: true }));
+    f.text(120, y + 52, note, { size: 11, tone: 'muted' });
+  };
+  row(10, 'blue / green', [['blue  v1', 'muted'], ['green v2', 'pass'], ['router → green', 'accent']], 'Two full stacks; flip all traffic at once; rollback = flip back (costs double).');
+  row(104, 'rolling', [['v1 v1 v1 v1', 'muted'], ['v2 v1 v1 v1', 'info'], ['v2 v2 v2 v2', 'pass']], 'Replace a few instances at a time; both versions serve together mid-way.');
+  row(198, 'canary', [['95% v1', 'muted'], ['5% v2', 'accent'], ['watch metrics', 'info']], 'Real traffic to a small slice first; widen only while the numbers stay good.');
+  return f;
+};
+
+const canaryFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'A canary rollout moves through traffic steps of five, twenty five, fifty and one hundred percent. At each step the controller compares the canary error rate with the baseline. If it is healthy the rollout advances. With too few requests it holds and waits for more data. If the canary is clearly worse it rolls back to zero percent.');
+  const steps: [number, string, Tone][] = [[20, '5%', 'info'], [150, '25%', 'info'], [280, '50%', 'accent'], [410, '100%', 'pass']];
+  steps.forEach(([x, l, tone]) => f.box(x, 30, 110, 40, { tone, solid: tone === 'pass', label: l, size: 14 }));
+  [130, 260, 390].forEach((x) => f.path(`M${x} 50 H${x + 20}`, { arrow: true, tone: 'muted', width: 1.6 }));
+  f.text(75, 92, 'rate ok → promote', { anchor: 'middle', size: 11, tone: 'pass' });
+  f.text(335, 92, 'rate ok → promote', { anchor: 'middle', size: 11, tone: 'pass' });
+  f.box(215, 130, 210, 36, { tone: 'fail', label: 'error rate spikes → ROLLBACK', size: 11, mono: true });
+  f.path('M335 72 V128', { arrow: true, tone: 'fail', width: 1.6 });
+  f.box(215, 190, 210, 34, { tone: 'muted', label: 'back to 0% on the canary', size: 11, mono: true });
+  f.path('M320 168 V188', { arrow: true, tone: 'muted', width: 1.4 });
+  f.text(W / 2, 252, 'Too few requests? HOLD: a decision on 12 requests is noise, not evidence.', { anchor: 'middle', size: 12, bold: true });
+  return f;
+};
+
+const oidcFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Two ways for a pipeline to reach a cloud account. A long lived key stored as a secret works forever, can leak and must be rotated by hand. With OpenID Connect the job asks the platform for a short lived signed token that names the repository, branch and environment, and the cloud trusts only matching claims, so nothing permanent is stored.');
+  f.text(160, 20, 'long-lived secret', { anchor: 'middle', size: 13, bold: true });
+  f.box(40, 34, 240, 40, { tone: 'fail', label: 'AWS_KEY in repo secrets', size: 11.5, mono: true });
+  f.text(160, 98, 'valid until someone rotates it', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(160, 118, 'leaks via logs, forks, laptops', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(480, 20, 'OIDC token', { anchor: 'middle', size: 13, bold: true });
+  f.box(340, 34, 280, 40, { tone: 'pass', label: 'token: repo, branch, env', size: 11.5, mono: true });
+  f.text(480, 98, 'minutes of life, minted per run', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.text(480, 118, 'cloud trusts only matching claims', { anchor: 'middle', size: 11.5, tone: 'muted' });
+  f.box(40, 160, 560, 44, { tone: 'accent', label: 'environment "production": reviewers + branch rule + wait timer', size: 12, mono: true });
+  f.text(W / 2, 236, 'Gate the environment, then scope what the token may do (least privilege).', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 260, 'Nothing permanent to steal; a fork or another branch simply gets no token.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const gitFigures: Record<string, FigureBuilder> = {
   'gt-objects': objectsFigure,
   'gt-dag': dagFigure,
@@ -351,4 +397,7 @@ export const gitFigures: Record<string, FigureBuilder> = {
   'gt-workflow': workflowFileFigure,
   'gt-expr': exprFigure,
   'gt-concurrency': concurrencyFigure,
+  'gt-strategies': strategiesFigure,
+  'gt-canary': canaryFigure,
+  'gt-oidc': oidcFigure,
 };
