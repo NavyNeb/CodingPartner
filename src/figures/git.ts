@@ -111,6 +111,64 @@ const conflictFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 3 · Diff, patch, bisect, undo ───────────────────────── */
+
+const diffFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'A line diff. Two versions of a file are compared by finding the longest common subsequence of lines. Lines in the common part are context, lines only in the old version are removed and shown with a minus, and lines only in the new version are added and shown with a plus. A changed line therefore appears as one removal followed by one addition.');
+  const col = (x: number, title: string, lines: string[]) => {
+    f.box(x, 16, 150, 120, { tone: 'muted' });
+    f.text(x + 75, 36, title, { anchor: 'middle', size: 12, bold: true });
+    lines.forEach((l, i) => f.text(x + 14, 62 + i * 20, l, { size: 12, mono: true }));
+  };
+  col(8, 'old', ['port = 80', 'debug = off', 'name = app', 'mode = dev']);
+  col(176, 'new', ['port = 80', 'debug = on', 'name = app', 'mode = dev']);
+  f.path('M328 76 H352', { arrow: true, tone: 'muted', width: 1.6 });
+  f.box(354, 16, 278, 120, { tone: 'info' });
+  f.text(368, 40, '  port = 80', { size: 12, mono: true });
+  f.text(368, 60, '- debug = off', { size: 12, mono: true, tone: 'fail' });
+  f.text(368, 80, '+ debug = on', { size: 12, mono: true, tone: 'pass' });
+  f.text(368, 100, '  name = app', { size: 12, mono: true });
+  f.text(368, 120, '  mode = dev', { size: 12, mono: true });
+  f.text(W / 2, 178, 'A diff is the minimal edit script that turns the old lines into the new lines.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 206, 'Unified diff hunks start with @@ -oldStart,oldCount +newStart,newCount @@ and carry context lines.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 234, 'A patch only applies if its context and removed lines still match the target file.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const bisectFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'Git bisect. A range of commits starts with a known good commit at the left and a known bad commit at the right. Testing the middle commit halves the range each time. Sixteen commits need at most four tests to find the first bad commit.');
+  for (let i = 0; i < 16; i++) {
+    const bad = i >= 11;
+    f.box(8 + i * 39, 30, 34, 34, { tone: bad ? 'fail' : 'pass', solid: i === 0 || i === 15 || i === 11, label: String(i), size: 10.5, mono: true });
+  }
+  f.text(25, 84, 'good', { anchor: 'middle', size: 10.5, tone: 'pass' });
+  f.text(612, 84, 'bad', { anchor: 'middle', size: 10.5, tone: 'fail' });
+  const tests: [number, string][] = [[7, '1 test 7 → good'], [11, '2 test 11 → bad'], [9, '3 test 9 → good'], [10, '4 test 10 → good']];
+  tests.forEach(([idx, label], k) => f.text(W / 2, 118 + k * 22, label + '   → first bad is 11', { anchor: 'middle', size: 11.5, mono: true, tone: 'muted' }));
+  f.text(W / 2, 224, 'log2(n) tests, however long the history: 1000 commits need only 10.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 250, 'git bisect run <script> automates it: exit 0 = good, 1 to 127 = bad, 125 = skip.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const undoFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'The undo toolbox. Revert adds a new commit that cancels an earlier one and is safe on shared branches. Reset moves the branch label backwards and can also change the index and the working tree, so it rewrites history and is only for private work. Restore changes files without touching history. The reflog records where labels used to point so a mistaken reset can be undone.');
+  const rows: [string, string, string, Tone][] = [
+    ['git revert <c>', 'new commit that cancels c', 'safe on shared branches', 'pass'],
+    ['git reset --soft <c>', 'move the label, keep index + files', 'private branches only', 'accent'],
+    ['git reset --hard <c>', 'move the label, DISCARD changes', 'destroys uncommitted work', 'fail'],
+    ['git restore <file>', 'discard edits to one file', 'history untouched', 'info'],
+    ['git reflog', 'where each label used to point', 'the safety net (weeks)', 'pass'],
+  ];
+  rows.forEach(([cmd, what, safety, tone], i) => {
+    const y = 12 + i * 50;
+    f.box(8, y, 170, 40, { tone, label: cmd, size: 10.5, mono: true });
+    f.box(184, y, 244, 40, { tone: 'muted', label: what, size: 10.5 });
+    f.box(434, y, 198, 40, { tone: 'muted', label: safety, size: 10.5 });
+  });
+  f.text(W / 2, 276, 'Shared history: revert. Private history: reset or amend. Lost something: reflog.', { anchor: 'middle', size: 12, bold: true });
+  return f;
+};
+
 export const gitFigures: Record<string, FigureBuilder> = {
   'gt-objects': objectsFigure,
   'gt-dag': dagFigure,
@@ -118,4 +176,7 @@ export const gitFigures: Record<string, FigureBuilder> = {
   'gt-merge-kinds': mergeKindsFigure,
   'gt-rebase': rebaseFigure,
   'gt-conflict': conflictFigure,
+  'gt-diff': diffFigure,
+  'gt-bisect': bisectFigure,
+  'gt-undo': undoFigure,
 };
