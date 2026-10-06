@@ -52,6 +52,11 @@ export const trackMeta: TrackMeta[] = [
     blurb: 'How pages reach the user, framework-neutral: CSR, SSR, SSG and ISR, hydration and streaming, Server Components, Next.js essentials, bundles and code splitting, images and the critical path, CDN and HTTP caching, client data layers, and a performance review capstone.',
   },
   {
+    id: 'git',
+    title: 'Git, GitHub & CI/CD',
+    blurb: 'How history is really stored and merged, team workflows and conventions, and the automation around them: CI pipelines, GitHub Actions, continuous delivery, release safety and delivery metrics. Everything runs on small in-memory models, so no git or CI server is needed.',
+  },
+  {
     id: 'prod',
     title: 'Production scenarios',
     blurb: 'Real incidents from real systems — live odds feeds, 20 000-row screens, flaky sockets, leaky tabs — and the patterns that fix them. Each case study starts with the symptom, then you build the fix against a stress harness.',
