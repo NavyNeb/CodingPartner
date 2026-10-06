@@ -378,6 +378,62 @@ const oidcFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 8 · Designing a pipeline for a real repo ───────────────────────── */
+
+const affectedFigure: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'Affected jobs in a monorepo. A change to a file under web matches the path filters of the web lint and web build jobs. Jobs that need an affected job, such as end to end tests and the deploy, run as well. Jobs with no path filter, such as a dependency audit, always run. The api jobs are skipped because nothing they watch changed.');
+  f.box(20, 14, 200, 34, { tone: 'accent', solid: true, label: 'changed: web/a.ts', size: 12, mono: true });
+  const job = (x: number, y: number, label: string, tone: Tone) => f.box(x, y, 130, 34, { tone, solid: tone === 'pass', label, size: 11, mono: true });
+  job(20, 90, 'lintWeb', 'pass');
+  job(170, 90, 'buildWeb', 'pass');
+  job(320, 90, 'e2e', 'info');
+  job(470, 90, 'deployWeb', 'info');
+  job(20, 150, 'lintApi', 'muted');
+  job(170, 150, 'buildApi', 'muted');
+  job(470, 150, 'audit (always)', 'accent');
+  f.path('M150 107 H168', { arrow: true, tone: 'muted', width: 1.4 });
+  f.path('M300 107 H318', { arrow: true, tone: 'muted', width: 1.4 });
+  f.path('M450 107 H468', { arrow: true, tone: 'muted', width: 1.4 });
+  f.path('M150 167 H168', { arrow: true, tone: 'muted', width: 1.4 });
+  f.text(20, 82, 'matched by paths', { size: 10.5, tone: 'pass' });
+  f.text(320, 82, 'needs an affected job', { size: 10.5, tone: 'info' });
+  f.text(20, 214, 'green: path filter matched   blue: pulled in by needs   grey: skipped', { size: 11, tone: 'muted' });
+  f.text(W / 2, 250, 'Run what the change can break, plus what depends on it, plus what must always run.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 276, 'Upstream needs of a selected job must run too, or it would be skipped.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const flakyFigure: FigureBuilder = () => {
+  const f = new Fig(W, 260, 'Spotting flaky tests. A test that passes and fails on the very same commit is flaky, because the code did not change between the runs. A test that fails on every run is simply broken. A test that fails once on one commit and passes on the next is a normal regression that was fixed.');
+  const row = (y: number, name: string, cells: [string, Tone][], verdict: string, tone: Tone) => {
+    f.text(8, y + 22, name, { size: 12, bold: true, mono: true });
+    cells.forEach(([l, t], i) => f.box(110 + i * 70, y, 62, 32, { tone: t, solid: t === 'pass', label: l, size: 11, mono: true }));
+    f.box(450, y, 170, 32, { tone, label: verdict, size: 11, mono: true });
+  };
+  row(20, 'cart', [['c1 ✓', 'pass'], ['c1 ✗', 'fail'], ['c2 ✓', 'pass']], 'flaky: same commit', 'accent');
+  row(76, 'login', [['c1 ✗', 'fail'], ['c2 ✗', 'fail'], ['c3 ✗', 'fail']], 'broken: always fails', 'fail');
+  row(132, 'search', [['c1 ✗', 'fail'], ['c2 ✓', 'pass'], ['c3 ✓', 'pass']], 'fixed: regression', 'muted');
+  f.text(W / 2, 208, 'Same commit, different result = the test, not the code.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 234, 'Quarantine flaky tests (still run, not blocking) and give each an owner and a deadline.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const doraFigure: FigureBuilder = () => {
+  const f = new Fig(W, 270, 'The four delivery metrics. Deployment frequency and lead time for changes measure speed. Change failure rate and time to restore service measure stability. Elite teams are good at both, because small frequent releases are easier to test and to undo.');
+  const card = (x: number, y: number, title: string, sub: string, tone: Tone) => {
+    f.box(x, y, 290, 54, { tone, label: title, size: 12.5, mono: true });
+    f.text(x + 145, y + 74, sub, { anchor: 'middle', size: 11, tone: 'muted' });
+  };
+  f.text(165, 16, 'speed', { anchor: 'middle', size: 13, bold: true });
+  f.text(475, 16, 'stability', { anchor: 'middle', size: 13, bold: true });
+  card(20, 28, 'deployment frequency', 'how often you ship to production', 'info');
+  card(330, 28, 'change failure rate', 'share of deploys that cause a failure', 'fail');
+  card(20, 138, 'lead time for changes', 'commit → running in production', 'info');
+  card(330, 138, 'time to restore', 'failure → service healthy again', 'fail');
+  f.text(W / 2, 252, 'Use medians, not averages: one slow outlier should not hide the typical case.', { anchor: 'middle', size: 12, bold: true });
+  return f;
+};
+
 export const gitFigures: Record<string, FigureBuilder> = {
   'gt-objects': objectsFigure,
   'gt-dag': dagFigure,
@@ -400,4 +456,7 @@ export const gitFigures: Record<string, FigureBuilder> = {
   'gt-strategies': strategiesFigure,
   'gt-canary': canaryFigure,
   'gt-oidc': oidcFigure,
+  'gt-affected': affectedFigure,
+  'gt-flaky': flakyFigure,
+  'gt-dora': doraFigure,
 };
