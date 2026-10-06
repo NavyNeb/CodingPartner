@@ -61,8 +61,61 @@ const refsFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 2 · Branching, merging, rebasing ───────────────────────── */
+
+const mergeKindsFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Three ways to integrate a branch. A fast forward is possible when main has not moved: the main label just slides forward and no new commit is made. If both have new commits, a three way merge creates a merge commit with two parents. A squash merge combines all of the branch commits into a single new commit on main with one parent, so the branch history is not kept.');
+  const row = (y: number, title: string, items: [number, string, Tone][], note: string) => {
+    f.text(8, y + 22, title, { size: 11.5, bold: true, mono: true });
+    items.forEach(([x, label, tone]) => f.box(x, y + 4, 44, 30, { tone, solid: tone !== 'muted', label, size: 11.5, mono: true }));
+    f.text(560, y + 24, note, { anchor: 'end', size: 10.5, tone: 'muted' });
+  };
+  row(14, 'fast-forward', [[170, 'A', 'muted'], [240, 'B', 'muted'], [310, 'C', 'pass'], [380, 'D', 'pass']], 'no new commit');
+  row(84, 'merge commit', [[170, 'A', 'muted'], [240, 'B', 'info'], [310, 'C', 'info'], [380, 'M', 'pass']], '2 parents');
+  row(154, 'squash', [[170, 'A', 'muted'], [240, 'B', 'info'], [310, 'S', 'pass']], 'C+D → S');
+  f.text(W / 2, 222, 'Fast-forward when you can, a merge commit when histories diverged, a squash for a messy branch.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 250, 'Squash and rebase give a linear history; a merge commit keeps the real shape of the work.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 276, 'Rule of thumb: never rewrite history other people already build on.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const rebaseFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Rebase. A feature branch with commits D and E started from B, but main has since moved on to C. Rebasing replays D and E on top of C, creating new commits D prime and E prime with different hashes. The old D and E are left behind, unreachable. The result is a straight line of history.');
+  f.text(12, 34, 'before', { size: 11.5, bold: true, mono: true });
+  const n = (x: number, y: number, l: string, t: Tone) => f.box(x, y, 46, 32, { tone: t, solid: true, label: l, size: 12, mono: true });
+  n(90, 18, 'A', 'muted'); n(160, 18, 'B', 'muted'); n(230, 18, 'C', 'info'); n(230, 62, 'D', 'accent'); n(300, 62, 'E', 'accent');
+  f.text(12, 150, 'after', { size: 11.5, bold: true, mono: true });
+  n(90, 134, 'A', 'muted'); n(160, 134, 'B', 'muted'); n(230, 134, 'C', 'info'); n(300, 134, "D'", 'pass'); n(370, 134, "E'", 'pass');
+  f.box(470, 62, 100, 32, { tone: 'fail', label: 'old D, E', size: 11, mono: true });
+  f.text(W / 2, 214, "D' and E' are NEW commits: same changes, new parents, new hashes.", { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 240, 'Safe on your own branch. Never rebase commits others have pulled.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 264, 'Pushing a rebased branch needs --force-with-lease, which refuses if someone else pushed.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const conflictFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Three way merge input and output. The base version of a line is compared with our version and their version. If only one side changed it, that side wins. If both made the same change, it is taken once. If both changed it differently, Git cannot choose and writes conflict markers around the two versions for a person to resolve.');
+  const col = (x: number, title: string, lines: string[], tone: Tone) => {
+    f.box(x, 16, 148, 96, { tone });
+    f.text(x + 74, 36, title, { anchor: 'middle', size: 12, bold: true });
+    lines.forEach((l, i) => f.text(x + 74, 62 + i * 22, l, { anchor: 'middle', size: 11.5, mono: true }));
+  };
+  col(8, 'base', ['timeout = 30'], 'muted');
+  col(172, 'ours', ['timeout = 60'], 'info');
+  col(336, 'theirs', ['timeout = 45'], 'accent');
+  f.path('M246 114 V140', { arrow: true, tone: 'muted', width: 1.6 });
+  f.box(150, 142, 340, 82, { tone: 'fail' });
+  ['<<<<<<< ours', 'timeout = 60', '=======', 'timeout = 45', '>>>>>>> theirs'].forEach((l, i) => f.text(166, 160 + i * 14, l, { size: 11, mono: true }));
+  f.text(W / 2, 254, 'Only one side changed? Take it. Same change twice? Take one. Different changes? Ask a human.', { anchor: 'middle', size: 12, bold: true });
+  f.text(W / 2, 276, 'Edits to ADJACENT lines also conflict: Git cannot tell they are independent.', { anchor: 'middle', size: 11.5, tone: 'muted', italic: true });
+  return f;
+};
+
 export const gitFigures: Record<string, FigureBuilder> = {
   'gt-objects': objectsFigure,
   'gt-dag': dagFigure,
   'gt-refs': refsFigure,
+  'gt-merge-kinds': mergeKindsFigure,
+  'gt-rebase': rebaseFigure,
+  'gt-conflict': conflictFigure,
 };
