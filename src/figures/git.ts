@@ -281,6 +281,57 @@ const cacheFigure: FigureBuilder = () => {
   return f;
 };
 
+/* ───────────────────────── 6 · GitHub Actions ───────────────────────── */
+
+const workflowFileFigure: FigureBuilder = () => {
+  const f = new Fig(W, 300, 'Anatomy of a GitHub Actions workflow. A workflow file lives in the workflows folder and starts with the events that trigger it. It contains jobs, each running on a runner, and each job contains steps. A step either runs a shell command or uses a reusable action, usually pinned to a commit. Permissions, environment variables and secrets are set at the workflow, job or step level.');
+  f.box(8, 12, 624, 276, { tone: 'muted' });
+  f.text(20, 34, '.github/workflows/ci.yml', { size: 12, bold: true, mono: true });
+  const row = (y: number, label: string, tone: Tone, x = 24, w = 590) => f.box(x, y, w, 30, { tone, label, size: 11, mono: true });
+  row(44, 'on:  pull_request · push (branches: [main])', 'info');
+  row(80, 'permissions:  contents: read', 'pass');
+  f.box(24, 116, 590, 164, { tone: 'accent' });
+  f.text(36, 136, 'jobs.test   runs-on: ubuntu-latest   timeout-minutes: 10', { size: 11, mono: true, bold: true });
+  row(146, 'uses: actions/checkout@<40-hex commit sha>', 'muted', 40, 558);
+  row(182, 'run: npm ci && npm test', 'muted', 40, 558);
+  row(218, 'if: failure()   uses: actions/upload-artifact@<sha>', 'muted', 40, 558);
+  return f;
+};
+
+const exprFigure: FigureBuilder = () => {
+  const f = new Fig(W, 290, 'Conditions on steps and jobs. A step without an if condition runs only while the job is still succeeding. The status functions change that: success runs on success, failure runs only after a failure, always runs in every case including cancellation, and cancelled runs only when the run was cancelled. Comparisons of strings ignore case and logical and binds tighter than logical or.');
+  const rows: [string, string, Tone][] = [
+    ['(no if)  =  success()', 'runs only while nothing has failed', 'pass'],
+    ['failure()', 'runs only after a failure: upload logs, notify', 'fail'],
+    ['always()', 'runs in every case: clean up, publish report', 'info'],
+    ['cancelled()', 'runs only if the run was cancelled', 'muted'],
+  ];
+  rows.forEach(([a, b, tone], i) => {
+    const y = 14 + i * 50;
+    f.box(8, y, 200, 40, { tone, label: a, size: 11.5, mono: true });
+    f.box(214, y, 418, 40, { tone: 'muted', label: b, size: 11.5 });
+  });
+  f.text(W / 2, 232, "github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip ci]')", { anchor: 'middle', size: 11, mono: true });
+  f.text(W / 2, 258, 'Strings compare case-insensitively; && binds tighter than ||; a missing value is null.', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 282, 'An expression with no status function gets an implicit success() in front.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
+const concurrencyFigure: FigureBuilder = () => {
+  const f = new Fig(W, 280, 'Concurrency groups. Only one run per group may be active. With cancel in progress, a new push cancels the run that is still going and starts at once, which is right for pull request checks. Without it, the new run waits as pending and replaces any earlier pending run, which is right for deployments that must never be interrupted halfway.');
+  const lane = (y: number, title: string, items: [number, number, string, Tone][]) => {
+    f.text(8, y + 20, title, { size: 11.5, bold: true, mono: true });
+    items.forEach(([x, w, l, tone]) => f.box(x, y, w, 30, { tone, solid: tone === 'pass', label: l, size: 10.5, mono: true }));
+  };
+  lane(22, 'cancel', [[170, 110, 'run 1  ✗ cancelled', 'fail'], [282, 230, 'run 2  running → completes', 'pass']]);
+  lane(78, 'queue', [[170, 190, 'run 1  running → completes', 'pass'], [362, 150, 'run 3  waits, then runs', 'accent']]);
+  f.text(170, 140, 'run 2 arrived and was replaced by run 3 while waiting (cancelled)', { size: 10.5, tone: 'muted', mono: true });
+  f.text(W / 2, 184, 'Group key: usually the workflow plus the branch, so each PR has its own lane.', { anchor: 'middle', size: 12.5, bold: true });
+  f.text(W / 2, 212, 'Cancel for checks (the newest commit is the only one that matters).', { anchor: 'middle', size: 12, tone: 'muted' });
+  f.text(W / 2, 238, 'Queue for deploys: never kill a deployment halfway, but only keep the newest waiting.', { anchor: 'middle', size: 12, tone: 'muted', italic: true });
+  return f;
+};
+
 export const gitFigures: Record<string, FigureBuilder> = {
   'gt-objects': objectsFigure,
   'gt-dag': dagFigure,
@@ -297,4 +348,7 @@ export const gitFigures: Record<string, FigureBuilder> = {
   'gt-pipeline': pipelineFigure,
   'gt-matrix': matrixFigure,
   'gt-cache': cacheFigure,
+  'gt-workflow': workflowFileFigure,
+  'gt-expr': exprFigure,
+  'gt-concurrency': concurrencyFigure,
 };
